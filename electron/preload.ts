@@ -405,6 +405,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
 
+  // AI 作图 —— AI 助手 generate_image 工具
+  imageGen: {
+    getConfig: () => ipcRenderer.invoke('imageGen:getConfig') as Promise<{ success: boolean; config?: unknown; available?: boolean; error?: string }>,
+    setConfig: (patch: unknown) => ipcRenderer.invoke('imageGen:setConfig', patch) as Promise<{ success: boolean; config?: unknown; error?: string }>,
+    test: (cfg: unknown) => ipcRenderer.invoke('imageGen:test', cfg) as Promise<{ success: boolean; filePath?: string; mimeType?: string; error?: string }>,
+  },
+
   // 数据库操作
   db: {
     open: (dbPath: string, key?: string) => ipcRenderer.invoke('db:open', dbPath, key),

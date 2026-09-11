@@ -36,13 +36,14 @@ import { useSettingsStore } from '../settings/settingsStore'
 import AIProviderLogo from './AIProviderLogo'
 import EmbeddingTab from '../settings/tabs/EmbeddingTab'
 import RerankTab from '../settings/tabs/RerankTab'
+import ImageGenTab from '../settings/tabs/ImageGenTab'
 import LocalCodingAgentSettings from './LocalCodingAgentSettings'
 import ChatGPTSubscriptionAuth from './ChatGPTSubscriptionAuth'
 import RelayOneAccountPanel from './RelayOneAccountPanel'
 
 type AiProviderProtocol = configService.AiProviderProtocol
 type PresetTab = 'name' | 'provider' | 'config'
-type ConfigMode = 'llm' | 'vector' | 'rerank' | 'localAgent'
+type ConfigMode = 'llm' | 'vector' | 'rerank' | 'imageGen' | 'localAgent'
 
 interface AISummarySettingsProps {
   showMessage: (text: string, success: boolean) => void
@@ -990,6 +991,7 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
                   <Tabs.Tab className="whitespace-nowrap" id="llm">大模型<Tabs.Indicator /></Tabs.Tab>
                   <Tabs.Tab className="whitespace-nowrap" id="vector">向量<Tabs.Indicator /></Tabs.Tab>
                   <Tabs.Tab className="whitespace-nowrap" id="rerank">重排<Tabs.Indicator /></Tabs.Tab>
+                  <Tabs.Tab className="whitespace-nowrap" id="imageGen">作图<Tabs.Indicator /></Tabs.Tab>
                   <Tabs.Tab className="whitespace-nowrap" id="localAgent">本地智能体<Tabs.Indicator /></Tabs.Tab>
                 </Tabs.List>
               </Tabs.ListContainer>
@@ -1265,6 +1267,7 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
         </div>
         {configMode === 'vector' && <EmbeddingTab />}
         {configMode === 'rerank' && <RerankTab />}
+        {configMode === 'imageGen' && <ImageGenTab />}
         {configMode === 'localAgent' && <LocalCodingAgentSettings showMessage={showMessage} />}
       </div>
 

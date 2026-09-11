@@ -25,6 +25,7 @@ import { searchMoments, momentsStats } from './moments'
 import { createRemember, createRecall, createListMemories, createForget, createConsolidate } from './memory'
 import { createDelegateAnalysis } from './delegateAnalysis'
 import { buildMcpTools } from './mcpExternal'
+import { generateImage } from './generateImage'
 import { searchStickers, sendSticker } from './stickers'
 import { sendRandomImage } from './sendRandomImage'
 import { createInspectMediaImage, createSearchSimilarMedia, searchMedia, searchMomentMedia, sendMediaFromHistory } from './mediaHistory'
@@ -112,6 +113,7 @@ export function buildChatTools(
   scope: AgentScope,
   providerConfig: AgentProviderConfig,
   mcpTools: AgentMcpToolDescriptor[] = [],
+  enableImageGen = false,
   options: BuildChatToolsOptions = {},
 ): ToolSet {
   return {
@@ -121,6 +123,7 @@ export function buildChatTools(
     ...createAgentCapabilityTools(),
     ...createCanvasTools(options.canvasContext, options.emitChunk),
     ...buildMcpTools(mcpTools),
+    ...(enableImageGen ? { generate_image: generateImage } : {}),
     ...(options.allowWechatReplyMedia ? createWechatReplyMediaTools() : {}),
     export_chat: exportChat,
     persona_control: personaControl,
@@ -140,9 +143,11 @@ export function buildChatTools(
 
 export function buildCodeOnlyTools(
   codeWorkspace: CodeWorkspaceRef | null | undefined,
+  enableImageGen = false,
 ): ToolSet {
   return {
     ...createCodeWorkspaceTools(codeWorkspace),
+    ...(enableImageGen ? { generate_image: generateImage } : {}),
   }
 }
 
@@ -150,11 +155,12 @@ export function buildTools(
   scope: AgentScope,
   providerConfig: AgentProviderConfig,
   mcpTools: AgentMcpToolDescriptor[] = [],
+  enableImageGen = false,
   codeWorkspace?: CodeWorkspaceRef | null,
   options: BuildChatToolsOptions = {},
 ): ToolSet {
   return {
-    ...buildChatTools(scope, providerConfig, mcpTools, options),
+    ...buildChatTools(scope, providerConfig, mcpTools, enableImageGen, options),
     ...createCodeWorkspaceTools(codeWorkspace),
   }
 }

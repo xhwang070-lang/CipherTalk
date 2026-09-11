@@ -262,6 +262,16 @@ export interface TtsSpeakOptions {
   personaVoice?: PersonaTtsVoiceBindingInfo | null
 }
 
+export interface ImageGenConfig {
+  enabled: boolean
+  protocol: 'openai-compatible' | 'openai' | 'google' | 'custom'
+  apiKey: string
+  baseURL: string
+  model: string
+  size: string
+  timeoutMs: number
+}
+
 export interface EmbeddingBuildProgress {
   sessionId: string
   stage: 'loading' | 'chunking' | 'embedding' | 'done'
@@ -1736,6 +1746,11 @@ export interface ElectronAPI {
     truncate: (callId: string, replyId: string, audioEndMs: number) => Promise<{ success: boolean; error?: string }>
     stop: (callId: string) => Promise<{ success: boolean; error?: string }>
     onEvent: (callId: string, callback: (event: VoiceRealtimeEvent) => void) => () => void
+  }
+  imageGen: {
+    getConfig: () => Promise<{ success: boolean; config?: ImageGenConfig; available?: boolean; error?: string }>
+    setConfig: (patch: Partial<ImageGenConfig>) => Promise<{ success: boolean; config?: ImageGenConfig; error?: string }>
+    test: (cfg: Partial<ImageGenConfig>) => Promise<{ success: boolean; filePath?: string; mimeType?: string; error?: string }>
   }
   // AI 接入
   ai: {

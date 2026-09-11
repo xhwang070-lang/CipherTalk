@@ -22,6 +22,9 @@ const ACCOUNT_CONFIG_CLEAR_KEYS = [
   'imageAesKey'
 ] as const
 
+const IMAGE_GEN_DEFAULT_TIMEOUT_MS = 3_600_000
+const IMAGE_GEN_LEGACY_DEFAULT_TIMEOUT_MS = 600_000
+
 interface ConfigSchema {
   // 数据库相关
   dbPath: string
@@ -199,6 +202,16 @@ interface ConfigSchema {
         speed: number
       }
     }
+  }
+  // AI 作图 —— AI 助手 generate_image 工具用，独立于聊天模型
+  imageGenConfig: {
+    enabled: boolean
+    protocol: 'openai-compatible' | 'openai' | 'google' | 'custom'
+    apiKey: string
+    baseURL: string
+    model: string
+    size: string
+    timeoutMs: number
   }
   // 主进程探测到的系统代理 URL（写入后供 AI 子进程/嵌入跨进程读取；子进程无 session API 探测不了）
   aiResolvedProxyUrl: string
@@ -401,6 +414,15 @@ const defaults: ConfigSchema = {
       },
     },
   },
+  imageGenConfig: {
+    enabled: false,
+    protocol: 'openai-compatible',
+    apiKey: '',
+    baseURL: 'https://api.siliconflow.cn/v1',
+    model: 'Kwai-Kolors/Kolors',
+    size: '', // 空 = AI 按构图自选；填了则作 AI 未传 size 时的回退
+    timeoutMs: IMAGE_GEN_DEFAULT_TIMEOUT_MS,
+  },
   aiResolvedProxyUrl: '',
   anthropicCacheTtl: '5m',
   petCurrent: '',
@@ -476,12 +498,22 @@ export class ConfigService {
 
       this.migrateLegacySingleAccount()
 
-      // 华记不再提供 AI 作图，清掉旧配置。
-      const removedImageGenConfig = this.db.prepare("DELETE FROM config WHERE key = 'imageGenConfig'").run()
-      if (removedImageGenConfig.changes > 0) {
-        console.log('[Config] 已清理旧的 AI 作图配置')
+      // 迁移：作图旧默认超时 10 分钟过短，后台图已生成时 Agent 工具可能先报超时。
+      try {
+        const row = this.db.prepare("SELECT value FROM config WHERE key = 'imageGenConfig'").get() as { value: string } | undefined
+        if (row) {
+          const cfg = JSON.parse(row.value || '{}') as { timeoutMs?: unknown }
+          if (Number(cfg?.timeoutMs) === IMAGE_GEN_LEGACY_DEFAULT_TIMEOUT_MS) {
+            this.db.prepare("UPDATE config SET value = ? WHERE key = 'imageGenConfig'").run(JSON.stringify({
+              ...cfg,
+              timeoutMs: IMAGE_GEN_DEFAULT_TIMEOUT_MS,
+            }))
+            console.log('[Config] AI 作图默认超时已迁移到 1 小时')
+          }
+        }
+      } catch (e) {
+        console.error('迁移 AI 作图超时配置失败:', e)
       }
-
 
       // 迁移：修复旧版本产生的空 STT 语言配置，默认为中文
       try {

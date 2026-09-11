@@ -62,6 +62,7 @@ export const TOOL_LABELS: Record<string, string> = {
   inspect_media_image: '识别历史图片',
   send_media_from_history: '发送历史媒体',
   search_stickers: '翻表情包',
+  generate_image: '生成图片',
   send_sticker: '发表情包',
   send_random_image: '抽一张图片',
   send_wechat_media: '回复微信媒体',

@@ -157,7 +157,7 @@ function AgentMessageItemImpl({
       return Boolean(displayText.trim())
     })
   const shouldRenderMessageContent = message.role !== 'user' || hasRenderableUserText
-  // 历史 generate_image / send_sticker / send_random_image / send_media_from_history / inspect_media_image 的产出图：正文区直接展示
+  // generate_image / send_sticker / send_random_image / send_media_from_history / inspect_media_image 的产出图：正文区直接展示
   const renderGeneratedImageTool = (part: AgentMessagePart, index: number) => {
     if (!isAgentChainPart(part)) return null
     const isSticker = part.type === 'tool-send_sticker'
