@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Button } from '@heroui/react'
 import { Comment, Picture, Xmark } from '@gravity-ui/icons'
 import { useChatStore, MAX_ACTIVE_MESSAGES } from '../../stores/chatStore'
@@ -66,6 +67,7 @@ function mergeRefreshedSessions(prev: ChatSession[], page: ChatSession[]): ChatS
 }
 
 function ChatPage(_props: ChatPageProps) {
+  const isPopupWindow = useLocation().pathname === '/chat-window'
   const [quoteStyle, setQuoteStyle] = useState<QuoteStyleConfig>('default')
 
   const refreshQuoteStyle = useCallback(() => {
@@ -1609,7 +1611,7 @@ function ChatPage(_props: ChatPageProps) {
   const currentSession = sessions.find(s => s.username === currentSessionId)
 
   return (
-    <div className={`chat-page standalone ${isResizing ? 'resizing' : ''}`}>
+    <div className={`chat-page standalone ${isPopupWindow ? 'is-popup' : 'is-embedded'} ${isResizing ? 'resizing' : ''}`}>
       {/* 左侧会话列表 */}
       <SessionSidebar
         sidebarRef={sidebarRef}
@@ -1634,7 +1636,9 @@ function ChatPage(_props: ChatPageProps) {
 
       {/* 右侧消息区域 */}
       <div className="message-shell">
-        <TitleBar className="message-titlebar" rightContent={<></>} showTitle={false} />
+        {isPopupWindow ? (
+          <TitleBar className="message-titlebar" rightContent={<></>} showTitle={false} />
+        ) : null}
 
         <div className="message-area">
           {currentSession ? (

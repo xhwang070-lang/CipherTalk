@@ -893,3 +893,11 @@
 .chat-page.standalone.resizing .resize-handle {
   background: var(--primary);
 }
+
+.chat-page.standalone.is-embedded .session-sidebar .session-header {
+  padding-top: 12px;
+  -webkit-app-region: no-drag;
+}
+.chat-page.standalone.is-embedded .resize-handle {
+  margin-top: 0;
+}

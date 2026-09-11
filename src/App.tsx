@@ -81,7 +81,7 @@ type UpdateDownloadProgressPayload = {
   bytesPerSecond: number
 }
 
-const MAIN_WINDOW_NAV_ROUTES = new Set(['/settings', '/agent', '/personas', '/pets', '/diary', '/export'])
+const MAIN_WINDOW_NAV_ROUTES = new Set(['/settings', '/agent', '/personas', '/pets', '/diary', '/export', '/chat'])
 
 function App() {
   const navigate = useNavigate()
@@ -745,13 +745,13 @@ function App() {
   }
 
   // 主窗口 - 完整布局
-  const disableContentOverflow = ['/data-management', '/settings', '/mcp', '/agent', '/personas', '/diary', '/pets'].includes(location.pathname)
+  const disableContentOverflow = ['/data-management', '/settings', '/mcp', '/agent', '/personas', '/diary', '/pets', '/chat'].includes(location.pathname)
   const fullPageRoutes: string[] = []
   const isFullPage = fullPageRoutes.includes(location.pathname)
   const edgeToEdgeRoutes: string[] = []
   const isEdgeToEdge = edgeToEdgeRoutes.includes(location.pathname)
   const isAgentPage = location.pathname === '/agent'
-  const isFlushContentPage = isAgentPage || location.pathname === '/personas'
+  const isFlushContentPage = isAgentPage || location.pathname === '/personas' || location.pathname === '/chat'
   const pendingMemoryMigrationStatus = !isLocked && memoryMigrationStatus?.needed ? memoryMigrationStatus : null
 
   return (
@@ -880,6 +880,7 @@ function App() {
               <Route path="/diary" element={<DiaryPage />} />
               <Route path="/pets" element={<PetsPage />} />
               <Route path="/export" element={<ExportPage />} />
+              <Route path="/chat" element={<ChatPage />} />
               <Route path="/device-connect" element={<Navigate to="/settings" replace />} />
               <Route path="/chat-history/:sessionId/:messageId" element={<ChatHistoryPage />} />
               <Route path="/plugin/:pluginId/:viewId" element={<PluginViewPage />} />

@@ -67,15 +67,7 @@ function Sidebar({ autoCollapse = false }: { autoCollapse?: boolean }) {
     return () => { mounted = false; off() }
   }, [])
 
- const openChatWindow = async () => {
-    try {
-      await window.electronAPI.window.openChatWindow()
-    } catch (e) {
-      console.error('打开聊天窗口失败:', e)
-    }
-  }
-
-  const openMomentsWindow = async () => {
+ const openMomentsWindow = async () => {
     try {
       await window.electronAPI.window.openMomentsWindow()
     } catch (e) {
@@ -88,7 +80,7 @@ function Sidebar({ autoCollapse = false }: { autoCollapse?: boolean }) {
     { key: 'personas', label: 'AI 克隆', icon: <PersonGear width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/personas' },
     { key: 'diary', label: '日记', icon: <BookOpen width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/diary' },
     { key: 'pets', label: 'AI 宠物', icon: <Ghost width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/pets' },
-    { key: 'chat', label: '聊天查看', icon: <Comment width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'action', onClick: openChatWindow },
+    { key: 'chat', label: '聊天查看', icon: <Comment width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/chat' },
     { key: 'moments', label: '朋友圈', icon: <Aperture width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'action', onClick: openMomentsWindow },
     { key: 'export', label: '导出数据', icon: <ArrowDownToLine width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/export' },
     { key: 'data-management', label: '数据管理', icon: <Database width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/data-management' },

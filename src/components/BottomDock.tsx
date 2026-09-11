@@ -103,11 +103,6 @@ function BottomDock() {
     scheduleHide()
   }
 
-  const openChatWindow = async () => {
-    try { await window.electronAPI.window.openChatWindow() }
-    catch (e) { console.error('打开聊天窗口失败:', e) }
-  }
-
   const openMomentsWindow = async () => {
     try { await window.electronAPI.window.openMomentsWindow() }
     catch (e) { console.error('打开朋友圈窗口失败:', e) }
@@ -142,7 +137,7 @@ function BottomDock() {
       case 'personas': navigate('/personas'); break
       case 'diary': navigate('/diary'); break
       case 'pets': navigate('/pets'); break
-      case 'chat': void openChatWindow(); break
+      case 'chat': navigate('/chat'); break
       case 'moments': void openMomentsWindow(); break
       case 'device-connect': setDeviceConnectOpen(true); break
       case 'export': navigate('/export'); break
