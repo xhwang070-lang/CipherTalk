@@ -439,8 +439,9 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
   const handleScanMemoryKey = async (wechatPath?: string) => {
     if (isFetchingDbKey) return
     if (!allowMemoryScan) {
-      setError('扫描微信内存默认关闭。请先勾选「我同意本次扫描已登录微信内存」，或改为粘贴/导入密钥。')
-      return
+      const ok = window.confirm('将扫描已登录微信的内存以提取本机密钥。只在这台电脑进行，不会上传。是否同意？')
+      if (!ok) return
+      setAllowMemoryScan(true)
     }
     setIsFetchingDbKey(true)
     setError('')
@@ -1003,19 +1004,11 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
 
       <Button
         type="button"
-        variant={allowMemoryScan ? 'primary' : 'outline'}
-        className="self-start"
-        onPress={() => setAllowMemoryScan((value) => !value)}
-      >
-        {allowMemoryScan ? '已同意本次扫描微信内存' : '点击同意本次扫描微信内存'}
-      </Button>
-      <Button
-        type="button"
-        variant="tertiary"
+        variant="secondary"
         className="self-start"
         onPress={() => void handleScanMemoryKey()}
-        isDisabled={isFetchingDbKey || !allowMemoryScan}
-        isPending={isFetchingDbKey && allowMemoryScan}
+        isDisabled={isFetchingDbKey}
+        isPending={isFetchingDbKey}
       >
         {isFetchingDbKey ? <Spinner size="sm" color="current" /> : <Sparkles width={16} height={16} />}
         扫描微信内存获取密钥
