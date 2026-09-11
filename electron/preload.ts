@@ -577,6 +577,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.send('reply-tile:push', entry),
       continue: (sessionId: string) => ipcRenderer.send('reply-tile:continue', sessionId),
       skip: (sessionId: string) => ipcRenderer.send('reply-tile:skip', sessionId),
+      dismiss: (sessionId?: string) => ipcRenderer.send('reply-tile:dismiss', sessionId),
       retry: (payload: { sessionId: string; batchId: string; suggestionIndex: number }) => ipcRenderer.send('reply-tile:retry', payload),
       onUpdate: (callback: (entry: { sessionId: string; sessionName: string; avatarUrl?: string; state: 'pending' | 'loading' | 'error' | 'ready' | 'gone'; suggestions?: string[]; batches?: Array<{ id: string; targetKey: string; quote: string; suggestions: string[] }>; pendingContinue?: boolean; error?: string }) => void) => {
         const listener = (_: unknown, entry: any) => callback(entry)

@@ -159,6 +159,16 @@ export function registerWindowHandlers(ctx: MainProcessContext): void {
   }
 
   // 渲染端当前会话把已生成的建议镜像进磁贴（全保真：图片/画像/语音转写）
+  
+  ipcMain.on('reply-tile:dismiss', (_event, sessionId?: string) => {
+    const wm = ctx.getWindowManager()
+    if (typeof sessionId === 'string' && sessionId.trim()) {
+      wm.updateReplyTileEntry({ sessionId: sessionId.trim(), sessionName: sessionId.trim(), state: 'gone' })
+    } else {
+      wm.clearReplyTile()
+    }
+  })
+
   ipcMain.on('reply-tile:push', (_event, entry: ReplyTileEntry) => {
     // gone 只能删除「配置里已不参与」的会话；切会话/配置加载瞬间的误发不能删全局条目。
     if (entry.state === 'gone' && replyTileService.isParticipating(entry.sessionId)) return

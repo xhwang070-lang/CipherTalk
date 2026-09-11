@@ -722,6 +722,7 @@ function ChatPage(_props: ChatPageProps) {
     if (session.isFoldGroup || session.isOfficialFolder) {
       return
     }
+    window.electronAPI.window.replyTile.dismiss(session.username)
 
     if (session.username === currentSessionId) {
       // 如果是当前会话，重新加载消息（用于刷新）

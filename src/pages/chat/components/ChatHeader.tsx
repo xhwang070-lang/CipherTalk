@@ -859,7 +859,7 @@ export function ChatHeader({
         </Tooltip>
       </div>
 
-      {detailDrawerHost ? detailDrawer : null}
+      {detailDrawerHost && isDetailOpen ? detailDrawer : null}
 
       {isPrivateSession && (
         <CloneSelfModal

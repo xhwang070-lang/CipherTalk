@@ -245,12 +245,8 @@ class NotifyService {
         ...(icon ? { icon } : {}),
       })
       notification.on('click', () => {
-        const win = this.ctx?.getMainWindow()
-        if (win && !win.isDestroyed()) {
-          if (win.isMinimized()) win.restore()
-          win.show()
-          win.focus()
-        }
+        notification.close()
+        this.ctx?.getWindowManager().focusMainWindow('/chat')
       })
       notification.show()
     } catch (e) {

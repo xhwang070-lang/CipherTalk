@@ -470,9 +470,14 @@ export function ReplySuggestBar({ session, messages }: { session: ChatSession; m
         shape={GLASS_CIRCLE}
         type="button"
         onClick={() => {
+          runSeqRef.current += 1
+          loadingRef.current = false
+          latestTargetKeyRef.current = null
           setBatches([])
           setError(null)
           setPendingContinueKey(null)
+          setLoading(false)
+          window.electronAPI.window.replyTile.dismiss(session.username)
         }}
       >
         <Xmark width={14} height={14} />

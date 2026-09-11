@@ -29,7 +29,7 @@ type ReleaseAnnouncementPayload = {
   generatedAt?: string
 }
 
-const MAIN_WINDOW_ROUTES = new Set(['/home', '/agent', '/settings', '/pets', '/diary', '/export'])
+const MAIN_WINDOW_ROUTES = new Set(['/home', '/agent', '/settings', '/pets', '/diary', '/export', '/chat'])
 
 function supportsReplyTileWindow(): boolean {
   return process.platform === 'win32' || process.platform === 'darwin'
@@ -878,41 +878,10 @@ export function createWindowManager(ctx: MainProcessContext): WindowManager {
 
     openChatWindow() {
       if (chatWindow && !chatWindow.isDestroyed()) {
-        if (chatWindow.isMinimized()) chatWindow.restore()
-        chatWindow.focus()
-        return chatWindow
-      }
-
-      const isDark = nativeTheme.shouldUseDarkColors
-      chatWindow = new BrowserWindow({
-        width: 1000,
-        height: 700,
-        minWidth: 800,
-        minHeight: 600,
-        ...getWindowIconOptions(ctx),
-        webPreferences: {
-          preload: join(__dirname, 'preload.js'),
-          devTools: ctx.allowDevTools,
-          contextIsolation: true,
-          nodeIntegration: false,
-          webSecurity: false
-        },
-        titleBarStyle: 'hidden',
-        titleBarOverlay: {
-          color: '#00000000',
-          symbolColor: '#666666',
-          height: 40
-        },
-        show: false,
-        backgroundColor: isDark ? '#1A1A1A' : '#F0F0F0'
-      })
-
-      chatWindow.once('ready-to-show', () => chatWindow?.show())
-      loadWindowRoute(ctx, chatWindow, '/chat-window')
-      chatWindow.on('closed', () => {
+        chatWindow.close()
         chatWindow = null
-      })
-      return chatWindow
+      }
+      return manager.focusMainWindow('/chat')
     },
 
     openMomentsWindow(filterUsername?: string) {
@@ -1650,7 +1619,28 @@ export function createWindowManager(ctx: MainProcessContext): WindowManager {
       if (replyTileWindow && !replyTileWindow.isDestroyed() && !replyTileWindow.webContents.isLoading()) {
         replyTileWindow.webContents.send('reply-tile:update', entry)
       }
-      // 窗口还在加载时不单独发：did-finish-load 会回灌全量
+      if (replyTileEntries.size === 0) {
+        if (replyTileWindow && !replyTileWindow.isDestroyed() && replyTileWindow.isVisible()) {
+          replyTileWindow.hide()
+        }
+      }
+    },
+
+    clearReplyTile() {
+      if (!replyTileEnabled) {
+        replyTileEntries.clear()
+        return
+      }
+      const ids = Array.from(replyTileEntries.keys())
+      replyTileEntries.clear()
+      if (replyTileWindow && !replyTileWindow.isDestroyed() && !replyTileWindow.webContents.isLoading()) {
+        for (const sessionId of ids) {
+          replyTileWindow.webContents.send('reply-tile:update', { sessionId, sessionName: sessionId, state: 'gone' })
+        }
+      }
+      if (replyTileWindow && !replyTileWindow.isDestroyed() && replyTileWindow.isVisible()) {
+        replyTileWindow.hide()
+      }
     }
   }
 

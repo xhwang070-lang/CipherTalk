@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { CircleDashed } from '@gravity-ui/icons'
+import { CircleDashed, Xmark } from '@gravity-ui/icons'
 import { sentenceSegmentLabel, splitSuggestionBursts } from './chat/replySuggest'
 import './reply-tile.css'
 
@@ -108,6 +108,15 @@ export default function ReplyTileWindow() {
     <div className="reply-tile">
       <div className="reply-tile__header">
         <span className="reply-tile__title">回复建议</span>
+        <button
+          type="button"
+          className="reply-tile__close"
+          title="关闭"
+          aria-label="关闭回复建议"
+          onClick={() => window.electronAPI.window.replyTile.dismiss()}
+        >
+          <Xmark width={14} height={14} />
+        </button>
       </div>
 
       {entries.length === 0 ? (

@@ -78,6 +78,7 @@ export interface WindowManager {
   isReplyTileEnabled(): boolean
   /** 更新/移除磁贴里某会话的条目（来自渲染端当前会话或主进程后台生成） */
   updateReplyTileEntry(entry: ReplyTileEntry): void
+  clearReplyTile(): void
 }
 
 export interface MainProcessContext {

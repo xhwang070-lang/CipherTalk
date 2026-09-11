@@ -241,3 +241,24 @@
 .reply-tile__action:hover {
   text-decoration: underline;
 }
+
+.reply-tile__header {
+  justify-content: space-between;
+}
+.reply-tile__close {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(242, 243, 245, 0.8);
+  cursor: pointer;
+}
+.reply-tile__close:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}

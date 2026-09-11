@@ -677,6 +677,7 @@ export interface ElectronAPI {
       push: (entry: { sessionId: string; sessionName: string; avatarUrl?: string; state: 'pending' | 'loading' | 'error' | 'ready' | 'gone'; suggestions?: string[]; batches?: Array<{ id: string; targetKey: string; quote: string; suggestions: string[] }>; pendingContinue?: boolean; error?: string }) => void
       continue: (sessionId: string) => void
       skip: (sessionId: string) => void
+      dismiss: (sessionId?: string) => void
       retry: (payload: { sessionId: string; batchId: string; suggestionIndex: number }) => void
       onUpdate: (callback: (entry: { sessionId: string; sessionName: string; avatarUrl?: string; state: 'pending' | 'loading' | 'error' | 'ready' | 'gone'; suggestions?: string[]; batches?: Array<{ id: string; targetKey: string; quote: string; suggestions: string[] }>; pendingContinue?: boolean; error?: string }) => void) => () => void
       onContinue: (callback: (sessionId: string) => void) => () => void
