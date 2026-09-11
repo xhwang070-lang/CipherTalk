@@ -6,6 +6,8 @@ import { nightlyMemoryService } from '../services/memory/nightlyMemoryService'
 import { getMcpProxyConfig } from '../services/mcp/runtime'
 import { mcpProxyService } from '../services/mcp/proxyService'
 import { mcpClientService } from '../services/mcpClientService'
+import { localApiService } from '../services/localApiService'
+import { startLocalApiIfEnabled } from './ipc/localApiHandlers'
 import { wcdbService } from '../services/wcdbService'
 import { monitorBridge } from '../services/monitorBridge'
 import { logStartupError, markStartupMilestone, warnStartupMilestone } from './startupDiagnostics'
@@ -307,6 +309,7 @@ export async function startLocalIntegrationServices(ctx: MainProcessContext): Pr
     logStartupError('startup:mcp-client-restore-failed', e)
     console.error('[McpClient] 自动恢复连接失败:', e)
   })
+  await startLocalApiIfEnabled(ctx)
 }
 
 export function stopLocalIntegrationServices(): void {
@@ -316,6 +319,9 @@ export function stopLocalIntegrationServices(): void {
   })
   mcpClientService.disconnectAll(false).catch((e) => {
     console.error('[McpClient] 停止失败:', e)
+  })
+  localApiService.stop().catch((e) => {
+    console.error('[LocalApi] 停止失败:', e)
   })
 }
 

@@ -137,6 +137,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     create: (skillName: string, content: string) => ipcRenderer.invoke('skillManager:create', skillName, content) as Promise<{ success: boolean; error?: string }>,
   },
 
+  localApi: {
+    getStatus: () => ipcRenderer.invoke('localApi:getStatus'),
+    setEnabled: (enabled: boolean) => ipcRenderer.invoke('localApi:setEnabled', enabled),
+    setPort: (port: number) => ipcRenderer.invoke('localApi:setPort', port),
+    rotateToken: () => ipcRenderer.invoke('localApi:rotateToken'),
+  },
+
   mcpClient: {
     listConfigs: () => ipcRenderer.invoke('mcpClient:listConfigs') as Promise<Record<string, { type: string; command?: string; args?: string[]; env?: Record<string, string>; cwd?: string; url?: string; headers?: Record<string, string>; timeoutMs?: number; autoConnect?: boolean }>>,
     saveConfig: (name: string, config: any, overwrite?: boolean) => ipcRenderer.invoke('mcpClient:saveConfig', name, config, overwrite) as Promise<{ success: boolean; error?: string }>,

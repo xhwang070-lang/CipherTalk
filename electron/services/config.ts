@@ -239,6 +239,9 @@ interface ConfigSchema {
   mcpExposeMediaPaths: boolean
   mcpProxyPort: number
   mcpProxyToken: string
+  localApiEnabled: boolean
+  localApiPort: number
+  localApiToken: string
   // Agent 工具审批 HMAC 签名密钥：跨 AI utility 进程重启/App 重启保持稳定，
   // 否则每次重启换新密钥会让待处理的审批签名验证失败（见 engine.ts TOOL_APPROVAL_SECRET）
   agentToolApprovalSecret: string
@@ -437,7 +440,10 @@ const defaults: ConfigSchema = {
   mcpEnabled: false,
   mcpExposeMediaPaths: true,
   mcpProxyPort: 5032,
-  mcpProxyToken: ''
+  mcpProxyToken: '',
+  localApiEnabled: false,
+  localApiPort: 5034,
+  localApiToken: ''
 }
 
 export class ConfigService {

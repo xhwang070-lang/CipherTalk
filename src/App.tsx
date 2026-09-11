@@ -13,6 +13,7 @@ import AgreementPage from './pages/AgreementPage'
 import DataManagementPage from './pages/DataManagementPage'
 import SettingsPage from './pages/SettingsPage'
 import McpPage from './pages/McpPage'
+import LocalApiPage from './pages/LocalApiPage'
 import AgentPage from './pages/agent/AgentPage'
 import PersonasPage from './pages/PersonasPage'
 import DiaryPage from './pages/DiaryPage'
@@ -77,7 +78,7 @@ type UpdateDownloadProgressPayload = {
   bytesPerSecond: number
 }
 
-const MAIN_WINDOW_NAV_ROUTES = new Set(['/settings', '/agent', '/personas', '/diary', '/export', '/chat', '/moments'])
+const MAIN_WINDOW_NAV_ROUTES = new Set(['/settings', '/agent', '/personas', '/diary', '/export', '/chat', '/moments', '/api'])
 
 function App() {
   const navigate = useNavigate()
@@ -706,7 +707,7 @@ function App() {
 
 
   // 主窗口 - 完整布局
-  const disableContentOverflow = ['/data-management', '/settings', '/mcp', '/agent', '/personas', '/diary', '/chat', '/moments'].includes(location.pathname)
+  const disableContentOverflow = ['/data-management', '/settings', '/mcp', '/api', '/agent', '/personas', '/diary', '/chat', '/moments'].includes(location.pathname)
   const fullPageRoutes: string[] = []
   const isFullPage = fullPageRoutes.includes(location.pathname)
   const edgeToEdgeRoutes: string[] = []
@@ -836,6 +837,7 @@ function App() {
               <Route path="/data-management" element={<DataManagementPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/mcp" element={<McpPage />} />
+              <Route path="/api" element={<LocalApiPage />} />
               <Route path="/agent" element={<AgentPage />} />
               <Route path="/personas" element={<PersonasPage />} />
               <Route path="/diary" element={<DiaryPage />} />

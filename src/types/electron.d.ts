@@ -742,6 +742,12 @@ export interface ElectronAPI {
     delete: (skillName: string) => Promise<{ success: boolean; error?: string }>
     create: (skillName: string, content: string) => Promise<{ success: boolean; error?: string }>
   }
+  localApi: {
+    getStatus: () => Promise<{ running: boolean; host: string; port: number; enabled: boolean; token: string; lastError: string }>
+    setEnabled: (enabled: boolean) => Promise<{ success: boolean; error?: string; status?: any }>
+    setPort: (port: number) => Promise<{ success: boolean; error?: string; status?: any }>
+    rotateToken: () => Promise<{ success: boolean; token?: string; status?: any }>
+  }
   mcpClient: {
     listConfigs: () => Promise<Record<string, { type: string; command?: string; args?: string[]; env?: Record<string, string>; cwd?: string; url?: string; headers?: Record<string, string>; timeoutMs?: number; autoConnect?: boolean }>>
     saveConfig: (name: string, config: { type: string; command?: string; args?: string[]; env?: Record<string, string>; cwd?: string; url?: string; headers?: Record<string, string>; timeoutMs?: number; autoConnect?: boolean }, overwrite?: boolean) => Promise<{ success: boolean; error?: string }>
