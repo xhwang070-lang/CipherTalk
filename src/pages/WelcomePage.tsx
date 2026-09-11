@@ -458,13 +458,17 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
       }
       if (result.success && result.key) {
         setDecryptKey(result.key)
-        if (result.validatedWxid) {
-          setWxid(result.validatedWxid)
-          setIsAccountVerified(true)
-        } else if (wxid) {
-          await verifyAccountDirectory(wxid, result.key)
+        const targetWxid = result.validatedWxid || wxid
+        if (result.validatedWxid) setWxid(result.validatedWxid)
+        setDecryptKey(result.key)
+        if (targetWxid) {
+          const ok = await verifyAccountDirectory(targetWxid, result.key, true)
+          setDbKeyStatus(ok
+            ? `已取出密钥，账号目录已验证：${targetWxid}`
+            : '已取出密钥。账号目录尚未验证，可点「验证账号目录」，也可先点下一步。')
+        } else {
+          setDbKeyStatus('已从本机微信内存取出密钥。请选择账号目录后再继续。')
         }
-        setDbKeyStatus('已从本机微信内存取出密钥。仅保存在本地。')
         setError('')
       } else if (result.needAdmin) {
         setNeedAdminRelaunch(true)
@@ -556,7 +560,7 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
     if (currentStep.id === 'intro') return true
     if (currentStep.id === 'db') return Boolean(dbPath)
     if (currentStep.id === 'cache') return Boolean(cachePath)
-    if (currentStep.id === 'key') return decryptKey.length === 64 && Boolean(wxid) && isAccountVerified
+    if (currentStep.id === 'key') return decryptKey.length === 64 && Boolean(wxid)
     if (currentStep.id === 'image') return true
     if (currentStep.id === 'security') return true
     if (currentStep.id === 'decrypt') return false // 最后一步，不能下一步
@@ -570,7 +574,6 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
       if (currentStep.id === 'key') {
         if (decryptKey.length !== 64) setError('密钥长度必须为 64 个字符')
         else if (!wxid) setError('请先选择账号目录')
-        else if (!isAccountVerified) setError('账号目录尚未验证，请先验证后继续')
       }
       return
     }
@@ -886,8 +889,9 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
         menuTrigger="manual"
         selectedKey={wxidOptions.includes(wxid) ? wxid : null}
         onInputChange={(value) => {
-          setWxid(value.trim())
-          setIsAccountVerified(false)
+          const next = value.trim()
+          if (next !== wxid) setIsAccountVerified(false)
+          setWxid(next)
         }}
         onSelectionChange={(key) => {
           if (key != null) handleSelectWxidCandidate(String(key))
