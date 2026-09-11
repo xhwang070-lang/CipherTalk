@@ -14,7 +14,6 @@ import {
   ProgressBar,
   ScrollShadow,
   Spinner,
-  Switch,
   TextField,
   Tooltip,
   Typography
@@ -996,18 +995,14 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
         </Button>
       </div>
 
-      <div className="flex items-start gap-3">
-        <Switch
-          isSelected={allowMemoryScan}
-          onChange={setAllowMemoryScan}
-          aria-label="同意扫描微信内存"
-        >
-          <Switch.Control>
-            <Switch.Thumb />
-          </Switch.Control>
-        </Switch>
-        <Description>我同意本次扫描已登录微信内存（仅本机，默认关闭）</Description>
-      </div>
+      <Button
+        type="button"
+        variant={allowMemoryScan ? 'primary' : 'outline'}
+        className="self-start"
+        onPress={() => setAllowMemoryScan((value) => !value)}
+      >
+        {allowMemoryScan ? '已同意本次扫描微信内存' : '点击同意本次扫描微信内存'}
+      </Button>
       <Button
         type="button"
         variant="tertiary"
