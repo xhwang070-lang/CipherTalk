@@ -12,7 +12,7 @@ export type AgentMemoryIntroStatus = 'checking' | 'hidden' | 'needed'
 const MEMORY_INTRO_FALLBACK_SRTS = {
   name: `1
 00:00:00,000 --> 00:00:06,123
-你好呀！我的朋友，我们今天开始，正式认识啦，我是华记。
+Hi. I'm Huaji.
 
 2
 00:00:06,264 --> 00:00:11,145

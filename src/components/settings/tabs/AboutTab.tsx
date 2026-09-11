@@ -98,7 +98,7 @@ function AboutTab({
     return (
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Typography.Paragraph size="sm" color="muted">
-          当前版本已安装。更新只从华记私有仓库获取；未配置更新地址时不会联网检查。
+          This version is installed. Updates come from the Huaji private repo only; no network check if no update URL is set.
         </Typography.Paragraph>
         <Button
           type="button"
@@ -236,7 +236,7 @@ function AboutTab({
           <Alert.Content>
             <Alert.Title>免费软件声明</Alert.Title>
             <Alert.Description>
-              本软件仅供华博管业内部本机使用，聊天记录不上传。
+              For Huabo internal local use only. Chat history is not uploaded.
             </Alert.Description>
           </Alert.Content>
         </Alert>

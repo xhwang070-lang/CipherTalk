@@ -271,7 +271,7 @@ class AppUpdateService {
   async checkForUpdates(): Promise<AppUpdateInfo> {
     const currentVersion = app.getVersion()
 
-    // 华记：未配置私有仓库更新地址时不联网
+    // Huaji: skip network update checks until a private feed is configured
     console.log('[AppUpdate Debug] checkForUpdates 被调用')
     console.trace('[AppUpdate Debug] 调用堆栈:')
 

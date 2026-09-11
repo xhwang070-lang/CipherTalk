@@ -1260,7 +1260,7 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
             <Alert status="default">
               <Alert.Content>
                 <Alert.Title>本地保存</Alert.Title>
-                <Alert.Description>{isCodexSubscription ? 'ChatGPT 登录凭据仅保存在华记的数据目录中，不会读取或修改电脑上的 Codex 登录。' : 'API 密钥仅保存在本地。连接测试与模型刷新会向当前服务商发起请求。'}</Alert.Description>
+                <Alert.Description>{isCodexSubscription ? 'ChatGPT credentials stay in the Huaji data directory，不会读取或修改电脑上的 Codex 登录。' : 'API 密钥仅保存在本地。连接测试与模型刷新会向当前服务商发起请求。'}</Alert.Description>
               </Alert.Content>
             </Alert>
           </aside>

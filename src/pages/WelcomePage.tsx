@@ -449,7 +449,7 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
 
         // 发送系统通知
         if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification('华记 - 图片密钥获取成功', {
+          new Notification('Huaji - image key ready', {
             body: '已成功获取图片密钥，可以继续下一步操作',
             icon: './logo.png'
           })
@@ -1117,9 +1117,9 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
           <Card.Content className="grid grid-cols-[minmax(260px,0.78fr)_minmax(360px,1fr)] items-center gap-6 pb-2 max-[940px]:grid-cols-1">
             <div className="flex min-w-0 items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
-                <img src="./logo.png" alt="华记" className="size-11 shrink-0 rounded-lg shadow-[0_10px_24px_color-mix(in_oklch,var(--foreground)_12%,transparent)]" />
+                <img src="./logo.png" alt="Huaji" className="size-11 shrink-0 rounded-lg shadow-[0_10px_24px_color-mix(in_oklch,var(--foreground)_12%,transparent)]" />
                 <div className="min-w-0">
-                  <Typography.Heading level={3} className="truncate">华记初始化</Typography.Heading>
+                  <Typography.Heading level={3} className="truncate">Huaji setup</Typography.Heading>
                   <Typography.Paragraph size="sm" color="muted" className="truncate">{currentStep.desc}</Typography.Paragraph>
                 </div>
               </div>

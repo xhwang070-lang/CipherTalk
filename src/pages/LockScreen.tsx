@@ -15,7 +15,7 @@ export default function LockScreen() {
     const [isVerifying, setIsVerifying] = useState(false)
     const [error, setError] = useState('')
     const [platformInfo, setPlatformInfo] = useState<{ platform: string; arch: string }>({ platform: 'win32', arch: 'x64' })
-    const userDisplayName = userInfo?.nickName?.trim() || '华记'
+    const userDisplayName = userInfo?.nickName?.trim() || 'Huaji'
     const avatarFallback = userInfo?.nickName?.trim()?.slice(0, 1).toUpperCase()
 
     useEffect(() => {
@@ -89,7 +89,7 @@ export default function LockScreen() {
                 </div>
 
                 <div className="lock-info">
-                    <h2>华记已锁定</h2>
+                    <h2>Huaji is locked</h2>
                     <p>{userInfo?.nickName ? `欢迎回来，${userInfo.nickName}` : '需要验证身份以继续'}</p>
                 </div>
 
