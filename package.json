@@ -166,7 +166,8 @@
         "!node_modules/**/*.dylib",
         "!node_modules/sherpa-onnx-node/bin/!(win-x64)/**/*",
         "!node_modules/ffmpeg-static/bin/!(win32-x64)/**/*"
-      ]
+      ],
+      "signAndEditExecutable": false
     },
     "mac": {
       "icon": "public/icon.icns",
@@ -306,6 +307,7 @@
       "resources/wedecrypt/*.node",
       "resources/wedecrypt/**/*.node",
       "resources/**/*"
-    ]
+    ],
+    "forceCodeSigning": false
   }
 }
