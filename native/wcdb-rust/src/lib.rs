@@ -280,7 +280,7 @@ fn materialize_plaintext(db_path: &str) -> Result<String, Box<dyn std::error::Er
         return Ok(cache.to_string_lossy().to_string());
     }
     log_info(&format!("Decrypting live db into cache: {}", db_path));
-    let bytes = decrypt::decrypt_file_with_enc_key_hex(db_path, &enc_key)?;
+    let bytes = decrypt::WeChatDecryptor::new(&enc_key)?.decrypt_database_file(db_path)?;
     std::fs::write(&cache, bytes)?;
     Ok(cache.to_string_lossy().to_string())
 }
@@ -370,4 +370,53 @@ fn exec_sqlcipher_query(
     log_info("=== Query End ===");
 
     Ok(result)
+}
+
+
+#[no_mangle]
+pub unsafe extern "C" fn wcdb_get_sns_timeline(
+    _handle: i64,
+    _limit: c_int,
+    _offset: c_int,
+    _username: *const c_char,
+    _keyword: *const c_char,
+    _start_time: c_int,
+    _end_time: c_int,
+    _out_json: *mut *mut c_void,
+) -> c_int {
+    // Force JS SQL fallback used by Huaji/CipherTalk snsService.
+    -1
+}
+
+#[no_mangle]
+pub extern "C" fn wcdb_check_license() -> c_int {
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wcdb_set_app_version(_version: *const c_char) -> c_int {
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wcdb_set_client_info(
+    _app: *const c_char,
+    _channel: *const c_char,
+    _version: *const c_char,
+) -> c_int {
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wcdb_set_my_wxid(_wxid: *const c_char) -> c_int {
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wcdb_get_device_id(out_id: *mut *mut c_void) -> c_int {
+    if out_id.is_null() {
+        return -1;
+    }
+    *out_id = string_to_c_ptr("huaji-local".to_string());
+    0
 }
