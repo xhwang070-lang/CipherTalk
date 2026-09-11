@@ -28,11 +28,17 @@ export function registerAppHandlers(ctx: MainProcessContext): void {
   })
 
   ipcMain.handle('app:checkForUpdates', async () => {
+    console.log('[IPC Debug] app:checkForUpdates 被调用')
+    console.trace('[IPC Debug] 调用堆栈:')
     return appUpdateService.checkForUpdates()
   })
 
   ipcMain.handle('app:getUpdateState', async () => {
-    return appUpdateService.getCachedUpdateInfo()
+    console.log('[IPC Debug] app:getUpdateState 被调用')
+    console.trace('[IPC Debug] 调用堆栈:')
+    const result = appUpdateService.getCachedUpdateInfo()
+    console.log('[IPC Debug] app:getUpdateState 返回值:', result)
+    return result
   })
 
   ipcMain.handle('app:getUpdateSourceInfo', async () => {

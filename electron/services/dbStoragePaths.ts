@@ -25,7 +25,15 @@ export function resolveDbStoragePath(dbPath: string, wxid: string): string | nul
   const direct = join(normalized, 'db_storage')
   if (existsSync(direct)) return direct
 
+  if (existsSync(join(normalized, 'session', 'session.db')) || existsSync(join(normalized, 'message'))) {
+    return normalized
+  }
+
   if (wxid) {
+    const viaWxidPlain = join(normalized, wxid)
+    if (existsSync(join(viaWxidPlain, 'session', 'session.db')) || existsSync(join(viaWxidPlain, 'message'))) {
+      return viaWxidPlain
+    }
     const viaWxid = join(normalized, wxid, 'db_storage')
     if (existsSync(viaWxid)) return viaWxid
     try {

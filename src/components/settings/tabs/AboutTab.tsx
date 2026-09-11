@@ -137,6 +137,9 @@ function AboutTab({
             <Typography.Paragraph size="sm" color="muted" className="max-w-2xl">
               本地优先的微信数据浏览、检索与分析工具，面向个人数据归档与回顾场景。
             </Typography.Paragraph>
+            <Typography.Paragraph size="sm" color="muted" className="max-w-2xl">
+              本机个人使用版：聊天记录只留在这台电脑，不上传。界面基于开源项目密语 CipherTalk（CC BY-NC-SA 4.0），保留原作者署名。
+            </Typography.Paragraph>
             <div className="flex flex-wrap items-center gap-2">
               <Chip size="sm" color={updateInfo?.hasUpdate ? 'warning' : 'success'} variant="soft">
                 <Chip.Label>{updateInfo?.hasUpdate ? '有新版本' : '已是当前版本'}</Chip.Label>

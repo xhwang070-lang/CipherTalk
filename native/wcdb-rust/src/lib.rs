@@ -1,0 +1,373 @@
+use std::collections::HashMap;
+use std::ffi::{CStr, CString};
+use std::os::raw::{c_char, c_int, c_void};
+use std::sync::Mutex;
+use lazy_static::lazy_static;
+use rusqlite::Connection;
+use serde_json::json;
+
+mod decrypt;
+mod keys;
+
+// ============= 全局状态 =============
+lazy_static! {
+    static ref ACCOUNTS: Mutex<HashMap<i64, AccountHandle>> = Mutex::new(HashMap::new());
+    static ref NEXT_HANDLE: Mutex<i64> = Mutex::new(1);
+    static ref LOGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+}
+
+struct AccountHandle {
+    session_db_path: String,
+    db_storage_path: String,
+    hex_key: String,
+    wxid: String,
+}
+
+// ============= 辅助函数 =============
+fn log_info(msg: &str) {
+    if let Ok(mut logs) = LOGS.lock() {
+        logs.push(format!("[INFO] {}", msg));
+        if logs.len() > 1000 {
+            logs.drain(0..500);
+        }
+    }
+}
+
+fn log_error(msg: &str) {
+    if let Ok(mut logs) = LOGS.lock() {
+        logs.push(format!("[ERROR] {}", msg));
+        if logs.len() > 1000 {
+            logs.drain(0..500);
+        }
+    }
+}
+
+unsafe fn c_str_to_string(ptr: *const c_char) -> Option<String> {
+    if ptr.is_null() {
+        return None;
+    }
+    CStr::from_ptr(ptr).to_str().ok().map(|s| s.to_string())
+}
+
+fn string_to_c_ptr(s: String) -> *mut c_void {
+    CString::new(s).unwrap().into_raw() as *mut c_void
+}
+
+// ============= C FFI 导出函数 =============
+#[no_mangle]
+pub extern "C" fn wcdb_init() -> c_int {
+    keys::load_keys();
+    log_info("wcdb_init called");
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn wcdb_shutdown() -> c_int {
+    log_info("wcdb_shutdown called");
+    if let Ok(mut accounts) = ACCOUNTS.lock() {
+        accounts.clear();
+    }
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wcdb_open_account(
+    path: *const c_char,
+    key: *const c_char,
+    out_handle: *mut i64,
+) -> c_int {
+    let session_db_path = match c_str_to_string(path) {
+        Some(s) => s,
+        None => {
+            log_error("wcdb_open_account: invalid path");
+            return -1;
+        }
+    };
+
+    let hex_key = match c_str_to_string(key) {
+        Some(s) => s,
+        None => {
+            log_error("wcdb_open_account: invalid key");
+            return -1;
+        }
+    };
+
+    log_info(&format!("Opening account: path={}, key={}...", session_db_path, &hex_key[..std::cmp::min(16, hex_key.len())]));
+
+    // 从 session.db 路径提取 db_storage 目录
+    use std::path::Path;
+    let session_path = Path::new(&session_db_path);
+    let db_storage_path = if let Some(parent) = session_path.parent() {
+        if let Some(grandparent) = parent.parent() {
+            grandparent.to_string_lossy().to_string()
+        } else {
+            log_error("Cannot extract db_storage path: no grandparent");
+            return -1;
+        }
+    } else {
+        log_error("Cannot extract db_storage path: no parent");
+        return -1;
+    };
+
+    log_info(&format!("Extracted db_storage_path: {}", db_storage_path));
+
+    // 测试是否能用 SQLCipher 打开数据库
+    // 去掉可能的 0x 前缀
+    let clean_key = hex_key.strip_prefix("0x").unwrap_or(&hex_key);
+
+    match test_sqlcipher_connection(&session_db_path, clean_key) {
+        Ok(_) => {
+            log_info("SQLCipher connection test successful");
+        }
+        Err(e) => {
+            log_error(&format!("SQLCipher connection test failed: {}", e));
+            return -1;
+        }
+    }
+
+    // 创建账号句柄
+    let handle_id = {
+        let mut next = NEXT_HANDLE.lock().unwrap();
+        let id = *next;
+        *next += 1;
+        id
+    };
+
+    let account = AccountHandle {
+        session_db_path: session_db_path.clone(),
+        db_storage_path,
+        hex_key: clean_key.to_string(),
+        wxid: String::new(),
+    };
+
+    if let Ok(mut accounts) = ACCOUNTS.lock() {
+        accounts.insert(handle_id, account);
+    }
+
+    *out_handle = handle_id;
+    log_info(&format!("Account opened with handle: {}", handle_id));
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn wcdb_close_account(handle: i64) -> c_int {
+    log_info(&format!("Closing account handle: {}", handle));
+    if let Ok(mut accounts) = ACCOUNTS.lock() {
+        accounts.remove(&handle);
+    }
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wcdb_free_string(ptr: *mut c_void) {
+    if !ptr.is_null() {
+        let _ = CString::from_raw(ptr as *mut c_char);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wcdb_get_logs(out_json: *mut *mut c_void) -> c_int {
+    if out_json.is_null() {
+        return -1;
+    }
+
+    let logs = if let Ok(logs) = LOGS.lock() {
+        logs.clone()
+    } else {
+        vec![]
+    };
+
+    let logs_json = json!({ "logs": logs }).to_string();
+    *out_json = string_to_c_ptr(logs_json);
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wcdb_exec_query(
+    handle: i64,
+    kind: *const c_char,
+    path: *const c_char,
+    sql: *const c_char,
+    out_json: *mut *mut c_void,
+) -> c_int {
+    if out_json.is_null() {
+        return -1;
+    }
+
+    let db_kind = c_str_to_string(kind).unwrap_or_default();
+    let db_path = c_str_to_string(path).unwrap_or_default();
+    let query = match c_str_to_string(sql) {
+        Some(s) => s,
+        None => {
+            log_error("wcdb_exec_query: invalid SQL");
+            return -1;
+        }
+    };
+
+    log_info(&format!("Executing query: handle={}, kind={}, path={}, sql={}",
+        handle, db_kind, db_path, &query[..query.len().min(100)]));
+
+    // 获取账号信息并执行查询
+    let accounts = ACCOUNTS.lock().unwrap();
+    let account = match accounts.get(&handle) {
+        Some(acc) => acc,
+        None => {
+            log_error(&format!("Invalid handle: {}", handle));
+            *out_json = string_to_c_ptr(json!({"error": "Invalid handle"}).to_string());
+            return -1;
+        }
+    };
+
+    // 执行 SQLCipher 查询
+    match exec_sqlcipher_query(account, &db_kind, &db_path, &query) {
+        Ok(result_json) => {
+            *out_json = string_to_c_ptr(result_json);
+            0
+        }
+        Err(e) => {
+            log_error(&format!("Query failed: {}", e));
+            *out_json = string_to_c_ptr(json!({"error": e.to_string()}).to_string());
+            -1
+        }
+    }
+}
+
+// ============= SQLCipher 操作函数 =============
+fn test_sqlcipher_connection(db_path: &str, hex_key: &str) -> Result<(), Box<dyn std::error::Error>> {
+    log_info(&format!("Testing key against {}", db_path));
+    let conn = open_db_connection(db_path, hex_key)?;
+    let ok: i64 = conn.query_row("SELECT count(*) FROM sqlite_master", [], |row| row.get(0))?;
+    log_info(&format!("Key validation passed, sqlite_master tables={}", ok));
+    Ok(())
+}
+
+fn hex_key_for_account(account: &AccountHandle) -> &str {
+    &account.hex_key
+}
+
+fn cache_sig(db_path: &str) -> String {
+    let mut sig = String::new();
+    for p in [db_path, &format!("{}-wal", db_path), &format!("{}-shm", db_path)] {
+        if let Ok(meta) = std::fs::metadata(p) {
+            if let Ok(mtime) = meta.modified() {
+                if let Ok(d) = mtime.duration_since(std::time::UNIX_EPOCH) {
+                    sig.push_str(&format!("{}:{}:;", d.as_millis(), meta.len()));
+                    continue;
+                }
+            }
+        }
+        sig.push_str("x;");
+    }
+    sig
+}
+
+fn materialize_plaintext(db_path: &str) -> Result<String, Box<dyn std::error::Error>> {
+    if keys::is_plaintext_sqlite(db_path) {
+        return Ok(db_path.to_string());
+    }
+    let (enc_key, salt) = keys::enc_key_for_file(db_path)
+        .ok_or("no local enc_key for encrypted database")?;
+    let sig = cache_sig(db_path);
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    use std::hash::{Hash, Hasher};
+    db_path.hash(&mut hasher);
+    salt.hash(&mut hasher);
+    sig.hash(&mut hasher);
+    let cache_dir = std::env::temp_dir().join("weflow-wcdb-cache");
+    std::fs::create_dir_all(&cache_dir)?;
+    let cache = cache_dir.join(format!("{:x}.db", hasher.finish()));
+    if cache.is_file() {
+        return Ok(cache.to_string_lossy().to_string());
+    }
+    log_info(&format!("Decrypting live db into cache: {}", db_path));
+    let bytes = decrypt::decrypt_file_with_enc_key_hex(db_path, &enc_key)?;
+    std::fs::write(&cache, bytes)?;
+    Ok(cache.to_string_lossy().to_string())
+}
+
+fn open_db_connection(db_path: &str, _hex_key: &str) -> Result<Connection, Box<dyn std::error::Error>> {
+    let plain = materialize_plaintext(db_path)?;
+    log_info(&format!("Opened local-decrypted sqlite: {}", plain));
+    Ok(Connection::open(plain)?)
+}
+
+fn exec_sqlcipher_query(
+    account: &AccountHandle,
+    kind: &str,
+    relative_path: &str,
+    sql: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    use std::path::PathBuf;
+
+    log_info("=== Query Start ===");
+    log_info(&format!("kind: {}", kind));
+    log_info(&format!("relative_path: {}", relative_path));
+    log_info(&format!("sql: {}", sql));
+
+    // 确定要查询的数据库文件路径
+    let db_file_path: PathBuf = if kind.is_empty() && relative_path.is_empty() {
+        PathBuf::from(&account.session_db_path)
+    } else {
+        let mut path = PathBuf::from(&account.db_storage_path);
+        path.push(kind);
+        if relative_path.is_empty() {
+            path.push(format!("{}.db", kind));
+        } else {
+            path.push(relative_path);
+        }
+        path
+    };
+
+    log_info(&format!("Database path: {:?}", db_file_path));
+
+    if !db_file_path.is_file() {
+        let error_msg = format!("Database file not found: {:?}", db_file_path);
+        log_info(&error_msg);
+        return Err(error_msg.into());
+    }
+
+    let conn = open_db_connection(db_file_path.to_str().unwrap_or(""), hex_key_for_account(account))?;
+
+    log_info("Database opened with SQLCipher, executing query...");
+
+    // 执行查询
+    let mut stmt = conn.prepare(sql)?;
+    let column_count = stmt.column_count();
+
+    log_info(&format!("Query prepared, {} columns", column_count));
+
+    // 收集列名
+    let column_names: Vec<String> = (0..column_count)
+        .map(|i| stmt.column_name(i).unwrap_or("").to_string())
+        .collect();
+
+    let mut rows = Vec::new();
+    let mut query_rows = stmt.query([])?;
+    while let Some(row) = query_rows.next()? {
+        let mut row_map = serde_json::Map::new();
+        for i in 0..column_count {
+            let col_name = &column_names[i];
+            let value: serde_json::Value = match row.get_ref(i)? {
+                rusqlite::types::ValueRef::Null => serde_json::Value::Null,
+                rusqlite::types::ValueRef::Integer(v) => json!(v),
+                rusqlite::types::ValueRef::Real(v) => json!(v),
+                rusqlite::types::ValueRef::Text(v) => {
+                    json!(String::from_utf8_lossy(v).to_string())
+                }
+                rusqlite::types::ValueRef::Blob(v) => {
+                    json!(hex::encode(v))
+                }
+            };
+            row_map.insert(col_name.clone(), value);
+        }
+        rows.push(serde_json::Value::Object(row_map));
+    }
+
+    log_info(&format!("Query complete, {} rows returned", rows.len()));
+
+    let result = json!(rows).to_string();
+    log_info(&format!("JSON result length: {} bytes", result.len()));
+    log_info("=== Query End ===");
+
+    Ok(result)
+}

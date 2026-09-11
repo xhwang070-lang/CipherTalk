@@ -178,33 +178,37 @@ export function warmupAgentProcess(ctx: MainProcessContext): void {
 }
 
 /**
- * 启动时自动检测应用更新。
+ * 启动时自动检测应用更新 - 已禁用。
  * 只在生产环境触发，结果沿用 app:updateAvailable 推送给主窗口。
  */
 export function checkForUpdatesOnStartup(ctx: MainProcessContext): void {
-  if (process.env.VITE_DEV_SERVER_URL) {
-    return
-  }
+  // 更新检查已禁用
+  console.log('[AppUpdate] 启动时更新检查已禁用')
+  return
 
-  setTimeout(async () => {
-    try {
-      const result = await appUpdateService.checkForUpdates()
-      ctx.getLogService()?.info('AppUpdate', '启动时检查更新完成', {
-        hasUpdate: result.hasUpdate,
-        currentVersion: result.currentVersion,
-        version: result.version,
-        diagnostics: result.diagnostics
-      })
+  // if (process.env.VITE_DEV_SERVER_URL) {
+  //   return
+  // }
 
-      const mainWindow = ctx.getMainWindow()
-      if (result.hasUpdate && mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('app:updateAvailable', result)
-      }
-    } catch (error) {
-      ctx.getLogService()?.error('AppUpdate', '启动时检查更新失败', { error: String(error) })
-      console.error('启动时检查更新失败:', error)
-    }
-  }, 3000)
+  // setTimeout(async () => {
+  //   try {
+  //     const result = await appUpdateService.checkForUpdates()
+  //     ctx.getLogService()?.info('AppUpdate', '启动时检查更新完成', {
+  //       hasUpdate: result.hasUpdate,
+  //       currentVersion: result.currentVersion,
+  //       version: result.version,
+  //       diagnostics: result.diagnostics
+  //     })
+
+  //     const mainWindow = ctx.getMainWindow()
+  //     if (result.hasUpdate && mainWindow && !mainWindow.isDestroyed()) {
+  //       mainWindow.webContents.send('app:updateAvailable', result)
+  //     }
+  //   } catch (error) {
+  //     ctx.getLogService()?.error('AppUpdate', '启动时检查更新失败', { error: String(error) })
+  //     console.error('启动时检查更新失败:', error)
+  //   }
+  // }, 3000)
 }
 
 /**

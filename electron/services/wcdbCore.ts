@@ -67,6 +67,8 @@ export class WcdbCore {
   private getLibraryPath(): string {
     const baseDir = this.resourcesPath || join(process.cwd(), 'resources')
     if (process.platform === 'darwin') return join(baseDir, 'macos', 'libwcdb_api.dylib')
+    const rustDll = join(process.cwd(), 'native', 'wcdb-rust', 'target', 'release', 'wcdb_rust.dll')
+    if (existsSync(rustDll)) return rustDll
     return join(baseDir, 'wcdb_api.dll')
   }
 
@@ -117,20 +119,20 @@ export class WcdbCore {
 
       this.lib = this.koffi.load(libraryPath)
 
-      // 绑定已确定暴露的符号
+      const tryBind = (decl: string): any => {
+        try { return this.lib.func(decl) } catch { return null }
+      }
+
       this.wcdbInit = this.lib.func('int32 wcdb_init()')
       this.wcdbShutdown = this.lib.func('int32 wcdb_shutdown()')
       this.wcdbOpenAccount = this.lib.func('int32 wcdb_open_account(const char* path, const char* key, _Out_ int64* handle)')
       this.wcdbCloseAccount = this.lib.func('int32 wcdb_close_account(int64 handle)')
       this.wcdbFreeString = this.lib.func('void wcdb_free_string(void* ptr)')
       this.wcdbGetLogs = this.lib.func('int32 wcdb_get_logs(_Out_ void** outJson)')
-      this.wcdbGetSnsTimeline = this.lib.func('int32 wcdb_get_sns_timeline(int64 handle, int32 limit, int32 offset, const char* username, const char* keyword, int32 startTime, int32 endTime, _Out_ void** outJson)')
+      this.wcdbGetSnsTimeline = tryBind('int32 wcdb_get_sns_timeline(int64 handle, int32 limit, int32 offset, const char* username, const char* keyword, int32 startTime, int32 endTime, _Out_ void** outJson)')
       this.wcdbExecQuery = this.lib.func('int32 wcdb_exec_query(int64 handle, const char* kind, const char* path, const char* sql, _Out_ void** outJson)')
 
       // 预留符号：native 若未实现则保持 null，特性降级
-      const tryBind = (decl: string): any => {
-        try { return this.lib.func(decl) } catch { return null }
-      }
       this.wcdbExecQueryWithParams = tryBind('int32 wcdb_exec_query_with_params(int64 handle, const char* kind, const char* path, const char* sql, const char* argsJson, _Out_ void** outJson)')
       this.wcdbExportMessageChunk = tryBind('int32 wcdb_export_message_chunk(int64 handle, const char* kind, const char* path, const char* tableName, int64 afterRid, int32 maxRows, int32 startTime, int32 endTime, const char* extraColsJson, _Out_ void** outJson)')
       this.wcdbGetMessages = tryBind('int32 wcdb_get_messages(int64 handle, const char* username, int32 limit, int32 offset, _Out_ void** outJson)')
@@ -286,7 +288,10 @@ export class WcdbCore {
     if (basename(normalizedDbPath).toLowerCase() === 'db_storage' && existsSync(normalizedDbPath)) return normalizedDbPath
     const direct = join(normalizedDbPath, 'db_storage')
     if (existsSync(direct)) return direct
+    if (existsSync(join(normalizedDbPath, 'session', 'session.db'))) return normalizedDbPath
     if (wxid) {
+      const viaWxidPlain = join(normalizedDbPath, wxid)
+      if (existsSync(join(viaWxidPlain, 'session', 'session.db'))) return viaWxidPlain
       const viaWxid = join(normalizedDbPath, wxid, 'db_storage')
       if (existsSync(viaWxid)) return viaWxid
       try {
@@ -657,6 +662,9 @@ export class WcdbCore {
   async getSnsTimeline(limit: number, offset: number, usernames?: string[], keyword?: string, startTime?: number, endTime?: number): Promise<{ success: boolean; timeline?: any[]; error?: string }> {
     if (!this.initialized || this.handle === null) {
       return { success: false, error: 'WCDB 未初始化' }
+    }
+    if (!this.wcdbGetSnsTimeline) {
+      return { success: true, timeline: [] }
     }
     try {
       const outJson = [null]

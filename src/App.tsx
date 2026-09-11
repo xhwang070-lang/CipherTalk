@@ -8,7 +8,6 @@ import BottomDock from './components/BottomDock'
 import RouteGuard from './components/RouteGuard'
 import DecryptProgressOverlay from './components/DecryptProgressOverlay'
 import WelcomePage from './pages/WelcomePage'
-import HomePage from './pages/HomePage'
 import ChatPage from './pages/ChatPage'
 import AgreementPage from './pages/AgreementPage'
 import DataManagementPage from './pages/DataManagementPage'
@@ -82,7 +81,7 @@ type UpdateDownloadProgressPayload = {
   bytesPerSecond: number
 }
 
-const MAIN_WINDOW_NAV_ROUTES = new Set(['/home', '/agent', '/personas', '/settings', '/pets', '/diary', '/export'])
+const MAIN_WINDOW_NAV_ROUTES = new Set(['/settings', '/agent', '/personas', '/pets', '/diary', '/export'])
 
 function App() {
   const navigate = useNavigate()
@@ -109,6 +108,12 @@ function App() {
   const [memoryMigrating, setMemoryMigrating] = useState(false)
   const [memoryMigrationError, setMemoryMigrationError] = useState('')
   const [memoryMigrationDismissed, setMemoryMigrationDismissed] = useState(false)
+
+  // 监控 updateInfo 变化
+  useEffect(() => {
+    console.log('[App Debug] updateInfo 状态变化:', updateInfo)
+    console.trace('[App Debug] 调用堆栈:')
+  }, [updateInfo])
 
   useEffect(() => {
     const off = window.electronAPI.window.onNavigate((route) => {
@@ -254,20 +259,21 @@ function App() {
     setShowActivation(false)
   }
 
-  // 监听启动时的更新通知
+  // 监听启动时的更新通知 - 已禁用
   useEffect(() => {
     let mounted = true
-    window.electronAPI.app.getUpdateState?.().then((info) => {
-      if (mounted && info?.hasUpdate) {
-        setUpdateInfo(info)
-      }
-    }).catch((error) => {
-      console.error('获取更新状态失败:', error)
-    })
+    // 注释掉更新检查逻辑
+    // window.electronAPI.app.getUpdateState?.().then((info) => {
+    //   if (mounted && info?.hasUpdate) {
+    //     setUpdateInfo(info)
+    //   }
+    // }).catch((error) => {
+    //   console.error('获取更新状态失败:', error)
+    // })
 
-    const removeUpdateListener = window.electronAPI.app.onUpdateAvailable?.((info) => {
-      setUpdateInfo(info)
-    })
+    // const removeUpdateListener = window.electronAPI.app.onUpdateAvailable?.((info) => {
+    //   setUpdateInfo(info)
+    // })
 
     // 监听数据库是否有更新（正在解密同步）
     const removeUpdateAvailableListener = window.electronAPI.dataManagement.onUpdateAvailable?.((hasUpdate) => {
@@ -292,38 +298,39 @@ function App() {
 
     return () => {
       mounted = false
-      removeUpdateListener?.()
+      // removeUpdateListener?.()
       removeSessionsListener?.()
       removeUpdateAvailableListener?.()
     }
   }, [])
 
-  // 监听下载进度
+  // 监听下载进度 - 已禁用
   useEffect(() => {
-    const removeDownloadListener = window.electronAPI.app.onDownloadProgress?.((progress) => {
-      setDownloadProgress(progress)
-      setUpdateInfo((current) => {
-        if (!current) return current
-        return {
-          ...current,
-          diagnostics: {
-            phase: 'downloading',
-            strategy: current.diagnostics?.strategy || 'unknown',
-            fallbackToFull: current.diagnostics?.fallbackToFull || false,
-            lastError: current.diagnostics?.lastError,
-            lastEvent: current.diagnostics?.lastEvent,
-            progressPercent: progress.percent,
-            downloadedBytes: progress.transferred,
-            totalBytes: progress.total,
-            targetVersion: current.version || current.diagnostics?.targetVersion,
-            lastUpdatedAt: Date.now()
-          }
-        }
-      })
-    })
-    return () => {
-      removeDownloadListener?.()
-    }
+    // 注释掉下载进度监听
+    // const removeDownloadListener = window.electronAPI.app.onDownloadProgress?.((progress) => {
+    //   setDownloadProgress(progress)
+    //   setUpdateInfo((current) => {
+    //     if (!current) return current
+    //     return {
+    //       ...current,
+    //       diagnostics: {
+    //         phase: 'downloading',
+    //         strategy: current.diagnostics?.strategy || 'unknown',
+    //         fallbackToFull: current.diagnostics?.fallbackToFull || false,
+    //         lastError: current.diagnostics?.lastError,
+    //         lastEvent: current.diagnostics?.lastEvent,
+    //         progressPercent: progress.percent,
+    //         downloadedBytes: progress.transferred,
+    //         totalBytes: progress.total,
+    //         targetVersion: current.version || current.diagnostics?.targetVersion,
+    //         lastUpdatedAt: Date.now()
+    //       }
+    //     }
+    //   })
+    // })
+    // return () => {
+    //   removeDownloadListener?.()
+    // }
   }, [])
 
   const closeUpdateToast = useCallback(() => {
@@ -354,34 +361,36 @@ function App() {
     window.electronAPI.app.downloadAndInstall()
   }, [closeUpdateToast, isUpdateDownloading])
 
+  // 更新 Toast 提示 - 已禁用
   useEffect(() => {
-    if (!updateInfo || updateInfo.forceUpdate || isUpdateDownloading) {
-      closeUpdateToast()
-      return
-    }
+    // 注释掉更新 Toast
+    // if (!updateInfo || updateInfo.forceUpdate || isUpdateDownloading) {
+    //   closeUpdateToast()
+    //   return
+    // }
 
-    if (updateToastIdRef.current) return
+    // if (updateToastIdRef.current) return
 
-    updateToastIdRef.current = toast.info('发现新版本', {
-      actionProps: {
-        children: '立即更新',
-        onPress: handleStartUpdate,
-        variant: 'secondary',
-      },
-      description: (
-        <>
-          <div>{formatDisplayVersion(updateInfo.version)} 已发布</div>
-          <div>更新源：{updateInfo.updateSource === 'r2' ? 'R2 镜像' : updateInfo.updateSource === 'github' ? 'GitHub Release' : '未知'}</div>
-        </>
-      ),
-      onClose: () => {
-        const suppressed = suppressUpdateToastCloseRef.current
-        suppressUpdateToastCloseRef.current = false
-        updateToastIdRef.current = null
-        if (!suppressed) setUpdateInfo(null)
-      },
-      timeout: 0,
-    })
+    // updateToastIdRef.current = toast.info('发现新版本', {
+    //   actionProps: {
+    //     children: '立即更新',
+    //     onPress: handleStartUpdate,
+    //     variant: 'secondary',
+    //   },
+    //   description: (
+    //     <>
+    //       <div>{formatDisplayVersion(updateInfo.version)} 已发布</div>
+    //       <div>更新源：{updateInfo.updateSource === 'r2' ? 'R2 镜像' : updateInfo.updateSource === 'github' ? 'GitHub Release' : '未知'}</div>
+    //     </>
+    //   ),
+    //   onClose: () => {
+    //     const suppressed = suppressUpdateToastCloseRef.current
+    //     suppressUpdateToastCloseRef.current = false
+    //     updateToastIdRef.current = null
+    //     if (!suppressed) setUpdateInfo(null)
+    //   },
+    //   timeout: 0,
+    // })
   }, [closeUpdateToast, handleStartUpdate, isUpdateDownloading, updateInfo])
 
   // 检查是否是独立聊天窗口
@@ -458,7 +467,7 @@ function App() {
             await preloadUserInfo()
             // 如果当前在欢迎页，跳转到首页
             if (window.location.hash === '#/' || window.location.hash === '') {
-              navigate('/home')
+              navigate('/settings')
             }
             return
           }
@@ -474,7 +483,7 @@ function App() {
             await preloadUserInfo()
             // 如果当前在欢迎页，跳转到首页
             if (window.location.hash === '#/' || window.location.hash === '') {
-              navigate('/home')
+              navigate('/settings')
             }
           } else {
             console.log('自动连接失败:', result.error)
@@ -737,7 +746,7 @@ function App() {
 
   // 主窗口 - 完整布局
   const disableContentOverflow = ['/data-management', '/settings', '/mcp', '/agent', '/personas', '/diary', '/pets'].includes(location.pathname)
-  const fullPageRoutes = ['/home']
+  const fullPageRoutes: string[] = []
   const isFullPage = fullPageRoutes.includes(location.pathname)
   const edgeToEdgeRoutes: string[] = []
   const isEdgeToEdge = edgeToEdgeRoutes.includes(location.pathname)
@@ -748,7 +757,7 @@ function App() {
   return (
     <div className={`app-container${navLayout === 'sidebar' ? ' app-container--sidebar' : ''}`}>
       <Toast.Provider className="ct-toast-region" placement="top" />
-      {navLayout === 'sidebar' && <Sidebar autoCollapse={isAgentPage || location.pathname === '/home'} />}
+      {navLayout === 'sidebar' && <Sidebar autoCollapse={isAgentPage} />}
       <div className="app-shell">
       <TitleBar showTitle={false} />
       {pendingMemoryMigrationStatus && (
@@ -798,7 +807,8 @@ function App() {
           </Modal.Container>
         </Modal.Backdrop>
       )}
-      {updateInfo?.forceUpdate && (
+      {/* 强制更新对话框 - 已禁用 */}
+      {/* {updateInfo?.forceUpdate && (
         <div className="force-update-overlay">
           <div className="force-update-card">
             <div className="force-update-badge">
@@ -847,7 +857,7 @@ function App() {
             </div>
           </div>
         </div>
-      )}
+      )} */}
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <main
@@ -857,11 +867,11 @@ function App() {
           <RouteGuard>
             <Routes>
               <Route path="/" element={<WelcomePage />} />
-              <Route path="/home" element={<HomePage />} />
-              <Route path="/analytics" element={<Navigate to="/home" replace />} />
-              <Route path="/annual-report" element={<Navigate to="/home" replace />} />
-              <Route path="/group-analytics-window" element={<Navigate to="/home" replace />} />
-              <Route path="/annual-report-window" element={<Navigate to="/home" replace />} />
+              <Route path="/home" element={<Navigate to="/settings" replace />} />
+              <Route path="/analytics" element={<Navigate to="/settings" replace />} />
+              <Route path="/annual-report" element={<Navigate to="/settings" replace />} />
+              <Route path="/group-analytics-window" element={<Navigate to="/settings" replace />} />
+              <Route path="/annual-report-window" element={<Navigate to="/settings" replace />} />
               <Route path="/data-management" element={<DataManagementPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/mcp" element={<McpPage />} />
@@ -870,7 +880,7 @@ function App() {
               <Route path="/diary" element={<DiaryPage />} />
               <Route path="/pets" element={<PetsPage />} />
               <Route path="/export" element={<ExportPage />} />
-              <Route path="/device-connect" element={<Navigate to="/home" replace />} />
+              <Route path="/device-connect" element={<Navigate to="/settings" replace />} />
               <Route path="/chat-history/:sessionId/:messageId" element={<ChatHistoryPage />} />
               <Route path="/plugin/:pluginId/:viewId" element={<PluginViewPage />} />
             </Routes>
@@ -880,7 +890,8 @@ function App() {
       </div>
       {navLayout === 'dock' && <BottomDock />}
       <DecryptProgressOverlay />
-      {progressPercent !== null && (
+      {/* 下载进度胶囊 - 已禁用 */}
+      {/* {progressPercent !== null && (
         <div className="download-progress-capsule">
           <div className="capsule-compact">
             <CircleDashed className="spin" width={14} height={14} />
@@ -903,7 +914,7 @@ function App() {
             </div>
           </div>
         </div>
-      )}
+      )} */}
       {isLocked && <LockScreen />}
     </div>
   )

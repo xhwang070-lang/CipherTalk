@@ -20,10 +20,10 @@ export interface MonitorChangePayload {
 
 function classifyByFileName(fileName: string): ChangeTable {
   const lower = fileName.toLowerCase()
-  if (/^session\.db-(wal|shm)$/.test(lower)) return 'Session'
-  if (/^(msg|message)_.*\.db-(wal|shm)$/.test(lower)) return 'Message'
-  if (/^contact\.db-(wal|shm)$/.test(lower)) return 'Contact'
-  if (/^sns\.db-(wal|shm)$/.test(lower)) return 'Sns'
+  if (/^session\.db(-wal|-shm)?$/.test(lower)) return 'Session'
+  if (/^(msg|message)_.*\.db(-wal|-shm)?$/.test(lower)) return 'Message'
+  if (/^contact\.db(-wal|-shm)?$/.test(lower)) return 'Contact'
+  if (/^sns\.db(-wal|-shm)?$/.test(lower)) return 'Sns'
   return 'Unknown'
 }
 
@@ -44,7 +44,10 @@ function resolveDbStoragePath(dbPath: string, wxid: string): string | null {
   }
   const direct = join(normalized, 'db_storage')
   if (existsSync(direct)) return direct
+  if (existsSync(join(normalized, 'session', 'session.db'))) return normalized
   if (wxid) {
+    const viaWxidPlain = join(normalized, wxid)
+    if (existsSync(join(viaWxidPlain, 'session', 'session.db'))) return viaWxidPlain
     const viaWxid = join(normalized, wxid, 'db_storage')
     if (existsSync(viaWxid)) return viaWxid
     try {
@@ -103,7 +106,7 @@ export class MonitorBridge extends EventEmitter {
         if (!filename) return
         const name = typeof filename === 'string' ? filename : String(filename)
         const baseName = basename(name)
-        if (!/\.db-(wal|shm)$/i.test(baseName)) return
+        if (!/\.db(-wal|-shm)?$/i.test(baseName)) return
         this.scheduleEmit(baseName, join(resolved, name))
       })
 
@@ -158,7 +161,7 @@ export class MonitorBridge extends EventEmitter {
         continue
       }
       for (const entry of entries) {
-        if (!/\.db-(wal|shm)$/i.test(entry)) continue
+        if (!/\.db(-wal|-shm)?$/i.test(entry)) continue
         const full = join(dir, entry)
         let sig: string
         try {

@@ -639,7 +639,7 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
           window.electronAPI.window.completeWelcome()
         }, 450)
       } else {
-        navigate('/home')
+        navigate('/settings')
       }
     } catch (e) {
       setError(`连接失败: ${e}`)
@@ -665,7 +665,7 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
         window.electronAPI.window.completeWelcome()
       }, 450)
     } else {
-      navigate('/home')
+      navigate('/settings')
     }
   }
 

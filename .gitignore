@@ -93,3 +93,8 @@ release-verify/
 plugin-workspace/
 MomentsBridge/
 CipherTalk-Tauri-Lite/
+
+# Local WeFlow rust decrypt build
+native/wcdb-rust/target/
+resources/wcdb_api.dll.pre_local
+resources/wcdb_api.dll.backup

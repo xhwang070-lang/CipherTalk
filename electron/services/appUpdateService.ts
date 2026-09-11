@@ -163,7 +163,10 @@ class AppUpdateService {
   }
 
   getCachedUpdateInfo(): AppUpdateInfo | null {
-    return this.lastInfo
+    // 更新检查已禁用 - 不返回缓存的更新信息
+    console.log('[AppUpdate Debug] getCachedUpdateInfo 被调用，lastInfo:', this.lastInfo)
+    console.trace('[AppUpdate Debug] 调用堆栈:')
+    return null
   }
 
   getR2UpdateBaseUrl(): string {
@@ -207,12 +210,13 @@ class AppUpdateService {
       lastUpdatedAt: Date.now()
     }
 
-    if (this.lastInfo) {
-      this.lastInfo = {
-        ...this.lastInfo,
-        diagnostics: this.diagnostics
-      }
-    }
+    // 不再更新 lastInfo.diagnostics，因为我们已经禁用了更新功能
+    // if (this.lastInfo) {
+    //   this.lastInfo = {
+    //     ...this.lastInfo,
+    //     diagnostics: this.diagnostics
+    //   }
+    // }
   }
 
   noteUpdaterMessage(message: string, level: 'info' | 'warn' | 'error' = 'info'): void {
@@ -266,89 +270,29 @@ class AppUpdateService {
 
   async checkForUpdates(): Promise<AppUpdateInfo> {
     const currentVersion = app.getVersion()
-    let latestVersion: string | undefined
-    let releaseNotes = ''
-    let hasUpdate = false
-    let updateSource: AppUpdateSource = 'none'
+
+    // 屏蔽更新检查 - 始终返回无需更新
+    console.log('[AppUpdate Debug] checkForUpdates 被调用')
+    console.trace('[AppUpdate Debug] 调用堆栈:')
 
     this.resetDiagnostics()
     this.updateDiagnostics({
-      phase: 'checking',
-      lastEvent: '开始检查更新'
+      phase: 'idle',
+      lastEvent: '当前已是最新版本（更新检查已禁用）'
     })
-
-    try {
-      let result: UpdateLookupResult | null = null
-
-      try {
-        result = await this.checkUpdaterSource('r2', currentVersion)
-      } catch (r2Error) {
-        console.warn('[AppUpdate] 检查 R2 更新失败，回退 GitHub:', r2Error)
-        this.updateDiagnostics({
-          lastError: String(r2Error),
-          lastEvent: 'R2 更新源检查失败，回退 GitHub'
-        })
-      }
-
-      if (!result) {
-        result = await this.checkUpdaterSource('github', currentVersion)
-      }
-
-      if (result?.latestVersion) {
-        latestVersion = result.latestVersion
-        releaseNotes = result.releaseNotes
-        hasUpdate = result.hasUpdate
-        updateSource = result.source
-        this.updateDiagnostics({
-          phase: hasUpdate ? 'available' : 'idle',
-          targetVersion: latestVersion,
-          lastEvent: hasUpdate ? `检测到新版本 ${latestVersion}` : '当前已是最新版本'
-        })
-      } else {
-        this.updateDiagnostics({
-          phase: 'idle',
-          lastEvent: '未获取到远端版本信息'
-        })
-      }
-    } catch (error) {
-      this.updateDiagnostics({
-        phase: 'failed',
-        lastError: String(error),
-        lastEvent: '检查更新失败'
-      })
-      console.error('[AppUpdate] 检查 GitHub 更新失败:', error)
-    }
-
-    const { manifest, source: policySource } = await resolveForceUpdateManifest()
-    let forceUpdate = false
-    let reason: ForceUpdateReason | undefined
-
-    if (manifest?.minimumSupportedVersion && isNewerVersion(manifest.minimumSupportedVersion, currentVersion)) {
-      forceUpdate = true
-      reason = 'minimum-version'
-    } else if (manifest?.blockedVersions?.some((version) => isVersionEqual(currentVersion, version))) {
-      forceUpdate = true
-      reason = 'blocked-version'
-    }
-
-    const finalVersion = latestVersion || manifest?.latestVersion
-    const finalReleaseNotes = releaseNotes || manifest?.releaseNotes || ''
 
     const info = this.buildInfo({
-      hasUpdate: hasUpdate || forceUpdate,
-      forceUpdate,
+      hasUpdate: false,
+      forceUpdate: false,
       currentVersion,
-      version: finalVersion,
-      releaseNotes: finalReleaseNotes,
-      title: manifest?.title || (forceUpdate ? '必须更新到最新版本' : undefined),
-      message: manifest?.message,
-      minimumSupportedVersion: manifest?.minimumSupportedVersion,
-      reason,
-      updateSource,
-      policySource
+      version: currentVersion,
+      releaseNotes: '',
+      updateSource: 'none',
+      policySource: 'none'
     })
 
-    this.lastInfo = info
+    // 不保存到 lastInfo，确保 getCachedUpdateInfo 始终返回 null
+    // this.lastInfo = info
     return info
   }
 
@@ -369,7 +313,8 @@ class AppUpdateService {
       updateSource: 'r2',
       policySource: 'none'
     })
-    this.lastInfo = info
+    // 不保存到 lastInfo
+    // this.lastInfo = info
     return info
   }
 }

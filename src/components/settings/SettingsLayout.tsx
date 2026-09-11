@@ -586,23 +586,25 @@ function SettingsLayout() {
   }
 
   const syncUpdateState = async () => {
-    try {
-      const state = await window.electronAPI.app.getUpdateState?.()
-      if (!state) return
-      setUpdateInfo(state)
-      const phase = state.diagnostics?.phase
-      setIsDownloading(phase === 'downloading' || phase === 'installing')
-      if (typeof state.diagnostics?.progressPercent === 'number') {
-        setDownloadProgress(state.diagnostics.progressPercent)
-      }
-    } catch (error) {
-      console.error('同步更新状态失败:', error)
-    }
+    // 更新检查已禁用
+    return
+    // try {
+    //   const state = await window.electronAPI.app.getUpdateState?.()
+    //   if (!state) return
+    //   setUpdateInfo(state)
+    //   const phase = state.diagnostics?.phase
+    //   setIsDownloading(phase === 'downloading' || phase === 'installing')
+    //   if (typeof state.diagnostics?.progressPercent === 'number') {
+    //     setDownloadProgress(state.diagnostics.progressPercent)
+    //   }
+    // } catch (error) {
+    //   console.error('同步更新状态失败:', error)
+    // }
   }
 
-  // 监听下载进度
+  // 监听下载进度 - 已禁用
   useEffect(() => {
-    syncUpdateState()
+    // syncUpdateState()
 
     const removeListener = window.electronAPI.app.onDownloadProgress?.((progress: UpdateDownloadProgressPayload) => {
       setDownloadProgress(progress.percent)
@@ -631,21 +633,26 @@ function SettingsLayout() {
   }, [])
 
   const handleCheckUpdate = async () => {
-    if (isDownloading || updateInfo?.diagnostics?.phase === 'installing') return
-    setIsCheckingUpdate(true)
-    try {
-      const result = await window.electronAPI.app.checkForUpdates()
-      if (result.hasUpdate) {
-        setUpdateInfo(result)
-        showMessage(result.forceUpdate ? `检测到强制更新 ${result.version}` : `发现新版本 ${result.version}`, true)
-      } else {
-        showMessage('当前已是最新版本', true)
-      }
-    } catch (e) {
-      showMessage(`检查更新失败: ${e}`, false)
-    } finally {
-      setIsCheckingUpdate(false)
-    }
+    // 更新检查已禁用
+    console.log('[Settings Debug] handleCheckUpdate 被调用，但已禁用')
+    showMessage('更新检查功能已禁用', true)
+    return
+
+    // if (isDownloading || updateInfo?.diagnostics?.phase === 'installing') return
+    // setIsCheckingUpdate(true)
+    // try {
+    //   const result = await window.electronAPI.app.checkForUpdates()
+    //   if (result.hasUpdate) {
+    //     setUpdateInfo(result)
+    //     showMessage(result.forceUpdate ? `检测到强制更新 ${result.version}` : `发现新版本 ${result.version}`, true)
+    //   } else {
+    //     showMessage('当前已是最新版本', true)
+    //   }
+    // } catch (e) {
+    //   showMessage(`检查更新失败: ${e}`, false)
+    // } finally {
+    //   setIsCheckingUpdate(false)
+    // }
   }
 
   const showMessage = (text: string, success: boolean) => {
@@ -1263,18 +1270,23 @@ function SettingsLayout() {
     }
   }
 
-  // 检查导航传递的更新信息
+  // 检查导航传递的更新信息 - 已禁用
   useEffect(() => {
+    console.log('[Settings Debug] 导航传递的更新信息检查被调用')
+    console.trace('[Settings Debug] 调用堆栈:')
     if (location.state?.updateInfo) {
-      setUpdateInfo(location.state.updateInfo)
-      const phase = location.state.updateInfo.diagnostics?.phase
-      setIsDownloading(phase === 'downloading' || phase === 'installing')
-      if (typeof location.state.updateInfo.diagnostics?.progressPercent === 'number') {
-        setDownloadProgress(location.state.updateInfo.diagnostics.progressPercent)
-      }
-    } else {
-      syncUpdateState()
+      console.log('[Settings Debug] 发现 location.state.updateInfo，已拦截:', location.state.updateInfo)
+      // setUpdateInfo(location.state.updateInfo)
+      // const phase = location.state.updateInfo.diagnostics?.phase
+      // setIsDownloading(phase === 'downloading' || phase === 'installing')
+      // if (typeof location.state.updateInfo.diagnostics?.progressPercent === 'number') {
+      //   setDownloadProgress(location.state.updateInfo.diagnostics.progressPercent)
+      // }
     }
+    // else 分支的 syncUpdateState() 也已禁用
+    // else {
+    //   syncUpdateState()
+    // }
   }, [location.state])
 
   return (
