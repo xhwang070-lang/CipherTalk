@@ -86,6 +86,7 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
     arch: 'x64'
   })
   const autoDetectDbPathAttemptedRef = useRef(false)
+  const skipWxidVerifyResetRef = useRef(false)
 
   const isMac = platformInfo.platform === 'darwin'
   const biometricLabel = isMac ? 'Touch ID' : 'Windows Hello'
@@ -382,16 +383,74 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
     }
   }
 
+  const markWxidVerified = (nextWxid: string) => {
+    skipWxidVerifyResetRef.current = true
+    setWxid(nextWxid)
+    setIsAccountVerified(true)
+  }
+
+  const bindWxidAfterKey = async (
+    key: string,
+    extras?: { validatedWxid?: string; accountWxid?: string }
+  ) => {
+    if (dbPath) {
+      const resolved = await window.electronAPI.wcdb.resolveValidWxid(dbPath, key)
+      if (resolved.success && resolved.wxid) {
+        markWxidVerified(resolved.wxid)
+        setDbKeyStatus(`密钥已就绪，账号目录已验证：${resolved.wxid}`)
+        return true
+      }
+    }
+    if (extras?.validatedWxid) {
+      const ok = await verifyAccountDirectory(extras.validatedWxid, key, true)
+      markWxidVerified(extras.validatedWxid)
+      setDbKeyStatus(ok
+        ? `密钥已就绪，账号目录已验证：${extras.validatedWxid}`
+        : `密钥已就绪，账号目录：${extras.validatedWxid}`)
+      return ok
+    }
+    if (extras?.accountWxid) {
+      const ok = await verifyAccountDirectory(extras.accountWxid, key, true)
+      if (ok) {
+        markWxidVerified(extras.accountWxid)
+        setDbKeyStatus(`密钥已就绪，账号目录已验证：${extras.accountWxid}`)
+        return true
+      }
+    }
+    if (dbPath) {
+      let accountInfo = await window.electronAPI.wxKey.detectCurrentAccount(dbPath, 10)
+      if (!accountInfo) accountInfo = await window.electronAPI.wxKey.detectCurrentAccount(dbPath, 60)
+      if (accountInfo?.wxid) {
+        const ok = await verifyAccountDirectory(accountInfo.wxid, key, true)
+        if (ok) {
+          markWxidVerified(accountInfo.wxid)
+          setDbKeyStatus(`密钥已就绪，账号目录已验证：${accountInfo.wxid}`)
+          return true
+        }
+      }
+    }
+    const wxids = await handleScanWxid(true)
+    if (wxids.length === 1) {
+      const ok = await verifyAccountDirectory(wxids[0], key, true)
+      if (ok) markWxidVerified(wxids[0])
+      setDbKeyStatus(ok ? `密钥已就绪，账号目录已验证：${wxids[0]}` : '密钥已就绪，请选择并验证账号目录')
+      return ok
+    }
+    if (wxid && await verifyAccountDirectory(wxid, key, true)) {
+      markWxidVerified(wxid)
+      setDbKeyStatus(`密钥已就绪，账号目录已验证：${wxid}`)
+      return true
+    }
+    setDbKeyStatus('密钥已就绪，请选择账号目录后点验证')
+    return false
+  }
+
   const applyLoadedDbKey = async (key?: string, count?: number, source = '本地密钥包') => {
     if (!key || key.length !== 64) return false
     setDecryptKey(key)
-    setDbKeyStatus(`已从${source}载入密钥${count ? `（${count} 个库）` : ''}，未上传`)
     setError('')
-    if (wxid) {
-      await verifyAccountDirectory(wxid, key)
-    } else {
-      await handleScanWxid(true)
-    }
+    setDbKeyStatus(`已从${source}载入密钥${count ? `（${count} 个库）` : ''}，正在验证账号...`)
+    await bindWxidAfterKey(key)
     return true
   }
 
@@ -465,18 +524,17 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
       }
       if (result.success && result.key) {
         setDecryptKey(result.key)
-        const targetWxid = result.validatedWxid || wxid
-        if (result.validatedWxid) setWxid(result.validatedWxid)
-        setDecryptKey(result.key)
-        if (targetWxid) {
-          const ok = await verifyAccountDirectory(targetWxid, result.key, true)
-          setDbKeyStatus(ok
-            ? `已取出密钥，账号目录已验证：${targetWxid}`
-            : '已取出密钥。账号目录尚未验证，可点「验证账号目录」，也可先点下一步。')
-        } else {
-          setDbKeyStatus('已从本机微信内存取出密钥。请选择账号目录后再继续。')
+        if (result.account) {
+          setAccountName(result.account.name || '')
+          setAccountNumber(result.account.number || '')
+          setAccountPhone(result.account.phone || '')
         }
+        setShowWechatPathPrompt(false)
         setError('')
+        await bindWxidAfterKey(result.key, {
+          validatedWxid: result.validatedWxid,
+          accountWxid: result.account?.wxid
+        })
       } else if (result.needAdmin) {
         setNeedAdminRelaunch(true)
         setError(result.error || '华记没有提权，读不到微信内存。请以管理员身份重启。')
@@ -906,6 +964,11 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
         selectedKey={wxidOptions.includes(wxid) ? wxid : null}
         onInputChange={(value) => {
           const next = value.trim()
+          if (skipWxidVerifyResetRef.current) {
+            skipWxidVerifyResetRef.current = false
+            setWxid(next)
+            return
+          }
           if (next !== wxid) setIsAccountVerified(false)
           setWxid(next)
         }}
