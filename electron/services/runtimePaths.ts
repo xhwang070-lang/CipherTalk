@@ -22,10 +22,10 @@ export function getUserDataPath(): string {
   }
 
   if (process.platform === 'darwin') {
-    return path.join(os.homedir(), 'Library', 'Application Support', 'CipherTalk')
+    return path.join(os.homedir(), 'Library', 'Application Support', 'Huaji')
   }
   const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming')
-  return path.join(appData, 'ciphertalk')
+  return path.join(appData, 'Huaji')
 }
 
 export function getCipherTalkCodexHome(): string {

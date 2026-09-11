@@ -64,7 +64,7 @@ function SplashPage() {
       <img
         className="splash-img"
         src="./qdp.jpg"
-        alt="密语 CipherTalk"
+        alt="Huaji"
         style={{ clipPath: `path('${squirclePath()}')` }}
       />
       <div className="splash-loading" aria-label="正在加载">

@@ -202,7 +202,7 @@ function shouldShowLocalAgentStdout(text: string): boolean {
   return true
 }
 
-// 把本地智能体的 activity 事件转成密语标准的消息 part：思考→reasoning，工具/命令→tool-*。
+// 把本地智能体的 activity 事件转成Huaji标准的消息 part：思考→reasoning，工具/命令→tool-*。
 // 这样就直接复用 buildRenderSegments/renderChainSegment 的折叠“执行过程”卡片，不必另写组件。
 function buildLocalAgentActivityPart(
   event: Extract<LocalCodingAgentEvent, { type: 'activity' }>,
@@ -1292,7 +1292,7 @@ export default function AgentPage() {
       if (!run || event.jobId !== run.jobId) return
 
       if (event.type === 'message') {
-        // 只有模型的最终回复进正文；密语的状态提示一律不入气泡。
+        // 只有模型的最终回复进正文；Huaji的状态提示一律不入气泡。
         run.finalText = normalizeLocalAgentText([run.finalText, event.text].filter(Boolean).join('\n\n'))
         rebuildLocalAgentMessage(run)
       } else if (event.type === 'stdout' && shouldShowLocalAgentStdout(event.text)) {
@@ -1489,7 +1489,7 @@ export default function AgentPage() {
     setShareSaving(true)
     setShareError('')
     try {
-      const fileName = `CipherTalk-Agent-${sanitizeAgentShareFileName(sharePreviewData.title)}-${formatAgentShareFileDate()}.png`
+      const fileName = `Huaji-Agent-${sanitizeAgentShareFileName(sharePreviewData.title)}-${formatAgentShareFileDate()}.png`
       const saveResult = await window.electronAPI.dialog.saveFile({
         title: '保存 Agent 分享图',
         defaultPath: fileName,
@@ -2134,7 +2134,7 @@ export default function AgentPage() {
     })()
   }, [addToolApprovalResponse, busy, localAgentRunning])
 
-  // 补丁应用/丢弃的结果属于密语状态，走气泡外的提示条，不改动助手消息（否则会抹掉折叠链的思考/工具卡片）。
+  // 补丁应用/丢弃的结果属于Huaji状态，走气泡外的提示条，不改动助手消息（否则会抹掉折叠链的思考/工具卡片）。
   const appendLocalAgentPatchActionResult = useCallback((_request: LocalAgentPatchRequest, text: string) => {
     setAgentNotice(text)
   }, [])

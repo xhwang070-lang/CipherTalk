@@ -41,7 +41,7 @@ function buildFallbackBody(version, releaseNotes) {
     : '- 本次版本已完成发布，详细内容将在后续发布说明中补充。'
 
   return [
-    `## CipherTalk v${version}`,
+    `## Huaji v${version}`,
     '',
     '### 概览',
     overview,

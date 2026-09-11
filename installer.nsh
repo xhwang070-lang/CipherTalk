@@ -10,10 +10,10 @@ ManifestDPIAware true
 
 ; 在安装开始前修正安装目录
 !macro preInit
-  ; 如果安装目录不以 CipherTalk 结尾，自动追加
+  ; 如果安装目录不以 Huaji 结尾，自动追加
   ${WordFind} "$INSTDIR" "\" "-1" $R0
-  ${If} $R0 != "CipherTalk"
-    StrCpy $INSTDIR "$INSTDIR\CipherTalk"
+  ${If} $R0 != "Huaji"
+    StrCpy $INSTDIR "$INSTDIR\Huaji"
   ${EndIf}
 !macroend
 

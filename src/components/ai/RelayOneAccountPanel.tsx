@@ -112,7 +112,7 @@ export default function RelayOneAccountPanel({ onProviderApplied, showMessage, h
   const [invitationCode, setInvitationCode] = useState('')
   const [twoFactorCode, setTwoFactorCode] = useState('')
   const [requiresTwoFactor, setRequiresTwoFactor] = useState(false)
-  const [newKeyName, setNewKeyName] = useState('CipherTalk')
+  const [newKeyName, setNewKeyName] = useState('Huaji')
   const [newKeyGroupId, setNewKeyGroupId] = useState('')
   const [rechargeAmount, setRechargeAmount] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('')
@@ -302,7 +302,7 @@ export default function RelayOneAccountPanel({ onProviderApplied, showMessage, h
   })
 
   const handleDeleteKey = (keyId: string) => {
-    if (!window.confirm('确认删除这个 RelayOne API Key？已写入 CipherTalk 的本地 Key 不会自动清除。')) return
+    if (!window.confirm('确认删除这个 RelayOne API Key？已写入 Huaji 的本地 Key 不会自动清除。')) return
     void runAction(`delete-${keyId}`, async () => {
       await relayOneService.deleteApiKey(keyId)
       setApiKeys((current) => current.filter((item) => item.id !== keyId))
@@ -342,7 +342,7 @@ export default function RelayOneAccountPanel({ onProviderApplied, showMessage, h
         <Alert status="warning">
           <Alert.Content>
             <Alert.Title>系统凭据加密不可用</Alert.Title>
-            <Alert.Description>本次登录令牌只保存在内存中，退出 CipherTalk 后需要重新登录。</Alert.Description>
+            <Alert.Description>本次登录令牌只保存在内存中，退出 Huaji 后需要重新登录。</Alert.Description>
           </Alert.Content>
         </Alert>
       )}
@@ -453,13 +453,13 @@ export default function RelayOneAccountPanel({ onProviderApplied, showMessage, h
 
           <section className="space-y-3 border-b border-divider pb-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div><Typography.Heading level={4} className="text-sm">API Key</Typography.Heading><Description>新建 Key 会直接应用到 CipherTalk 的 RelayOne 模型配置。</Description></div>
+              <div><Typography.Heading level={4} className="text-sm">API Key</Typography.Heading><Description>新建 Key 会直接应用到 Huaji 的模型配置。</Description></div>
               <Chip size="sm" variant="soft" color="accent"><Chip.Label>{apiKeys.length} 个</Chip.Label></Chip>
             </div>
             <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto]">
               <TextField fullWidth value={newKeyName} onChange={setNewKeyName}>
                 <Label>Key 名称</Label>
-                <InputGroup variant="secondary" fullWidth><InputGroup.Input placeholder="CipherTalk" /></InputGroup>
+                <InputGroup variant="secondary" fullWidth><InputGroup.Input placeholder="Huaji" /></InputGroup>
               </TextField>
               <Select selectedKey={newKeyGroupId || DEFAULT_GROUP_KEY} onSelectionChange={(key: Key | null) => setNewKeyGroupId(key == null || String(key) === DEFAULT_GROUP_KEY ? '' : String(key))} placeholder="默认分组" variant="secondary" fullWidth>
                 <Label>分组</Label>

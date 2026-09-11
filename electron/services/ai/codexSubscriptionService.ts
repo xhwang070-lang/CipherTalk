@@ -482,7 +482,7 @@ class CodexSubscriptionService {
     const state = url.searchParams.get('state')
     if (!pending || state !== pending.state) {
       response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
-      response.end(callbackHtml(false, '登录状态无效或已经过期，请回到密语重新登录。'))
+      response.end(callbackHtml(false, '登录状态无效或已经过期，请回到Huaji重新登录。'))
       return
     }
 
@@ -503,7 +503,7 @@ class CodexSubscriptionService {
       await upsertCodexAccount(credentials)
       this.usageCache = null
       response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-      response.end(callbackHtml(true, '授权信息已保存到密语，可以关闭这个页面。'))
+      response.end(callbackHtml(true, '授权信息已保存到Huaji，可以关闭这个页面。'))
       this.closeServer()
       this.emitStatus(await this.getStatus())
     } catch (error) {

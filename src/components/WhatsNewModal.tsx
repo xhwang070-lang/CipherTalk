@@ -176,7 +176,7 @@ const FALLBACK_SUBTITLE_CUES = parseSrt(`1
 
 7
 00:00:10,872 --> 00:00:12,990
-CipherTalk 继续往前，
+Huaji 继续往前，
 
 8
 00:00:13,140 --> 00:00:14,654
@@ -239,7 +239,7 @@ const VISION_LINES: TypewriterTextPart[][] = [
   ],
   ['等你需要时，它们应该还能被找到，'],
   ['带着当时的温度，和足够清楚的来路。'],
-  ['CipherTalk 继续往前，'],
+  ['Huaji 继续往前，'],
   ['为记忆留灯，'],
   ['也为真相留门。']
 ]

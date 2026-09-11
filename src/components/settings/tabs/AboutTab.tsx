@@ -18,7 +18,7 @@ interface AboutTabProps {
 }
 
 const projectLinks = [
-  { label: '密语 CipherTalk（上游开源）', url: 'https://github.com/ILoveBingLu/miyu' }
+  { label: 'CipherTalk (upstream, CC BY-NC-SA)', url: 'https://github.com/ILoveBingLu/miyu' }
 ]
 
 const relatedLinks: Array<{ label: string; url: string }> = []

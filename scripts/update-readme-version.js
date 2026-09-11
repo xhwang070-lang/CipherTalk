@@ -25,6 +25,5 @@ if (versionPattern.test(readmeContent)) {
   fs.writeFileSync(readmePath, readmeContent, 'utf-8')
   console.log(`✅ 已更新 README.md 中的版本号为: ${version}`)
 } else {
-  console.error('❌ 未找到版本号徽章，请检查 README.md 格式')
-  process.exit(1)
+  console.log('README has no version badge, skip')
 }

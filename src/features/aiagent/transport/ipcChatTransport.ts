@@ -1,7 +1,7 @@
 /**
  * IpcChatTransport —— 让 @ai-sdk/react 的 useChat 走 Electron IPC 而非 HTTP。
  * sendMessages 把 UIMessage 发给主进程（→ AI 子进程），把回推的 UIMessageChunk 拼成 ReadableStream。
- * 见 Docs/密语AI-Agent开发文档（AI-SDK版）.md §5.5。
+ * 见 Docs/HuajiAI-Agent开发文档（AI-SDK版）.md §5.5。
  */
 import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
 

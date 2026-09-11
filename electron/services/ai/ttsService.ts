@@ -1219,5 +1219,5 @@ export function pruneTtsCache(): { success: boolean; removed: number; error?: st
 
 /** 测试配置：合成一小段试听音频，成功即配置可用（音频回给 UI 播放）。 */
 export async function testTtsConfig(cfg: Partial<TtsConfig>): Promise<TtsSynthesisResult> {
-  return synthesizeSpeech('你好，这是密语的语音试听。', { config: cfg, useCache: false })
+  return synthesizeSpeech('你好，这是Huaji的语音试听。', { config: cfg, useCache: false })
 }

@@ -77,16 +77,16 @@ function getDecryptedDbDir(configService: ConfigService): string {
   if (cachePath) return cachePath
 
   if (!isElectronPackaged()) {
-    return join(getDocumentsPath(), 'CipherTalkData')
+    return join(getDocumentsPath(), 'HuajiData')
   }
 
   const installDir = dirname(getExePath())
   const isOnCDrive = /^[cC]:/i.test(installDir) || installDir.startsWith('\\')
   if (isOnCDrive) {
-    return join(getDocumentsPath(), 'CipherTalkData')
+    return join(getDocumentsPath(), 'HuajiData')
   }
 
-  return join(installDir, 'CipherTalkData')
+  return join(installDir, 'HuajiData')
 }
 
 function getLauncherMode(): McpLauncherMode {

@@ -2,7 +2,7 @@
   "name": "huaji",
   "version": "2026.728.0",
   "description": "Huaji - Huabo local WeChat archive",
-  "author": "ILoveBingLu",
+  "author": "Huabo",
   "license": "CC-BY-NC-SA-4.0",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -16,7 +16,7 @@
     "native:image:sync": "node scripts/sync-image-native.cjs",
     "native:image:build:sync": "npm run native:image:build && npm run native:image:sync",
     "build:prepare:mac": "node scripts/patch-dmg-builder.cjs",
-    "build:prepare": "node scripts/update-readme-version.js && node scripts/prepare-release-announcement.js",
+    "build:prepare": "node scripts/check-wcdb-dll.cjs && node scripts/update-readme-version.js && node scripts/prepare-release-announcement.js",
     "prebuild": "node scripts/update-readme-version.js && node scripts/prepare-release-announcement.js",
     "build": "node scripts/clean-dist-electron.cjs && NODE_OPTIONS=\"--max-old-space-size=4096\" tsc && vite build && electron-builder && node scripts/add-size-to-yml.js",
     "build:win": "npm run build:prepare && node scripts/clean-dist-electron.cjs && tsc && vite build && node scripts/run-electron-builder.cjs win && node scripts/generate-update-manifest.js win && node scripts/add-size-to-yml.js",
@@ -43,7 +43,8 @@
     "preview": "vite preview",
     "electron:dev": "node scripts/clean-dist-electron.cjs && vite --mode electron",
     "electron:build": "npm run build",
-    "postinstall": "electron-rebuild"
+    "postinstall": "electron-rebuild",
+    "check:wcdb-dll": "node scripts/check-wcdb-dll.cjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.18",
@@ -142,7 +143,7 @@
     "zustand": "^5.0.2"
   },
   "build": {
-    "appId": "com.ciphertalk.app",
+    "appId": "com.huabo.huaji",
     "productName": "Huaji",
     "compression": "maximum",
     "npmRebuild": false,
@@ -152,9 +153,8 @@
       "output": "release"
     },
     "publish": {
-      "provider": "github",
-      "owner": "ILoveBingLu",
-      "repo": "CipherTalk",
+      "provider": "generic",
+      "url": "https://gitee.com/suiyingxiao/huaji/releases",
       "publishAutoUpdate": false
     },
     "win": {

@@ -461,7 +461,7 @@ export default function PosterStyleWindow() {
         })
         .join('\n')
       : (context.sampleLines || []).join('\n')
-    const prompt = `你是 CipherTalk 海报样式设计 Agent。请为聊天记录分享海报生成一段 CSS 主题。
+    const prompt = `你是 Huaji 海报样式设计 Agent。请为聊天记录分享海报生成一段 CSS 主题。
 
 只输出 CSS，不要解释，不要 Markdown，除 CSS 外不要写任何文字。
 

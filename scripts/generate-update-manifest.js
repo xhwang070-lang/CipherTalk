@@ -9,11 +9,11 @@ const inputTarget = process.argv[2]
 
 const targetMap = {
   win: {
-    artifactName: `CipherTalk-${pkg.version}-Setup.exe`,
+    artifactName: `Huaji-${pkg.version}-Setup.exe`,
     manifestName: 'latest.yml'
   },
   mac: {
-    artifactName: `CipherTalk-${pkg.version}-Setup.dmg`,
+    artifactName: `Huaji-${pkg.version}-Setup.dmg`,
     manifestName: 'latest-mac.yml'
   }
 }

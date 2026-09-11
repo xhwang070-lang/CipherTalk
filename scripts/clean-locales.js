@@ -198,7 +198,7 @@ function verifyFfmpegStaticPacked(context) {
     );
 }
 
-// ChatGPT 订阅 Provider 由密语直接发起 OAuth/Responses 请求，不需要 Codex CLI 运行时。
+// ChatGPT 订阅 Provider 由Huaji直接发起 OAuth/Responses 请求，不需要 Codex CLI 运行时。
 function verifyCodexRuntimeAbsent(context) {
     const stack = [context.appOutDir];
     while (stack.length > 0) {

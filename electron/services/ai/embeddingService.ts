@@ -240,12 +240,12 @@ export async function testEmbeddingConfig(cfg: EmbeddingConfig): Promise<{
     let vector: number[]
     if (userDimension > 0) {
       try {
-        vector = await embedQuery('密语语义检索连接测试', cfg)
+        vector = await embedQuery('Huaji语义检索连接测试', cfg)
       } catch {
-        vector = await embedQuery('密语语义检索连接测试', { ...cfg, dimension: 0 })
+        vector = await embedQuery('Huaji语义检索连接测试', { ...cfg, dimension: 0 })
       }
     } else {
-      vector = await embedQuery('密语语义检索连接测试', cfg)
+      vector = await embedQuery('Huaji语义检索连接测试', cfg)
     }
     if (!Array.isArray(vector) || vector.length === 0) {
       return { success: false, error: '嵌入返回为空' }

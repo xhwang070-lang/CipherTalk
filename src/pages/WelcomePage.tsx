@@ -25,7 +25,7 @@ import * as configService from '../services/config'
 import { useAuthStore } from '../stores/authStore'
 import './WelcomePage.css'
 
-const GUIDE_URL = 'https://ilovebinglu.notion.site/ciphertalk'
+const GUIDE_URL = 'https://gitee.com/suiyingxiao/huaji'
 
 const steps = [
   { id: 'intro', title: '欢迎', desc: '准备开始你的本地数据探索' },
@@ -671,7 +671,7 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
             缓存目录用于存储头像、表情与图片等本地媒体缓存。
           </Typography.Paragraph>
           {renderInfoList([
-            isMac ? '默认使用文稿目录下的 CipherTalkData' : '自动选择更适合存储的磁盘',
+            isMac ? '默认使用文稿目录下的 HuajiData' : '自动选择更适合存储的磁盘',
             '需要预留足够空间',
             '后续仍可在设置中修改'
           ])}
@@ -705,7 +705,7 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
           </Typography.Paragraph>
           {renderInfoList([
             '从本机 kvcomm 和图片模板推算，不扫描微信内存',
-            '不会调用密语原版内存扫描',
+            '不会调用Huaji原版内存扫描',
             '此步骤可跳过'
           ])}
         </div>
@@ -773,7 +773,7 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
   const renderCacheStep = () => (
     <div className="flex min-w-0 flex-col gap-3.5">
       {renderTextField('缓存目录', cachePath, setCachePath, {
-        placeholder: isMac ? '~/Documents/CipherTalkData' : 'D:\\CipherTalkDB',
+        placeholder: isMac ? '~/Documents/HuajiData' : 'D:\\HuajiDB',
         description: isMac ? '用于头像、表情与图片缓存，默认已选文稿目录。' : '用于头像、表情与图片缓存，已自动选择最佳磁盘。'
       })}
       <div className="flex flex-wrap items-center gap-2.5">

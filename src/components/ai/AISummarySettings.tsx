@@ -39,7 +39,6 @@ import RerankTab from '../settings/tabs/RerankTab'
 import ImageGenTab from '../settings/tabs/ImageGenTab'
 import LocalCodingAgentSettings from './LocalCodingAgentSettings'
 import ChatGPTSubscriptionAuth from './ChatGPTSubscriptionAuth'
-import RelayOneAccountPanel from './RelayOneAccountPanel'
 
 type AiProviderProtocol = configService.AiProviderProtocol
 type PresetTab = 'name' | 'provider' | 'config'
@@ -562,38 +561,6 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
     setProviderConfigs(configs || {})
   }
 
-  const handleRelayOneProviderApplied = async () => {
-    const relayOneConfig = await configService.getAiProviderConfig('relayone')
-    if (!relayOneConfig) return
-
-    setProviderConfigs(prev => ({ ...prev, relayone: relayOneConfig }))
-    setField('aiProvider', 'relayone')
-    setField('aiApiKey', relayOneConfig.apiKey)
-    setField('aiModel', relayOneConfig.model || '')
-    setCustomProtocol(relayOneConfig.protocol || 'openai-responses')
-    setModelListError('')
-
-    const result = await window.electronAPI.ai.listModels({
-      provider: 'relayone',
-      apiKey: relayOneConfig.apiKey,
-      baseURL: relayOneConfig.baseURL || 'https://aiapi.aiqji.cn/v1',
-      protocol: relayOneConfig.protocol || 'openai-responses'
-    })
-    if (!result.success || !result.models) {
-      setModelListError(result.error || 'RelayOne 模型列表刷新失败')
-      return
-    }
-
-    setRemoteModels(result.models)
-    setRemoteModelDetails(result.modelDetails || [])
-    if (!relayOneConfig.model && result.models[0]) {
-      const nextConfig = { ...relayOneConfig, model: result.models[0] }
-      await configService.setAiProviderConfig('relayone', nextConfig)
-      setProviderConfigs(prev => ({ ...prev, relayone: nextConfig }))
-      setField('aiModel', result.models[0])
-    }
-  }
-
   const loadPresets = async () => {
     setPresets(await configService.getAiConfigPresets())
   }
@@ -1030,15 +997,6 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
 
             <Form onSubmit={handleSaveCurrentProvider}>
               <Card.Content>
-                {provider === 'relayone' && (
-                  <div className="mb-4">
-                    <RelayOneAccountPanel
-                      onProviderApplied={handleRelayOneProviderApplied}
-                      showMessage={showMessage}
-                      hasConfiguredApiKey={Boolean(apiKey.trim())}
-                    />
-                  </div>
-                )}
                 <Fieldset className="w-full">
                   <Fieldset.Group className="grid gap-4">
                     <ProviderSelect

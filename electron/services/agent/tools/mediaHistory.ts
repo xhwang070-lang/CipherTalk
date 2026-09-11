@@ -946,7 +946,7 @@ export function createInspectMediaImage(providerConfig: AgentProviderConfig) {
             { type: 'image', image: buffer, mediaType },
           ],
         }]
-        const instructions = '你是密语的图片理解工具。用中文回答，只说你从图里能确定的内容；看不清或信息不足时直接说明。'
+        const instructions = '你是Huaji的图片理解工具。用中文回答，只说你从图里能确定的内容；看不清或信息不足时直接说明。'
         const description = (await generateText({
           model: createLanguageModel(providerConfig),
           system: instructions,

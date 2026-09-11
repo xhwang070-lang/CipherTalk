@@ -1,6 +1,6 @@
 /**
  * AI Agent 编排层 —— 类型与子进程通信协议。
- * 编排全程跑在独立的 AI utilityProcess 子进程（见 Docs/密语AI-Agent开发文档（AI-SDK版）.md §3.1）。
+ * 编排全程跑在独立的 AI utilityProcess 子进程（见 Docs/HuajiAI-Agent开发文档（AI-SDK版）.md §3.1）。
  */
 import type { JSONSchema7, ModelMessage, UIMessageChunk } from 'ai'
 import type { CodeWorkspaceRef } from './codeWorkspaceTypes'
@@ -16,7 +16,7 @@ export interface AgentProviderConfig {
   apiKey: string
   baseURL: string
   model: string
-  /** 密语自己的 ChatGPT OAuth 文件绝对路径；不读取 ~/.codex/auth.json。 */
+  /** Huaji自己的 ChatGPT OAuth 文件绝对路径；不读取 ~/.codex/auth.json。 */
   authFilePath?: string
   headers?: Record<string, string>
   reasoningEffort?: AgentReasoningEffort

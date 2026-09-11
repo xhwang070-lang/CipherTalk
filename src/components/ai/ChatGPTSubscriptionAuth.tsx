@@ -375,8 +375,8 @@ export default function ChatGPTSubscriptionAuth({ compact = false, onAuthenticat
             </Button>
           </div>
           <p className="text-muted-foreground text-xs leading-relaxed">
-            「导入本机 Codex 登录」会读取电脑上 Codex CLI 的登录并在密语里另存一份，不会修改 CLI 文件。
-            但两者共用同一个 ChatGPT 授权，密语刷新令牌后本机 Codex 可能需要重新登录。
+            「导入本机 Codex 登录」会读取电脑上 Codex CLI 的登录并在Huaji里另存一份，不会修改 CLI 文件。
+            但两者共用同一个 ChatGPT 授权，Huaji刷新令牌后本机 Codex 可能需要重新登录。
           </p>
         </div>
       )}

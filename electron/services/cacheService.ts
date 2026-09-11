@@ -36,7 +36,7 @@ export class CacheService {
     // 开发环境使用文档目录
     if (process.env.VITE_DEV_SERVER_URL) {
       const documentsPath = app.getPath('documents')
-      return join(documentsPath, 'CipherTalkData')
+      return join(documentsPath, 'HuajiData')
     }
 
     // 生产环境
@@ -48,10 +48,10 @@ export class CacheService {
 
     if (isOnCDrive) {
       const documentsPath = app.getPath('documents')
-      return join(documentsPath, 'CipherTalkData')
+      return join(documentsPath, 'HuajiData')
     }
 
-    return join(installDir, 'CipherTalkData')
+    return join(installDir, 'HuajiData')
   }
 
   /**

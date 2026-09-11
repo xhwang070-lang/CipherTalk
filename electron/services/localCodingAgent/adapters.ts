@@ -10,9 +10,9 @@ export interface LocalCodingAgentCommand {
   display: string
 }
 
-// 密语注入给本地智能体的系统提示词。codex/opencode 以带分隔符的前缀塞进 prompt，claude 走 --append-system-prompt。
+// Huaji注入给本地智能体的系统提示词。codex/opencode 以带分隔符的前缀塞进 prompt，claude 走 --append-system-prompt。
 export const LOCAL_CODING_AGENT_SYSTEM_PROMPT = [
-  '你是密语（CipherTalk）内置的本地编码智能体，运行在用户当前选中的代码工作区里。',
+  '你是Huaji内置的本地编码智能体，运行在用户当前选中的代码工作区里。',
   '- 用中文回复。',
   '- 改动小而精准，只动与任务直接相关的代码，遵循仓库既有风格，不顺手重构无关代码。',
   '- 直接对工作区文件进行修改并说明改了什么，不要输出整段补丁让用户手动粘贴。',
@@ -20,7 +20,7 @@ export const LOCAL_CODING_AGENT_SYSTEM_PROMPT = [
 ].join('\n')
 
 function withSystemPreamble(prompt: string): string {
-  return `[密语系统指令]\n${LOCAL_CODING_AGENT_SYSTEM_PROMPT}\n\n---\n\n[用户任务]\n${prompt}`
+  return `[Huaji系统指令]\n${LOCAL_CODING_AGENT_SYSTEM_PROMPT}\n\n---\n\n[用户任务]\n${prompt}`
 }
 
 export const DEFAULT_LOCAL_CODING_AGENT_CONFIG = {

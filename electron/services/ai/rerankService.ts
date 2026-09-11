@@ -173,8 +173,8 @@ export async function testRerankConfig(cfg: RerankConfig): Promise<{ success: bo
     const model = buildRerankingModel({ ...cfg, enabled: true, protocol: 'openai-compatible' })
     const result = await rerank({
       model,
-      query: '密语重排连接测试',
-      documents: ['密语是一款聊天记录分析工具。', '今天午饭吃什么？', '这条文本与测试无关。'],
+      query: 'Huaji重排连接测试',
+      documents: ['Huaji是一款聊天记录分析工具。', '今天午饭吃什么？', '这条文本与测试无关。'],
       topN: 2,
       maxRetries: 0,
     })

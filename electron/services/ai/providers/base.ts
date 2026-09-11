@@ -462,7 +462,7 @@ export abstract class BaseAIProvider implements AIProvider {
       })
       const text = await response.text().catch(() => '')
       if (isCloudflareOrHtmlBody(text)) {
-        const error: any = new Error('中转站被 Cloudflare 拦截。多半是系统代理 IP 被拦，密语对自定义接口已改为直连。请再点一次刷新；仍失败可手动输入模型名后保存。')
+        const error: any = new Error('中转站被 Cloudflare 拦截。多半是系统代理 IP 被拦，Huaji对自定义接口已改为直连。请再点一次刷新；仍失败可手动输入模型名后保存。')
         error.status = response.status
         throw error
       }

@@ -501,7 +501,7 @@ export async function setDiaryEnabled(enabled: boolean): Promise<void> {
 // 获取当前选中的 AI 提供商
 export async function getAiProvider(): Promise<string> {
   const value = await config.get('aiCurrentProvider')
-  return (value as string) || 'relayone'
+  return (value as string) || 'custom'
 }
 
 // 设置当前选中的 AI 提供商

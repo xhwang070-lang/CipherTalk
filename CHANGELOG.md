@@ -1,6 +1,6 @@
 # 更新日志
 
-本文档记录了密语 CipherTalk 的所有重要更改。
+本文档记录了Huaji 的所有重要更改。
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目自 2026.6.8 起使用年月日日期版本号；
