@@ -1320,7 +1320,7 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
         <Card className="shrink-0">
           <Card.Content className="grid grid-cols-[minmax(260px,0.78fr)_minmax(360px,1fr)] items-center gap-6 pb-2 max-[940px]:grid-cols-1">
             <div className="flex min-w-0 items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-3">
+              <div className="welcome-drag-bar flex min-w-0 items-center gap-3">
                 <img src="./logo.png" alt="Huaji" className="size-11 shrink-0 rounded-lg shadow-[0_10px_24px_color-mix(in_oklch,var(--foreground)_12%,transparent)]" />
                 <div className="min-w-0">
                   <Typography.Heading level={3} className="truncate">Huaji setup</Typography.Heading>
