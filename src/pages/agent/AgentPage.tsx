@@ -613,15 +613,6 @@ export default function AgentPage() {
 
   const handleAgentProgress = useCallback((progress: AgentProgressEvent) => {
     const displayProgress = shouldDisplayAgentProgress(progress)
-    // 准备阶段的 run_started 步骤只进执行过程链，不推桌宠气泡。
-    const petWorthy = progress.stage !== 'run_started'
-    if ((progress.depth ?? 0) === 0 && petWorthy && (displayProgress || progress.stage === 'run_finished' || progress.stage === 'error')) {
-      window.electronAPI.pet.sendAgentProgress({
-        stage: progress.stage,
-        title: progress.stage === 'run_finished' && !displayProgress ? 'AI 助手已完成' : progress.title,
-        detail: progress.detail,
-      })
-    }
     if ((progress.depth ?? 0) > 0) {
       if (displayProgress) setSubAgentProgress((prev) => mergeSubAgentProgress(prev, progress))
     } else {
@@ -951,21 +942,6 @@ export default function AgentPage() {
   const [shareSaving, setShareSaving] = useState(false)
   const [shareError, setShareError] = useState('')
   const shareCardRef = useRef<HTMLDivElement | null>(null)
-  // Agent 运行状态 → 桌宠动作：跑→run，报错→failed，收尾→done(挥手 2.6s)。
-  const petAgentState = effectiveBusy ? 'running' : (agentNotice && !agentNotice.startsWith('状态：') ? 'failed' : 'idle')
-  const petPrevBusyRef = useRef(false)
-  useEffect(() => {
-    if (petAgentState === 'idle' && petPrevBusyRef.current) {
-      window.electronAPI.pet?.setAgentState('done')
-      const timer = window.setTimeout(() => {
-        window.electronAPI.pet?.setAgentState('idle')
-      }, 2600)
-      petPrevBusyRef.current = false
-      return () => window.clearTimeout(timer)
-    }
-    petPrevBusyRef.current = petAgentState === 'running'
-    window.electronAPI.pet?.setAgentState(petAgentState)
-  }, [petAgentState])
 
   const appendMentionTargets = useCallback((items: MentionTarget[]) => {
     if (items.length === 0) return

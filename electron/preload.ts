@@ -82,61 +82,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
 
-  // AI 宠物（petdex 格式）
-  pet: {
-    listInstalled: () => ipcRenderer.invoke('pet:listInstalled') as Promise<{ success: boolean; pets?: Array<{ slug: string; displayName: string; description: string; builtin?: boolean }>; error?: string }>,
-    manifest: (force?: boolean) => ipcRenderer.invoke('pet:manifest', force) as Promise<{ success: boolean; pets?: Array<{ slug: string; displayName: string; kind?: string; submittedBy?: string; spritesheetUrl: string; petJsonUrl: string }>; error?: string }>,
-    install: (slug: string) => ipcRenderer.invoke('pet:install', slug) as Promise<{ success: boolean; pet?: { slug: string; displayName: string; description: string; builtin?: boolean }; error?: string }>,
-    remove: (slug: string) => ipcRenderer.invoke('pet:remove', slug) as Promise<{ success: boolean; error?: string }>,
-    importZip: () => ipcRenderer.invoke('pet:importZip') as Promise<{ success: boolean; canceled?: boolean; pet?: { slug: string; displayName: string; description: string; builtin?: boolean }; error?: string }>,
-    getSprite: (slug: string) => ipcRenderer.invoke('pet:getSprite', slug) as Promise<{ success: boolean; dataUrl?: string; error?: string }>,
-    setAgentState: (state: string) => ipcRenderer.send('pet:agentState', state),
-    sendAgentProgress: (progress: { stage: string; title: string; detail?: string }) => ipcRenderer.send('pet:agentProgress', progress),
-    getDailySummary: () => ipcRenderer.invoke('pet:getDailySummary') as Promise<{ success: boolean; text?: string; error?: string }>,
-    toggleDesktopWindow: (enabled: boolean) => ipcRenderer.invoke('pet:toggleDesktopWindow', enabled) as Promise<{ success: boolean }>,
-    setBubble: (expanded: boolean) => ipcRenderer.send('pet:setBubble', expanded),
-    showContextMenu: () => ipcRenderer.send('pet:showContextMenu'),
-    dragStart: () => ipcRenderer.send('pet:dragStart'),
-    dragMove: (dx: number, dy: number) => ipcRenderer.send('pet:dragMove', dx, dy),
-    dragEnd: () => ipcRenderer.send('pet:dragEnd'),
-    onAgentState: (callback: (state: string) => void) => {
-      const listener = (_: any, state: string) => callback(state)
-      ipcRenderer.on('pet:agentState', listener)
-      return () => { ipcRenderer.removeListener('pet:agentState', listener) }
-    },
-    onWindowMove: (callback: (x: number) => void) => {
-      const listener = (_: any, x: number) => callback(x)
-      ipcRenderer.on('pet:windowMove', listener)
-      return () => { ipcRenderer.removeListener('pet:windowMove', listener) }
-    },
-    onBubbleFrame: (callback: (frame: { expanded: boolean; baseLeft: number; baseTop: number; baseWidth: number; baseHeight: number }) => void) => {
-      const listener = (_: any, frame: any) => callback(frame)
-      ipcRenderer.on('pet:bubbleFrame', listener)
-      return () => { ipcRenderer.removeListener('pet:bubbleFrame', listener) }
-    },
-    onContextMenuOpened: (callback: () => void) => {
-      const listener = () => callback()
-      ipcRenderer.on('pet:contextMenuOpened', listener)
-      return () => { ipcRenderer.removeListener('pet:contextMenuOpened', listener) }
-    },
-    onNotify: (callback: (payload: { username: string; displayName: string; avatarUrl?: string; preview: string; timestamp: number }) => void) => {
-      const listener = (_: any, payload: any) => callback(payload)
-      ipcRenderer.on('pet:notify', listener)
-      return () => { ipcRenderer.removeListener('pet:notify', listener) }
-    },
-    onAgentProgress: (callback: (progress: { stage: string; title: string; detail?: string }) => void) => {
-      const listener = (_: any, progress: any) => callback(progress)
-      ipcRenderer.on('pet:agentProgress', listener)
-      return () => { ipcRenderer.removeListener('pet:agentProgress', listener) }
-    },
-    onBubble: (callback: (payload: { kind: string; title: string; text: string; id?: string }) => void) => {
-      const listener = (_: any, payload: any) => callback(payload)
-      ipcRenderer.on('pet:bubble', listener)
-      return () => { ipcRenderer.removeListener('pet:bubble', listener) }
-    }
-  },
-
-  // 消息提醒（会话级开关，默认全关）
   notify: {
     getEnabledSessions: () => ipcRenderer.invoke('notify:getEnabledSessions') as Promise<string[]>,
     setSessionEnabled: (username: string, enabled: boolean) => ipcRenderer.invoke('notify:setSessionEnabled', username, enabled) as Promise<{ success: boolean }>,
@@ -815,6 +760,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('chat:pickRandomMomentFromIndex'),
     getDatesWithMessages: (sessionId: string, year: number, month: number) =>
       ipcRenderer.invoke('chat:getDatesWithMessages', sessionId, year, month),
+    previewChatFile: (payload: {
+      sessionId?: string
+      localId?: number
+      fileName?: string
+      fileExt?: string
+      createTime?: number
+      sheetName?: string
+      maxRows?: number
+    }) => ipcRenderer.invoke('chat:previewChatFile', payload),
     onSessionsUpdated: (callback: (sessions: any[]) => void) => {
       const listener = (_: any, sessions: any[]) => callback(sessions)
       ipcRenderer.on('chat:sessions-updated', listener)

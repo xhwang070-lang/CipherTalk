@@ -11,7 +11,7 @@ const titleBarOverlayStates = new WeakMap<BrowserWindow, TitleBarOverlayState>()
 
 function shouldForceHideMacWindowButtons(win: BrowserWindow): boolean {
   const url = win.webContents.getURL()
-  return url.includes('#/splash') || url.includes('#/pet-window') || url.includes('#/reply-tile-window')
+  return url.includes('#/splash') || url.includes('#/reply-tile-window')
 }
 
 function applyTitleBarOverlay(win: BrowserWindow, state: TitleBarOverlayState) {

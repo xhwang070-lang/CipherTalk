@@ -187,11 +187,7 @@ class NotifyService {
       timestamp,
     }
 
-    if (this.ctx?.getWindowManager().isPetWindowOpen()) {
-      this.ctx.broadcastToWindows('pet:notify', payload)
-    } else {
-      void this.showSystemNotification(payload)
-    }
+    void this.showSystemNotification(payload)
   }
 
   /** 头像可能是远程 http URL、data:URL 或本地路径，统一取原始字节。 */

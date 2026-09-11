@@ -426,7 +426,7 @@ const defaults: ConfigSchema = {
   aiResolvedProxyUrl: '',
   anthropicCacheTtl: '5m',
   petCurrent: '',
-  petDesktopEnabled: true,
+  petDesktopEnabled: false,
   petDefaultInitialized: false,
   petPersonaSessionId: '',
   petTtsEnabled: false,
