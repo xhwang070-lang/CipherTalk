@@ -14,6 +14,7 @@ import {
   ProgressBar,
   ScrollShadow,
   Spinner,
+  Switch,
   TextField,
   Tooltip,
   Typography
@@ -75,6 +76,7 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
   const [isClosing, setIsClosing] = useState(false)
   const [showWechatPathPrompt, setShowWechatPathPrompt] = useState(false)
   const [customWechatPath, setCustomWechatPath] = useState('')
+  const [allowMemoryScan, setAllowMemoryScan] = useState(false)
   const [isDecrypting, setIsDecrypting] = useState(false)
   const [decryptStatus, setDecryptStatus] = useState('')
   const [countdown, setCountdown] = useState(0)
@@ -373,21 +375,101 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
     }
   }
 
-  const handleAutoGetDbKey = async (_wechatPath?: string) => {
+  const applyLoadedDbKey = async (key?: string, count?: number, source = '本地密钥包') => {
+    if (!key || key.length !== 64) return false
+    setDecryptKey(key)
+    setDbKeyStatus(`已从${source}载入密钥${count ? `（${count} 个库）` : ''}，未上传`)
+    setError('')
+    if (wxid) {
+      await verifyAccountDirectory(wxid, key)
+    } else {
+      await handleScanWxid(true)
+    }
+    return true
+  }
+
+  const handleAutoGetDbKey = async () => {
     if (isFetchingDbKey) return
     setIsFetchingDbKey(true)
     setError('')
     setDbKeyStatus('正在检查本地密钥包...')
     try {
-      const result = await window.electronAPI.wxKey.useLocalKeys()
-      if (result.success) {
-        setDbKeyStatus(`已使用本地密钥包（${result.count} 个库），未扫描微信`)
+      const result = await window.electronAPI.wxKey.useLocalKeys(dbPath || undefined, wxid || undefined)
+      if (result.success && result.key) {
+        await applyLoadedDbKey(result.key, result.count, '本地密钥包')
+        return
+      }
+      setError(result.error || '未找到本地密钥包。请粘贴密钥、导入 all_keys.json，或勾选同意后扫描微信内存。')
+      setDbKeyStatus('')
+    } catch (e) {
+      setError(`检查本地密钥失败: ${e}`)
+      setDbKeyStatus('')
+    } finally {
+      setIsFetchingDbKey(false)
+    }
+  }
+
+  const handleImportKeyPack = async () => {
+    if (isFetchingDbKey) return
+    try {
+      const picked = await dialog.openFile({
+        title: '选择 all_keys.json',
+        properties: ['openFile'],
+        filters: [{ name: 'JSON', extensions: ['json'] }]
+      })
+      if (picked.canceled || !picked.filePaths[0]) return
+      setIsFetchingDbKey(true)
+      setError('')
+      setDbKeyStatus('正在导入密钥包...')
+      const result = await window.electronAPI.wxKey.importLocalKeys(picked.filePaths[0], dbPath || undefined, wxid || undefined)
+      if (result.success && result.key) {
+        await applyLoadedDbKey(result.key, result.count, '导入的密钥包')
       } else {
-        setError(result.error || '未找到本地密钥包。已禁止自动扫微信内存。')
+        setError(result.error || '导入密钥包失败')
         setDbKeyStatus('')
       }
     } catch (e) {
-      setError(`检查本地密钥失败: ${e}`)
+      setError(`导入密钥包失败: ${e}`)
+      setDbKeyStatus('')
+    } finally {
+      setIsFetchingDbKey(false)
+    }
+  }
+
+  const handleScanMemoryKey = async (wechatPath?: string) => {
+    if (isFetchingDbKey) return
+    if (!allowMemoryScan) {
+      setError('扫描微信内存默认关闭。请先勾选「我同意本次扫描已登录微信内存」，或改为粘贴/导入密钥。')
+      return
+    }
+    setIsFetchingDbKey(true)
+    setError('')
+    setDbKeyStatus('正在扫描已登录微信内存...')
+    try {
+      await configService.setAllowLiveMemoryScan(true)
+      const result = await window.electronAPI.wxKey.startGetKey(wechatPath || customWechatPath || undefined, dbPath || undefined)
+      if (result.needManualPath) {
+        setShowWechatPathPrompt(true)
+        setError(result.error || '未能自动找到微信程序，请手动选择 Weixin.exe')
+        setDbKeyStatus('')
+        return
+      }
+      if (result.success && result.key) {
+        setDecryptKey(result.key)
+        if (result.validatedWxid) {
+          setWxid(result.validatedWxid)
+          setIsAccountVerified(true)
+        } else if (wxid) {
+          await verifyAccountDirectory(wxid, result.key)
+        }
+        setDbKeyStatus('已从本机微信内存取出密钥。仅保存在本地。')
+        setError('')
+      } else {
+        setError(result.error || '扫描微信内存失败')
+        setDbKeyStatus('')
+      }
+    } catch (e) {
+      setError(`扫描微信内存失败: ${e}`)
       setDbKeyStatus('')
     } finally {
       setIsFetchingDbKey(false)
@@ -423,7 +505,7 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
       setError('请先选择微信程序')
       return
     }
-    handleAutoGetDbKey(customWechatPath)
+    void handleScanMemoryKey(customWechatPath)
   }
 
   const handleAutoGetImageKey = async () => {
@@ -687,9 +769,9 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
             此步骤会在本机完成密钥识别与账号目录校验。
           </Typography.Paragraph>
           {renderInfoList([
-            isMac ? '建议先启动微信并按提示完成授权' : '点击自动获取后按提示登录微信',
-            '识别完成后会尝试匹配账号目录',
-            '密钥仅保存在本地配置中'
+            '先手动粘贴 64 位密钥，或导入 all_keys.json',
+            '本机已有密钥包时，点「从密钥包载入」即可',
+            '没有密钥包才需要勾选同意后扫描已登录微信内存'
           ])}
           {renderStatusAlert(isMac ? '若系统环境不满足要求，界面会直接给出提示。' : '密钥不会上传到服务器。', 'default')}
         </div>
@@ -893,15 +975,49 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
         )
       })}
 
+      <div className="flex flex-wrap items-center gap-2.5">
+        <Button
+          type="button"
+          variant="secondary"
+          onPress={() => void handleAutoGetDbKey()}
+          isPending={isFetchingDbKey}
+        >
+          {isFetchingDbKey ? <Spinner size="sm" color="current" /> : <Sparkles width={16} height={16} />}
+          {isFetchingDbKey ? '获取中' : '从密钥包载入'}
+        </Button>
+        <Button
+          type="button"
+          variant="tertiary"
+          onPress={() => void handleImportKeyPack()}
+          isDisabled={isFetchingDbKey}
+        >
+          <FolderOpen width={16} height={16} />
+          导入 all_keys.json
+        </Button>
+      </div>
+
+      <div className="flex items-start gap-3">
+        <Switch
+          isSelected={allowMemoryScan}
+          onChange={setAllowMemoryScan}
+          aria-label="同意扫描微信内存"
+        >
+          <Switch.Control>
+            <Switch.Thumb />
+          </Switch.Control>
+        </Switch>
+        <Description>我同意本次扫描已登录微信内存（仅本机，默认关闭）</Description>
+      </div>
       <Button
         type="button"
-        variant="secondary"
+        variant="tertiary"
         className="self-start"
-        onPress={() => void handleAutoGetDbKey()}
-        isPending={isFetchingDbKey}
+        onPress={() => void handleScanMemoryKey()}
+        isDisabled={isFetchingDbKey || !allowMemoryScan}
+        isPending={isFetchingDbKey && allowMemoryScan}
       >
         {isFetchingDbKey ? <Spinner size="sm" color="current" /> : <Sparkles width={16} height={16} />}
-        {isFetchingDbKey ? '获取中' : '自动获取密钥'}
+        扫描微信内存获取密钥
       </Button>
 
       {!isMac && showWechatPathPrompt && (
@@ -928,7 +1044,7 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
 
       {dbKeyStatus && renderStatusAlert(dbKeyStatus, isAccountVerified ? 'success' : 'default')}
       {renderStatusAlert(
-        '开库使用本地 all_keys.json 和自己的 DLL。自动获取只检查本地密钥包，不会扫微信内存。',
+        '没有密钥包时，请粘贴密钥或导入 all_keys.json。扫描内存必须先勾选同意，默认不会扫。',
         'default'
       )}
     </div>

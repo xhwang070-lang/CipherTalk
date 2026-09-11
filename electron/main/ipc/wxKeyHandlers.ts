@@ -5,6 +5,7 @@ import { dbPathService } from '../../services/dbPathService'
 import { wcdbService } from '../../services/wcdbService'
 import { wxKeyService } from '../../services/wxKeyService'
 import { wxKeyServiceMac } from '../../services/wxKeyServiceMac'
+import { applyKeyPackEnv, importKeyPack, parseKeyPack, pickEncKey, resolveKeyPackPath } from '../../services/localKeyPack'
 import type { MainProcessContext } from '../context'
 
 /**
@@ -56,20 +57,38 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
     return wxKeyService.waitForWeChatWindow(maxWaitSeconds)
   })
 
-  ipcMain.handle('wxkey:useLocalKeys', async () => {
-    const localPath = process.env.WEFLOW_ALL_KEYS_JSON
-      || 'C:\\Users\\Administrator\\Desktop\\WeFlow\\tools\\wechat-key-extractor\\all_keys.json'
+  ipcMain.handle('wxkey:useLocalKeys', async (_event, dbPath?: string, wxid?: string) => {
     try {
-      if (!existsSync(localPath)) {
-        return { success: false, error: '未找到本地密钥包 all_keys.json。已禁止自动扫微信内存。' }
+      const configured = ctx.getConfigService()?.get('allKeysJsonPath') as string | undefined
+      const localPath = resolveKeyPackPath(configured)
+      if (!localPath) {
+        return {
+          success: false,
+          error: '未找到本地密钥包 all_keys.json。请手动粘贴 64 位密钥，或导入密钥包。默认不会扫微信内存。'
+        }
       }
-      const raw = readFileSync(localPath, 'utf8')
-      const data = JSON.parse(raw)
-      const count = Object.keys(data).filter((k: string) => !k.startsWith('_') && data[k]?.enc_key).length
-      if (count <= 0) {
-        return { success: false, error: '本地密钥包是空的。已禁止自动扫微信内存。' }
+      applyKeyPackEnv(localPath)
+      const keys = parseKeyPack(localPath)
+      if (keys.length <= 0) {
+        return { success: false, error: '本地密钥包是空的。请导入有效的 all_keys.json，或手动粘贴密钥。' }
       }
-      return { success: true, count }
+      const key = pickEncKey(keys, dbPath, wxid)
+      return { success: true, count: keys.length, key, path: localPath }
+    } catch (e) {
+      return { success: false, error: String(e) }
+    }
+  })
+
+  ipcMain.handle('wxkey:importLocalKeys', async (_event, sourcePath: string, dbPath?: string, wxid?: string) => {
+    try {
+      const packed = importKeyPack(sourcePath)
+      ctx.getConfigService()?.set('allKeysJsonPath', packed)
+      const keys = parseKeyPack(packed)
+      if (keys.length <= 0) {
+        return { success: false, error: '导入的密钥包里没有可用 enc_key。' }
+      }
+      const key = pickEncKey(keys, dbPath, wxid)
+      return { success: true, count: keys.length, key, path: packed }
     } catch (e) {
       return { success: false, error: String(e) }
     }

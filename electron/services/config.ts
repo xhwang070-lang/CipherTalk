@@ -91,6 +91,7 @@ interface ConfigSchema {
   // 数据管理相关
   skipIntegrityCheck: boolean
   allowLiveMemoryScan: boolean  // 管理员：允许扫已登录微信内存取密钥，默认关
+  allKeysJsonPath: string  // 导入的 all_keys.json 路径
   autoUpdateDatabase: boolean  // 是否自动更新数据库
   // 自动同步高级参数
   autoUpdateCheckInterval: number     // 检查间隔（秒）
@@ -336,6 +337,7 @@ const defaults: ConfigSchema = {
   logLevel: 'WARN', // 默认只记录警告和错误
   skipIntegrityCheck: false, // 默认进行完整性检查
   allowLiveMemoryScan: false, // 默认禁止扫微信内存
+  allKeysJsonPath: '',
   autoUpdateDatabase: true,  // 默认开启自动更新
   autoUpdateCheckInterval: 60,     // 默认 60 秒检查一次
   autoUpdateMinInterval: 1000,     // 默认最小更新间隔 1 秒

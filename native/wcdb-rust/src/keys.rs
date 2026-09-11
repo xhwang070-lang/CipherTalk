@@ -12,12 +12,20 @@ lazy_static! {
 }
 
 fn default_keys_path() -> String {
-    if let Ok(p) = std::env::var("WEFLOW_ALL_KEYS_JSON") {
-        if !p.trim().is_empty() {
-            return p;
+    for key in ["HUAJI_ALL_KEYS_JSON", "WEFLOW_ALL_KEYS_JSON"] {
+        if let Ok(p) = std::env::var(key) {
+            if !p.trim().is_empty() {
+                return p;
+            }
         }
     }
-    r"C:\Users\Administrator\Desktop\WeFlow\tools\wechat-key-extractor\all_keys.json".to_string()
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let p = std::path::Path::new(&appdata).join("Huaji").join("all_keys.json");
+        if p.exists() {
+            return p.to_string_lossy().to_string();
+        }
+    }
+    r"C:\Users\Administrator\Desktop\Huaji\tools\wechat-key-extractor\all_keys.json".to_string()
 }
 
 pub fn load_keys() {

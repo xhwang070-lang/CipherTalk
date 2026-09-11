@@ -142,12 +142,13 @@ function DatabaseTab({ showMessage }: DatabaseTabProps) {
     setIsGettingKey(true)
     setKeyStatus('正在检查本地密钥包...')
     try {
-      const result = await window.electronAPI.wxKey.useLocalKeys()
-      if (result.success) {
-        showMessage(`已使用本地密钥包（${result.count} 个库）。开库走自己的 DLL，未扫描微信。`, true)
+      const result = await window.electronAPI.wxKey.useLocalKeys(dbPath || undefined, wxid || undefined)
+      if (result.success && result.key) {
+        setDecryptKey(result.key)
+        showMessage(`已从本地密钥包载入密钥（${result.count} 个库），未扫描微信。`, true)
         if (wxid) setIsAccountVerified(true)
       } else {
-        showMessage(result.error || '未找到本地密钥包。已禁止自动扫微信内存。', false)
+        showMessage(result.error || '未找到本地密钥包。请粘贴密钥、导入 all_keys.json，或在安全设置同意后再扫内存。', false)
       }
     } catch (e) {
       showMessage(`检查本地密钥失败: ${e}`, false)

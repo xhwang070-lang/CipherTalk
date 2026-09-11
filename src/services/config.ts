@@ -28,6 +28,7 @@ export const CONFIG_KEYS = {
   QUOTE_STYLE: 'quoteStyle',
   SKIP_INTEGRITY_CHECK: 'skipIntegrityCheck',
   ALLOW_LIVE_MEMORY_SCAN: 'allowLiveMemoryScan',
+  ALL_KEYS_JSON_PATH: 'allKeysJsonPath',
   EXPORT_DEFAULT_DATE_RANGE: 'exportDefaultDateRange',
   AUTO_UPDATE_DATABASE: 'autoUpdateDatabase',
   // 自动同步高级参数

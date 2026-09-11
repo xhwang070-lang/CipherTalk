@@ -10,6 +10,7 @@ import {
 } from './main/startupDiagnostics'
 import { DatabaseService } from './services/database'
 import { ConfigService } from './services/config'
+import { applyKeyPackEnv, resolveKeyPackPath } from './services/localKeyPack'
 import { LogService } from './services/logService'
 import type { MainProcessContext, WindowManager } from './main/context'
 import { createWindowManager } from './main/windows/windowManager'
@@ -246,6 +247,9 @@ if (gotSingleInstanceLock) {
       configService = new ConfigService()
       markStartupMilestone('startup:config-service-create-done')
     }
+
+    const keyPackPath = resolveKeyPackPath(configService.get('allKeysJsonPath'))
+    if (keyPackPath) applyKeyPackEnv(keyPackPath)
 
     ctx.getWindowManager().setDockIcon()
 
