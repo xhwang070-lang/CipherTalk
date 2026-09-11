@@ -1,7 +1,7 @@
 ﻿import { useEffect, useState, type ReactElement, type CSSProperties, type Key } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Avatar, Button, ScrollShadow, Separator, Tabs, Tooltip } from '@heroui/react'
-import { Comment, Database, Gear, ChevronLeft, ChevronRight, ArrowDownToLine, Aperture, FaceRobot, Ghost, BookOpen, LogoMcp, PersonGear } from '@gravity-ui/icons'
+import { Comment, Database, Gear, ChevronLeft, ChevronRight, ArrowDownToLine, Aperture, FaceRobot, BookOpen, LogoMcp, PersonGear } from '@gravity-ui/icons'
 import packageJson from '../../package.json'
 import { useAppStore } from '../stores/appStore'
 import { usePluginStore, ensurePluginStoreSubscribed, selectEnabledPlugins } from '../stores/pluginStore'
@@ -10,12 +10,13 @@ import { useDeviceConnectStatus } from '../hooks/useDeviceConnectStatus'
 import { DeviceConnectStatusDot } from './DeviceConnectStatusDot'
 import DeviceConnectDialog from './DeviceConnectDialog'
 import { cn } from '../lib/utils'
+import { APP_NAME } from '../brand'
 
 const EXPANDED_WIDTH = 220
 const COLLAPSED_WIDTH = 88
 const NAV_ICON_SIZE = 23
 const SIDEBAR_ACTION_ICON_SIZE = 23
-const APP_DISPLAY_NAME = packageJson.build?.productName || packageJson.name
+const APP_DISPLAY_NAME = APP_NAME
 const WECHAT_LOGO_SRC = './微信logo.png'
 
 type RouteItem = {
@@ -68,10 +69,9 @@ function Sidebar({ autoCollapse = false }: { autoCollapse?: boolean }) {
   }, [])
 
  const navItems: NavItemConfig[] = [
-    { key: 'agent', label: 'CT-Agent', icon: <FaceRobot width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/agent' },
+    { key: 'agent', label: '助手', icon: <FaceRobot width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/agent' },
     { key: 'personas', label: 'AI 克隆', icon: <PersonGear width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/personas' },
     { key: 'diary', label: '日记', icon: <BookOpen width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/diary' },
-    { key: 'pets', label: 'AI 宠物', icon: <Ghost width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/pets' },
     { key: 'chat', label: '聊天查看', icon: <Comment width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/chat' },
     { key: 'moments', label: '朋友圈', icon: <Aperture width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/moments' },
     { key: 'export', label: '导出数据', icon: <ArrowDownToLine width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/export' },

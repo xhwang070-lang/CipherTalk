@@ -167,7 +167,7 @@ export function AgentShareCard({ data, captureRef }: { data: AgentSharePreviewDa
         <div style={headerRowStyle}>
           <div style={{ minWidth: 0 }}>
             <div style={{ color: '#64748b', fontSize: 13, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-              CipherTalk · Agent 分享
+              华记 · 助手分享
             </div>
             <h2 style={titleStyle}>{data.title}</h2>
           </div>
@@ -244,7 +244,7 @@ export function AgentShareCard({ data, captureRef }: { data: AgentSharePreviewDa
       </div>
 
       <div style={footerStyle}>
-        <span>由 CipherTalk 生成</span>
+        <span>由华记生成</span>
         <span>{data.messages.length} 条消息</span>
       </div>
     </div>

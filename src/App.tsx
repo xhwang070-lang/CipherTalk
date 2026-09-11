@@ -234,27 +234,13 @@ function App() {
   const handleAgree = async () => {
     await configService.acceptCurrentAgreement()
     setShowAgreement(false)
-    // 协议同意后检查激活状态
-    const status = await checkActivationStatus()
-    if (!status?.isActivated || (status.daysRemaining !== null && status.daysRemaining <= 0)) {
-      setShowActivation(true)
-    }
   }
 
   const handleDisagree = () => {
     window.electronAPI.window.close()
   }
 
-  // 检查激活状态（协议同意后）
-  useEffect(() => {
-    if (!showAgreement && !agreementLoading && !activationInitialized) {
-      checkActivationStatus().then(status => {
-        if (!status?.isActivated || (status.daysRemaining !== null && status.daysRemaining <= 0)) {
-          setShowActivation(true)
-        }
-      })
-    }
-  }, [showAgreement, agreementLoading, activationInitialized])
+  // 华记不使用密语官方激活
 
   const handleActivated = () => {
     setShowActivation(false)
@@ -641,7 +627,7 @@ function App() {
               <h2>用户协议与隐私政策 <span style={{ fontSize: '14px', fontWeight: 'normal', opacity: 0.6 }}>v{configService.CURRENT_AGREEMENT_VERSION}.0</span></h2>
             </div>
             <div className="agreement-window-body">
-              <p className="agreement-intro">欢迎使用密语！在使用本软件前，请仔细阅读并同意以下条款：</p>
+              <p className="agreement-intro">欢迎使用华记。使用前请阅读并同意以下条款：</p>
 
               <div className="agreement-scroll">
                 <h3>一、用户协议</h3>
@@ -735,15 +721,6 @@ function App() {
     )
   }
 
-  // 激活页面 - 未激活或已过期时显示
-  if (showActivation && !showAgreement) {
-    return (
-      <div className="app-container">
-        <TitleBar />
-        <ActivationPage onActivated={handleActivated} />
-      </div>
-    )
-  }
 
   // 主窗口 - 完整布局
   const disableContentOverflow = ['/data-management', '/settings', '/mcp', '/agent', '/personas', '/diary', '/pets', '/chat', '/moments'].includes(location.pathname)

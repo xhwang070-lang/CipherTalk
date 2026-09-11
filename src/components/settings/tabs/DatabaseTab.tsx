@@ -586,7 +586,7 @@ function DatabaseTab({ showMessage }: DatabaseTabProps) {
             <Card className="h-fit">
               <Card.Header>
                 <Card.Title>数据库配置</Card.Title>
-                <Card.Description>配置微信数据目录。开库使用本地密钥包，不调用密语原版扫内存。</Card.Description>
+                <Card.Description>配置微信数据目录。开库使用本地密钥包，默认不扫内存，管理员可另行开启。</Card.Description>
               </Card.Header>
               <Card.Content>
                 <Fieldset>

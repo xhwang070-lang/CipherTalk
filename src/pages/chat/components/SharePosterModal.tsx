@@ -342,7 +342,7 @@ export function SharePosterModal({ session, messages, myAvatarUrl, onClose, show
       const domtoimage = (await import('dom-to-image-more')).default
       const dataUrl = await (domtoimage as any).toPng(node, getPosterExportOptions(node))
       const link = document.createElement('a')
-      link.download = `密语聊天记录-${Date.now()}.png`
+      link.download = `华记聊天记录-${Date.now()}.png`
       link.href = dataUrl
       link.click()
       showTopToast('海报已保存', true)
@@ -510,7 +510,7 @@ export function SharePosterModal({ session, messages, myAvatarUrl, onClose, show
                 })}
               </div>
 
-              <div className="poster-card__footer">由 密语 CipherTalk 导出</div>
+              <div className="poster-card__footer">由华记导出</div>
             </div>
           </div>
         </main>

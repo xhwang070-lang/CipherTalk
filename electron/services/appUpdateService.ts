@@ -1,10 +1,10 @@
 import { app } from 'electron'
 import { autoUpdater } from 'electron-updater'
 
-const GITHUB_OWNER = 'ILoveBingLu'
-const GITHUB_REPO = 'CipherTalk'
-const GITHUB_FORCE_UPDATE_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest/download/force-update.json`
-const R2_UPDATE_BASE_URL = 'https://miyuapp.aiqji.com'
+const GITHUB_OWNER = 'huabo'
+const GITHUB_REPO = 'huaji'
+const GITHUB_FORCE_UPDATE_URL = ''
+const R2_UPDATE_BASE_URL = ''
 
 export type ForceUpdateReason = 'minimum-version' | 'blocked-version'
 export type AppUpdateSource = 'r2' | 'github' | 'custom' | 'none'
@@ -271,7 +271,7 @@ class AppUpdateService {
   async checkForUpdates(): Promise<AppUpdateInfo> {
     const currentVersion = app.getVersion()
 
-    // 屏蔽更新检查 - 始终返回无需更新
+    // 华记：未配置私有仓库更新地址时不联网
     console.log('[AppUpdate Debug] checkForUpdates 被调用')
     console.trace('[AppUpdate Debug] 调用堆栈:')
 

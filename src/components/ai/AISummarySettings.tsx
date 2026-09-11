@@ -36,15 +36,13 @@ import { useSettingsStore } from '../settings/settingsStore'
 import AIProviderLogo from './AIProviderLogo'
 import EmbeddingTab from '../settings/tabs/EmbeddingTab'
 import RerankTab from '../settings/tabs/RerankTab'
-import TtsTab from '../settings/tabs/TtsTab'
-import ImageGenTab from '../settings/tabs/ImageGenTab'
 import LocalCodingAgentSettings from './LocalCodingAgentSettings'
 import ChatGPTSubscriptionAuth from './ChatGPTSubscriptionAuth'
 import RelayOneAccountPanel from './RelayOneAccountPanel'
 
 type AiProviderProtocol = configService.AiProviderProtocol
 type PresetTab = 'name' | 'provider' | 'config'
-type ConfigMode = 'llm' | 'vector' | 'rerank' | 'tts' | 'imageGen' | 'localAgent'
+type ConfigMode = 'llm' | 'vector' | 'rerank' | 'localAgent'
 
 interface AISummarySettingsProps {
   showMessage: (text: string, success: boolean) => void
@@ -992,8 +990,6 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
                   <Tabs.Tab className="whitespace-nowrap" id="llm">大模型<Tabs.Indicator /></Tabs.Tab>
                   <Tabs.Tab className="whitespace-nowrap" id="vector">向量<Tabs.Indicator /></Tabs.Tab>
                   <Tabs.Tab className="whitespace-nowrap" id="rerank">重排<Tabs.Indicator /></Tabs.Tab>
-                  <Tabs.Tab className="whitespace-nowrap" id="tts">语音<Tabs.Indicator /></Tabs.Tab>
-                  <Tabs.Tab className="whitespace-nowrap" id="imageGen">作图<Tabs.Indicator /></Tabs.Tab>
                   <Tabs.Tab className="whitespace-nowrap" id="localAgent">本地智能体<Tabs.Indicator /></Tabs.Tab>
                 </Tabs.List>
               </Tabs.ListContainer>
@@ -1262,15 +1258,13 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
             <Alert status="default">
               <Alert.Content>
                 <Alert.Title>本地保存</Alert.Title>
-                <Alert.Description>{isCodexSubscription ? 'ChatGPT 登录凭据仅保存在密语的数据目录中，不会读取或修改电脑上的 Codex 登录。' : 'API 密钥仅保存在本地。连接测试与模型刷新会向当前服务商发起请求。'}</Alert.Description>
+                <Alert.Description>{isCodexSubscription ? 'ChatGPT 登录凭据仅保存在华记的数据目录中，不会读取或修改电脑上的 Codex 登录。' : 'API 密钥仅保存在本地。连接测试与模型刷新会向当前服务商发起请求。'}</Alert.Description>
               </Alert.Content>
             </Alert>
           </aside>
         </div>
         {configMode === 'vector' && <EmbeddingTab />}
         {configMode === 'rerank' && <RerankTab />}
-        {configMode === 'tts' && <TtsTab />}
-        {configMode === 'imageGen' && <ImageGenTab />}
         {configMode === 'localAgent' && <LocalCodingAgentSettings showMessage={showMessage} />}
       </div>
 

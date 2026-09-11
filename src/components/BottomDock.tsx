@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { House, Comment, Database, Gear, ArrowDownToLine, Aperture, FaceRobot, LogoMcp, PersonGear, BookOpen, Ghost } from '@gravity-ui/icons'
+import { House, Comment, Database, Gear, ArrowDownToLine, Aperture, FaceRobot, LogoMcp, PersonGear, BookOpen } from '@gravity-ui/icons'
 import type { IconComponent } from '@/types/icon'
 import MacOSDock, { type DockApp } from '@/components/ui/mac-os-dock'
 import { useThemeStore } from '@/stores/themeStore'
@@ -109,7 +109,6 @@ function BottomDock() {
     { id: 'agent', name: 'CT-Agent', icon: makeIcon(FaceRobot) },
     { id: 'personas', name: 'AI 克隆', icon: makeIcon(PersonGear) },
     { id: 'diary', name: '日记', icon: makeIcon(BookOpen) },
-    { id: 'pets', name: 'AI 宠物', icon: makeIcon(Ghost) },
     { id: 'chat', name: '聊天查看', icon: makeIcon(Comment) },
     { id: 'moments', name: '朋友圈', icon: makeIcon(Aperture) },
     { id: 'export', name: '导出数据', icon: makeIcon(ArrowDownToLine) },
@@ -131,7 +130,6 @@ function BottomDock() {
       case 'agent': navigate('/agent'); break
       case 'personas': navigate('/personas'); break
       case 'diary': navigate('/diary'); break
-      case 'pets': navigate('/pets'); break
       case 'chat': navigate('/chat'); break
       case 'moments': navigate('/moments'); break
       case 'device-connect': setDeviceConnectOpen(true); break

@@ -147,7 +147,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             // 回退到 WebAuthn (兼容性)
             const publicKey: PublicKeyCredentialCreationOptions = {
                 challenge: new Uint8Array([1, 2, 3, 4]),
-                rp: { name: 'CipherTalk' },
+                rp: { name: '华记' },
                 user: {
                     id: new Uint8Array([1, 2, 3, 4]),
                     name: 'user',
@@ -254,8 +254,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 const systemStatus = await window.electronAPI.systemAuth.getStatus()
                 const result = await window.electronAPI.systemAuth.verify(
                     systemStatus.platform === 'darwin'
-                        ? '请验证您的身份以通过 Touch ID 解锁 CipherTalk'
-                        : '请验证您的身份以解锁 CipherTalk'
+                        ? '请验证您的身份以通过 Touch ID 解锁华记'
+                        : '请验证您的身份以解锁华记'
                 )
                 if (result.success) {
                     set({

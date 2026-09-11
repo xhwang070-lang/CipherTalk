@@ -19,6 +19,7 @@ import { appUpdateService } from '../../services/appUpdateService'
 import { mcpProxyService } from '../../services/mcp/proxyService'
 import { voiceTranscribeServiceWhisper } from '../../services/voiceTranscribeServiceWhisper'
 import { attachWindowStartupDiagnostics, markStartupMilestone, logStartupError } from '../startupDiagnostics'
+import { APP_NAME } from '../../brand'
 import type { ImageViewerOpenOptions, MainProcessContext, ReplyTileEntry, WindowManager } from '../context'
 import { placeNativeWindowBehindForeground, probeWeChatWindow, watchWeChatWindowEvents } from '../../services/wechatWindowTracker'
 
@@ -634,7 +635,7 @@ export function createWindowManager(ctx: MainProcessContext): WindowManager {
       tray.setIgnoreDoubleClickEvents(true)
     }
 
-    tray.setToolTip('密语 CipherTalk')
+    tray.setToolTip(APP_NAME)
     tray.on('click', () => { void showTrayMenu() })
     tray.on('right-click', () => { void showTrayMenu() })
 
@@ -651,6 +652,7 @@ export function createWindowManager(ctx: MainProcessContext): WindowManager {
         height: 900,
         minWidth: 1000,
         minHeight: 700,
+        title: APP_NAME,
         ...getWindowIconOptions(ctx),
         webPreferences: {
           preload: join(__dirname, 'preload.js'),
@@ -1161,7 +1163,7 @@ export function createWindowManager(ctx: MainProcessContext): WindowManager {
           nodeIntegration: false,
           webSecurity: false
         },
-        title: '获取激活码 - 密语',
+        title: APP_NAME,
         show: false,
         backgroundColor: '#FFFFFF',
         autoHideMenuBar: true

@@ -1,3 +1,4 @@
+import { APP_NAME, APP_ORG, APP_TAGLINE, APP_ATTRIBUTION } from '../../../brand'
 import { Alert, Button, Chip, Label, ProgressBar, Separator, Typography } from '@heroui/react'
 import { ArrowDownToLine, ArrowUpRightFromSquare, ArrowsRotateLeft, LogoGithub, ShieldCheck } from '@gravity-ui/icons'
 import type { UpdateDownloadProgressPayload } from '../../../types/electron'
@@ -17,14 +18,10 @@ interface AboutTabProps {
 }
 
 const projectLinks = [
-  { label: '密语 CipherTalk', url: 'https://github.com/ILoveBingLu/miyu' },
-  { label: 'WeFlow', url: 'https://github.com/hicccc77/WeFlow' }
+  { label: '密语 CipherTalk（上游开源）', url: 'https://github.com/ILoveBingLu/miyu' }
 ]
 
-const relatedLinks = [
-  { label: '官网', url: 'https://miyu.aiqji.com' },
-  { label: 'ChatLab', url: 'https://chatlab.fun' }
-]
+const relatedLinks: Array<{ label: string; url: string }> = []
 
 function AboutTab({
   appVersion,
@@ -101,7 +98,7 @@ function AboutTab({
     return (
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Typography.Paragraph size="sm" color="muted">
-          当前版本已安装。可以手动检查是否有新的稳定版本。
+          当前版本已安装。更新只从华记私有仓库获取；未配置更新地址时不会联网检查。
         </Typography.Paragraph>
         <Button
           type="button"
@@ -122,23 +119,23 @@ function AboutTab({
         <div className="flex min-w-0 flex-col items-start gap-5 sm:flex-row sm:items-center">
           <img
             src="./About.png"
-            alt="密语 CipherTalk"
+            alt={APP_NAME}
             className="pointer-events-none h-auto w-32 shrink-0 object-contain select-none"
           />
           <div className="min-w-0 space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <Typography.Heading level={2} className="text-2xl font-semibold text-foreground">
-                密语 CipherTalk
+                {APP_NAME}
               </Typography.Heading>
               <Chip size="sm" variant="soft">
                 <Chip.Label>{appVersion ? formatDisplayVersion(appVersion) : 'v...'}</Chip.Label>
               </Chip>
             </div>
             <Typography.Paragraph size="sm" color="muted" className="max-w-2xl">
-              本地优先的微信数据浏览、检索与分析工具，面向个人数据归档与回顾场景。
+              {APP_TAGLINE}。聊天记录只留在这台电脑。
             </Typography.Paragraph>
             <Typography.Paragraph size="sm" color="muted" className="max-w-2xl">
-              本机个人使用版：聊天记录只留在这台电脑，不上传。界面基于开源项目密语 CipherTalk（CC BY-NC-SA 4.0），保留原作者署名。
+              {APP_ATTRIBUTION}
             </Typography.Paragraph>
             <div className="flex flex-wrap items-center gap-2">
               <Chip size="sm" color={updateInfo?.hasUpdate ? 'warning' : 'success'} variant="soft">
@@ -239,12 +236,12 @@ function AboutTab({
           <Alert.Content>
             <Alert.Title>免费软件声明</Alert.Title>
             <Alert.Description>
-              本软件免费提供。如发现未经授权的付费售卖或二次分发，请谨慎辨别，并优先从官方渠道获取。
+              本软件仅供华博管业内部本机使用，聊天记录不上传。
             </Alert.Description>
           </Alert.Content>
         </Alert>
         <Typography.Paragraph size="xs" color="muted" className="text-center">
-          © {currentYear} 密语-CipherTalk. All rights reserved.
+          © {currentYear} {APP_ORG} · {APP_NAME}
         </Typography.Paragraph>
       </section>
     </div>

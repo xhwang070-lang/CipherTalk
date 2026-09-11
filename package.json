@@ -1,7 +1,7 @@
 {
   "name": "ciphertalk",
   "version": "2026.728.0",
-  "description": "密语 - 微信聊天记录查看工具",
+  "description": "华记 - 华博管业本机微信档案",
   "author": "ILoveBingLu",
   "license": "CC-BY-NC-SA-4.0",
   "main": "dist-electron/main.js",
@@ -143,7 +143,7 @@
   },
   "build": {
     "appId": "com.ciphertalk.app",
-    "productName": "CipherTalk",
+    "productName": "Huaji",
     "compression": "maximum",
     "npmRebuild": false,
     "afterPack": "scripts/clean-locales.js",

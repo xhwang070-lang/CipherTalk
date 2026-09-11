@@ -1,0 +1,6 @@
+export const APP_NAME = '华记'
+export const APP_NAME_EN = 'Huaji'
+export const APP_ORG = '华博管业'
+export const APP_TAGLINE = '华博管业本机微信档案'
+export const APP_WATERMARK = '由华记导出'
+export const APP_ATTRIBUTION = '基于开源项目密语 CipherTalk（CC BY-NC-SA 4.0），保留原作者署名。'

@@ -1,4 +1,5 @@
 import { ReactNode } from 'react'
+import { APP_NAME } from '../brand'
 import { ArrowsRotateRight } from '@gravity-ui/icons'
 import { usePlatformInfo } from '../hooks/usePlatformInfo'
 import { useTitleBarStore } from '../stores/titleBarStore'
@@ -38,8 +39,8 @@ function TitleBar({ className, rightContent, title, variant = 'app', showTitle =
 
   const titleNode = showTitle ? (
     <>
-      <img src="./logo.png" alt="密语" className="title-logo" />
-      <span className="titles">{displayTitle || 'CipherTalk'}</span>
+      <img src="./logo.png" alt={APP_NAME} className="title-logo" />
+      <span className="titles">{displayTitle || APP_NAME}</span>
     </>
   ) : null
 
