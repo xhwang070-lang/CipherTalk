@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { AlertDialog, Button, Card, Chip, Description, InputGroup, Label, TextField, Typography } from '@heroui/react'
+import { useEffect, useState } from 'react'
+import { AlertDialog, Button, Card, Chip, Description, InputGroup, Label, Switch, TextField, Typography } from '@heroui/react'
 import { Check, Fingerprint, FloppyDisk, Key, Lock, ShieldCheck } from '@gravity-ui/icons'
 import { useAuthStore } from '../../../stores/authStore'
+import * as configService from '../../../services/config'
 
 interface SecurityTabProps {
   isMac: boolean
@@ -22,6 +23,34 @@ function SecurityTab({ isMac, showMessage }: SecurityTabProps) {
   const [securityConfirm, setSecurityConfirm] = useState<SecurityConfirmState>({
     show: false, title: '', message: '', onConfirm: () => { }
   })
+  const [allowLiveMemoryScan, setAllowLiveMemoryScan] = useState(false)
+
+  useEffect(() => {
+    void configService.getAllowLiveMemoryScan().then(setAllowLiveMemoryScan)
+  }, [])
+
+  const persistLiveMemoryScan = async (enabled: boolean) => {
+    await configService.setAllowLiveMemoryScan(enabled)
+    setAllowLiveMemoryScan(enabled)
+    showMessage(enabled ? '已允许管理员扫微信内存取密钥' : '已关闭扫微信内存', true)
+  }
+
+  const handleLiveMemoryScanToggle = (enabled: boolean) => {
+    if (!enabled) {
+      void persistLiveMemoryScan(false)
+      return
+    }
+    setSecurityConfirm({
+      show: true,
+      title: '允许扫微信内存？',
+      message: '开启后，数据解密页会出现「扫微信内存」按钮。点击时会读取已登录微信进程的内存来补密钥，不是默认开库方式。平时仍用本地密钥包。仅本机管理员需要补密钥时再开。',
+      onConfirm: async () => {
+        await persistLiveMemoryScan(true)
+        closeConfirm()
+      }
+    })
+  }
+
 
   const biometricLabel = isMac ? 'Touch ID' : 'Windows Hello'
   // Windows Hello 依赖 WebAuthn，仅在安全源(localhost)可用；打包版是 file:// 会被浏览器拒绝。
@@ -210,6 +239,33 @@ function SecurityTab({ isMac, showMessage }: SecurityTabProps) {
               </Button>
             )}
           </Card.Footer>
+        </Card>
+      </section>
+
+      <section>
+        <Card className="h-fit">
+          <Card.Header className="flex-row items-start justify-between gap-3">
+            <div className="flex min-w-0 gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-default text-foreground">
+                <ShieldCheck width={20} height={20} />
+              </div>
+              <div className="min-w-0">
+                <Card.Title>管理员：扫微信内存</Card.Title>
+                <Card.Description>
+                  默认关闭。开库走本地密钥包，不会在登录微信时自动扫内存。只有管理员打开后，数据解密页才会出现扫内存按钮，并且每次仍要再确认一次。
+                </Card.Description>
+              </div>
+            </div>
+            <Switch
+              isSelected={allowLiveMemoryScan}
+              onChange={handleLiveMemoryScanToggle}
+              aria-label="允许扫微信内存"
+            >
+              <Switch.Control>
+                <Switch.Thumb />
+              </Switch.Control>
+            </Switch>
+          </Card.Header>
         </Card>
       </section>
 

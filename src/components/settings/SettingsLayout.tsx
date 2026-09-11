@@ -201,14 +201,12 @@ function SettingsLayout() {
 
   const [isLoading, setIsLoadingState] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
-  const [isGettingKey, setIsGettingKey] = useState(false)
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState(0)
   const [downloadProgressDetail, setDownloadProgressDetail] = useState<UpdateDownloadProgressPayload | null>(null)
   const [appVersion, setAppVersion] = useState('')
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
-  const [keyStatus, setKeyStatus] = useState('')
   const [showDecryptKey, setShowDecryptKey] = useState(false)
   const [showXorKey, setShowXorKey] = useState(false)
   const [closeToTray, setCloseToTray] = useState(true)
@@ -776,156 +774,6 @@ function SettingsLayout() {
       setIsDownloading(false)
       await syncUpdateState()
     }
-  }
-
-  const handleGetKey = async () => {
-    if (isGettingKey) return
-    setIsGettingKey(true)
-    setKeyStatus(isMac ? '正在准备 macOS helper...' : '正在检查微信进程...')
-
-    try {
-      if (isMac) {
-        const removeListener = window.electronAPI.wxKey.onStatus(({ status }) => {
-          setKeyStatus(status)
-        })
-
-        const result = await window.electronAPI.wxKey.startGetKey(undefined, dbPath || undefined)
-        removeListener()
-
-        if (result.success && result.key) {
-          setDecryptKey(result.key)
-
-          if (dbPath) {
-            const resolved = await window.electronAPI.wcdb.resolveValidWxid(dbPath, result.key)
-            if (resolved.success && resolved.wxid) {
-              setWxid(resolved.wxid)
-              setIsAccountVerified(true)
-              showMessage(`密钥获取成功！已验证账号: ${resolved.wxid}`, true)
-              setKeyStatus('')
-              return
-            }
-          }
-
-          if (result.validatedWxid) {
-            setWxid(result.validatedWxid)
-            setIsAccountVerified(true)
-            showMessage(`密钥获取成功！已验证账号: ${result.validatedWxid}`, true)
-            setKeyStatus('')
-            return
-          }
-
-          setKeyStatus('正在检测当前登录账号...')
-
-          let accountInfo = await window.electronAPI.wxKey.detectCurrentAccount(dbPath, 10)
-          if (!accountInfo) {
-            accountInfo = await window.electronAPI.wxKey.detectCurrentAccount(dbPath, 60)
-          }
-
-          if (accountInfo) {
-            setWxid(accountInfo.wxid)
-            setIsAccountVerified(false)
-            showMessage(`密钥获取成功！已识别候选账号: ${accountInfo.wxid}，请继续验证目录。`, true)
-          } else {
-            const wxids = await window.electronAPI.dbPath.scanWxids(dbPath)
-            setWxidOptions(wxids)
-            setIsAccountVerified(false)
-
-            if (wxids.length === 1) {
-              setWxid(wxids[0])
-              showMessage('密钥获取成功，已识别到 1 个候选账号目录，请继续验证。', true)
-            } else if (wxids.length > 1) {
-              setShowWxidDropdown(true)
-              showMessage(`密钥获取成功，识别到 ${wxids.length} 个候选账号目录，请选择后验证。`, true)
-            } else {
-              showMessage('密钥获取成功，请手动填写或扫描账号目录后继续验证。', true)
-            }
-          }
-
-          setKeyStatus('')
-        } else {
-          showMessage(result.error || '获取密钥失败', false)
-          setKeyStatus('')
-        }
-
-        return
-      }
-
-      const isRunning = await window.electronAPI.wxKey.isWeChatRunning()
-      if (isRunning) {
-        const shouldKill = window.confirm('检测到微信正在运行，需要重启微信才能获取密钥。\n是否关闭当前微信？')
-        if (!shouldKill) {
-          setKeyStatus('已取消')
-          setIsGettingKey(false)
-          return
-        }
-        setKeyStatus('正在关闭微信...')
-        await window.electronAPI.wxKey.killWeChat()
-        await new Promise(resolve => setTimeout(resolve, 2000))
-      }
-
-      setKeyStatus('正在启动微信...')
-      const launched = await window.electronAPI.wxKey.launchWeChat()
-      if (!launched) {
-        showMessage('微信启动失败，请检查安装路径', false)
-        setKeyStatus('')
-        setIsGettingKey(false)
-        return
-      }
-
-      setKeyStatus('等待微信窗口加载...')
-      const windowReady = await window.electronAPI.wxKey.waitForWindow(15)
-      if (!windowReady) {
-        showMessage('等待微信窗口超时', false)
-        setKeyStatus('')
-        setIsGettingKey(false)
-        return
-      }
-
-      const removeListener = window.electronAPI.wxKey.onStatus(({ status }) => {
-        setKeyStatus(status)
-      })
-
-      setKeyStatus('正在启动微信并扫描内存获取密钥...')
-      const result = await window.electronAPI.wxKey.startGetKey(undefined, dbPath || undefined)
-      removeListener()
-
-      if (result.success && result.key) {
-        setDecryptKey(result.key)
-
-        // 自动检测当前登录的微信账号
-        setKeyStatus('正在检测当前登录账号...')
-
-        // 先尝试较短的时间范围（刚登录的情况）
-        let accountInfo = await window.electronAPI.wxKey.detectCurrentAccount(dbPath, 10) // 10分钟
-
-        // 如果没找到，尝试更长的时间范围
-        if (!accountInfo) {
-          accountInfo = await window.electronAPI.wxKey.detectCurrentAccount(dbPath, 60) // 1小时
-        }
-
-        if (accountInfo) {
-          setWxid(accountInfo.wxid)
-          showMessage(`密钥获取成功！已自动绑定账号: ${accountInfo.wxid}`, true)
-        } else {
-          showMessage('密钥获取成功，已自动保存！（未能自动检测账号，请手动输入 wxid）', true)
-        }
-        setKeyStatus('')
-      } else {
-        showMessage(result.error || '获取密钥失败', false)
-        setKeyStatus('')
-      }
-    } catch (e) {
-      showMessage(`获取密钥失败: ${e}`, false)
-      setKeyStatus('')
-    } finally {
-      setIsGettingKey(false)
-    }
-  }
-
-  const handleCancelGetKey = async () => {
-    await window.electronAPI.wxKey.cancel()
-    setIsGettingKey(false)
-    setKeyStatus('')
   }
 
   const handleOpenWelcomeWindow = async () => {

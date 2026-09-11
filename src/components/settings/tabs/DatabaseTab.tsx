@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
-import { Alert, Avatar, Button, Card, Chip, ComboBox, Description, Fieldset, Input, InputGroup, Label, ListBox, Separator, TextField, Typography } from '@heroui/react'
+import { Alert, AlertDialog, Avatar, Button, Card, Chip, ComboBox, Description, Fieldset, Input, InputGroup, Label, ListBox, Separator, TextField, Typography } from '@heroui/react'
 import { useRef, type ReactNode } from 'react'
 import { ArrowRotateLeft, ArrowsRotateLeft, Check, CircleCheck, Copy, Eye, EyeSlash, FolderOpen, Key, Magnifier, Picture, PlugConnection, ShieldCheck, Thunderbolt, Xmark } from '@gravity-ui/icons'
 import { useAppStore } from '../../../stores/appStore'
@@ -70,6 +70,8 @@ function DatabaseTab({ showMessage }: DatabaseTabProps) {
   const [isTesting, setIsTesting] = useState(false)
   const [isGettingKey, setIsGettingKey] = useState(false)
   const [keyStatus, setKeyStatus] = useState('')
+  const [allowLiveMemoryScan, setAllowLiveMemoryScan] = useState(false)
+  const [liveScanConfirm, setLiveScanConfirm] = useState(false)
   const [visibleSecrets, setVisibleSecrets] = useState<Record<SecretFieldId, boolean>>({
     decryptKey: false,
     imageXorKey: false,
@@ -80,6 +82,9 @@ function DatabaseTab({ showMessage }: DatabaseTabProps) {
 
   useEffect(() => {
     refreshAccountsState()
+    void window.electronAPI.wxKey.isLiveScanAllowed().then((res) => {
+      setAllowLiveMemoryScan(res.success && res.allowed === true)
+    })
   }, [])
 
   useEffect(() => {
@@ -156,6 +161,42 @@ function DatabaseTab({ showMessage }: DatabaseTabProps) {
     await window.electronAPI.wxKey.cancel()
     setIsGettingKey(false)
     setKeyStatus('')
+  }
+
+  const runLiveMemoryScan = async () => {
+    if (isGettingKey) return
+    setLiveScanConfirm(false)
+    setIsGettingKey(true)
+    setKeyStatus('正在扫微信内存...')
+    try {
+      const allowed = await window.electronAPI.wxKey.isLiveScanAllowed()
+      if (!allowed.success || !allowed.allowed) {
+        showMessage('管理员未开启扫微信内存。请到安全设置打开后再试。', false)
+        return
+      }
+      const removeListener = window.electronAPI.wxKey.onStatus(({ status }) => {
+        setKeyStatus(status)
+      })
+      const result = await window.electronAPI.wxKey.startGetKey(undefined, dbPath || undefined)
+      removeListener()
+      if (result.success && result.key) {
+        setDecryptKey(result.key)
+        if (result.validatedWxid) {
+          setWxid(result.validatedWxid)
+          setIsAccountVerified(true)
+          showMessage(`已从微信内存取出密钥，并验证账号: ${result.validatedWxid}`, true)
+        } else {
+          showMessage('已从微信内存取出密钥。请继续验证账号目录。', true)
+        }
+      } else {
+        showMessage(result.error || '扫微信内存失败', false)
+      }
+    } catch (e) {
+      showMessage(`扫微信内存失败: ${e}`, false)
+    } finally {
+      setKeyStatus('')
+      setIsGettingKey(false)
+    }
   }
 
   const handleOpenWelcomeWindow = async () => {
@@ -621,11 +662,16 @@ function DatabaseTab({ showMessage }: DatabaseTabProps) {
               </Card.Content>
               <Card.Footer className="flex flex-wrap gap-2">
                 <Button type="button" variant="primary" size="sm" onPress={handleGetKey} isDisabled={isGettingKey}>
-                  <Key width={16} height={16} /> {isGettingKey ? '获取中...' : '自动获取密钥'}
+                  <Key width={16} height={16} /> {isGettingKey ? '获取中...' : '使用本地密钥包'}
                 </Button>
                 {isGettingKey && (
                   <Button type="button" variant="outline" size="sm" onPress={handleCancelGetKey}>
                     <Xmark width={16} height={16} /> 取消
+                  </Button>
+                )}
+                {allowLiveMemoryScan && (
+                  <Button type="button" variant="outline" size="sm" onPress={() => setLiveScanConfirm(true)} isDisabled={isGettingKey}>
+                    <ShieldCheck width={16} height={16} /> 扫微信内存
                   </Button>
                 )}
               </Card.Footer>
@@ -817,6 +863,33 @@ function DatabaseTab({ showMessage }: DatabaseTabProps) {
   return (
     <>
       {renderDatabaseTab()}
+      {liveScanConfirm && (
+        <AlertDialog isOpen={liveScanConfirm} onOpenChange={(open) => {
+          if (!open) setLiveScanConfirm(false)
+        }}>
+          <Button className="hidden" aria-hidden="true">打开确认框</Button>
+          <AlertDialog.Backdrop>
+            <AlertDialog.Container>
+              <AlertDialog.Dialog className="sm:max-w-105">
+                <AlertDialog.CloseTrigger />
+                <AlertDialog.Header>
+                  <AlertDialog.Icon status="warning" />
+                  <AlertDialog.Heading>确认扫微信内存？</AlertDialog.Heading>
+                </AlertDialog.Header>
+                <AlertDialog.Body>
+                  <p>将读取当前已登录微信进程的内存来补密钥。这不是默认开库方式。平时请继续用本地密钥包。</p>
+                </AlertDialog.Body>
+                <AlertDialog.Footer>
+                  <Button slot="close" variant="tertiary">取消</Button>
+                  <Button slot="close" variant="primary" onPress={() => void runLiveMemoryScan()}>
+                    确认扫描
+                  </Button>
+                </AlertDialog.Footer>
+              </AlertDialog.Dialog>
+            </AlertDialog.Container>
+          </AlertDialog.Backdrop>
+        </AlertDialog>
+      )}
     </>
   )
 }

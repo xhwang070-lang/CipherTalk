@@ -11,6 +11,15 @@ import type { MainProcessContext } from '../context'
  * 微信密钥获取 IPC。
  * macOS 和 Windows 流程不同，wxkey:status 是前端步骤提示依赖的进度事件。
  */
+function isLiveMemoryScanAllowed(ctx: MainProcessContext): boolean {
+  if (process.env.WEFLOW_ALLOW_LIVE_MEMORY_SCAN === '1') return true
+  try {
+    return ctx.getConfigService()?.get('allowLiveMemoryScan') === true
+  } catch {
+    return false
+  }
+}
+
 export function registerWxKeyHandlers(ctx: MainProcessContext): void {
   ipcMain.handle('wxkey:isWeChatRunning', async () => {
     if (process.platform === 'darwin') {
@@ -66,13 +75,17 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
     }
   })
 
+  ipcMain.handle('wxkey:isLiveScanAllowed', async () => {
+    return { success: true, allowed: isLiveMemoryScanAllowed(ctx) }
+  })
+
   ipcMain.handle('wxkey:startGetKey', async (event, customWechatPath?: string, dbPath?: string) => {
-    const allowLive = process.env.WEFLOW_ALLOW_LIVE_MEMORY_SCAN === '1'
+    const allowLive = isLiveMemoryScanAllowed(ctx)
     if (!allowLive) {
-      ctx.getLogService()?.warn('WxKey', '拒绝扫微信内存（未授权）')
+      ctx.getLogService()?.warn('WxKey', '拒绝扫微信内存（管理员未开启）')
       return {
         success: false,
-        error: '已禁用登录微信时扫描内存。开库使用本地 all_keys.json 和自己的 DLL。如需扫内存，必须你明确同意。'
+        error: '已禁用登录微信时扫描内存。开库使用本地密钥包。如需扫内存，请先在安全设置里由管理员开启。'
       }
     }
     ctx.getLogService()?.info('WxKey', '开始获取微信密钥', { customWechatPath })

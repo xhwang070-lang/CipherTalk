@@ -27,6 +27,7 @@ export const CONFIG_KEYS = {
   STT_ONLINE_MAX_CONCURRENCY: 'sttOnlineMaxConcurrency',
   QUOTE_STYLE: 'quoteStyle',
   SKIP_INTEGRITY_CHECK: 'skipIntegrityCheck',
+  ALLOW_LIVE_MEMORY_SCAN: 'allowLiveMemoryScan',
   EXPORT_DEFAULT_DATE_RANGE: 'exportDefaultDateRange',
   AUTO_UPDATE_DATABASE: 'autoUpdateDatabase',
   // 自动同步高级参数
@@ -372,6 +373,16 @@ export async function setQuoteStyle(style: QuoteStyleConfig): Promise<void> {
 }
 
 // 获取是否跳过完整性检查
+
+export async function getAllowLiveMemoryScan(): Promise<boolean> {
+  const value = await config.get(CONFIG_KEYS.ALLOW_LIVE_MEMORY_SCAN)
+  return value === true
+}
+
+export async function setAllowLiveMemoryScan(enable: boolean): Promise<void> {
+  await config.set(CONFIG_KEYS.ALLOW_LIVE_MEMORY_SCAN, enable)
+}
+
 export async function getSkipIntegrityCheck(): Promise<boolean> {
   const value = await config.get(CONFIG_KEYS.SKIP_INTEGRITY_CHECK)
   return (value as boolean) || false
