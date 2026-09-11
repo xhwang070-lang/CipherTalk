@@ -7,8 +7,7 @@ import { randomBytes } from 'crypto'
 import { z } from 'zod'
 import type { SystemModelMessage } from '@ai-sdk/provider-utils'
 import { createLanguageModel, createNativeWebSearchTools, getNativeWebSearchProvider } from './provider'
-import { buildAgentPromptParts, buildCanvasPrompt, CODE_WORKSPACE_PROMPT, IMAGE_GEN_PROMPT, PLAN_MODE_PROMPT, WEB_SEARCH_PROMPT } from './prompts'
-import { isImageGenAvailable } from '../ai/imageGenService'
+import { buildAgentPromptParts, buildCanvasPrompt, CODE_WORKSPACE_PROMPT, PLAN_MODE_PROMPT, WEB_SEARCH_PROMPT } from './prompts'
 import { applyAnthropicCacheControl, buildPromptCacheKey, buildProviderCacheStatus, buildProviderOptions, buildReasoningOption } from './cache'
 import { buildCodeOnlyTools, buildPlanModeTools, buildTools } from './tools'
 import { afterTurnMemory, buildMemoryContext, preloadRelevantMemories } from './tools/memory'
@@ -36,7 +35,6 @@ const PROMPT_OPTIMIZE_CONTEXT_MESSAGE_MAX_CHARS = 1000
 const TOOL_APPROVAL_SECRET = process.env.CT_AGENT_TOOL_APPROVAL_SECRET || randomBytes(32).toString('base64url')
 
 const RENDERABLE_FILE_TOOL_NAMES = new Set([
-  'generate_image',
   'send_sticker',
   'send_random_image',
   'send_media_from_history',
@@ -86,7 +84,6 @@ export function buildAgentInstructions(
   relevantMemoryContext: string,
   tools: ToolSet,
   webSearchOn = false,
-  imageGenOn = false,
 ): { instructions: SystemModelMessage[]; tools: ToolSet; promptCacheKey: string; turnMessage: SystemModelMessage | null } {
   const promptParts = buildAgentPromptParts(input.scope, input.skills, {
     includeWechatOutbound: input.outputMode === 'wechat',
@@ -99,7 +96,6 @@ export function buildAgentInstructions(
     historyManagedTurnContext ? '' : (input.codeWorkspace ? CODE_WORKSPACE_PROMPT : ''),
     historyManagedTurnContext ? '' : (input.canvasContext && !input.planMode && input.toolMode !== 'disabled' ? buildCanvasPrompt(input.canvasContext) : ''),
     historyManagedTurnContext ? '' : (webSearchOn ? WEB_SEARCH_PROMPT : ''),
-    historyManagedTurnContext ? '' : (imageGenOn ? IMAGE_GEN_PROMPT : ''),
     historyManagedTurnContext ? '' : memoryContext,
   ].filter(Boolean).join('\n')
   // 每轮必变的内容（当前时间、按问题挑的技能、本轮相关记忆）放消息尾部：
@@ -440,7 +436,6 @@ export async function runAgent(
     // 计划模式只制定计划，不允许联网；正常模式仅挂载厂商原生搜索。
     const webSearch = resolveWebSearchSetup(input.providerConfig, toolsDisabled || input.planMode === true)
     const webSearchOn = webSearch.active
-    const imageGenOn = !toolsDisabled && isImageGenAvailable()
     const toolProfile = input.toolProfile ?? (input.codeWorkspace ? 'hybrid' : 'chat')
     const codeWorkspace = (toolProfile === 'code' || toolProfile === 'hybrid') ? (input.codeWorkspace ?? null) : null
     const applicationTools: ToolSet = toolsDisabled
@@ -448,8 +443,8 @@ export async function runAgent(
       : input.planMode
         ? buildPlanModeTools(input.scope, codeWorkspace)
         : toolProfile === 'code'
-          ? buildCodeOnlyTools(codeWorkspace, imageGenOn)
-          : buildTools(input.scope, input.providerConfig, input.mcpTools, imageGenOn, codeWorkspace, {
+          ? buildCodeOnlyTools(codeWorkspace)
+          : buildTools(input.scope, input.providerConfig, input.mcpTools, codeWorkspace, {
             allowWechatReplyMedia: input.allowWechatReplyMedia === true,
             uploadedMediaContext: input.uploadedMediaContext,
             canvasContext: input.canvasContext,
@@ -462,7 +457,7 @@ export async function runAgent(
         ...webSearch.nativeTools,
       })
     perf('构建工具集', `${Object.keys(baseTools).length} 个 / 联网 ${webSearch.backend}`)
-    const prepared = buildAgentInstructions(input, memoryContext, relevantMemoryContext, baseTools, webSearchOn, imageGenOn)
+    const prepared = buildAgentInstructions(input, memoryContext, relevantMemoryContext, baseTools, webSearchOn)
     const providerCache = buildProviderCacheStatus(input, prepared.promptCacheKey)
     perf('组装系统提示')
     // 跨步保持的压缩状态：超过模型窗口 90% 时把早期历史交 LLM 摘要折叠，见 aiCompaction.ts
@@ -998,7 +993,6 @@ async function generateDeepReplySuggestionText({ input, instructions: replyInstr
   const scope = { kind: 'global' as const }
   const webSearch = resolveWebSearchSetup(input.providerConfig)
   const webSearchOn = webSearch.active
-  const imageGenOn = isImageGenAvailable()
   const agentInput: AgentRunInput = {
     messages,
     providerConfig: input.providerConfig,
@@ -1009,7 +1003,7 @@ async function generateDeepReplySuggestionText({ input, instructions: replyInstr
     codeWorkspace: input.codeWorkspace ?? null,
   }
   const tools = withToolTimeouts({
-    ...buildTools(scope, input.providerConfig, input.mcpTools, imageGenOn, input.codeWorkspace ?? null, {
+    ...buildTools(scope, input.providerConfig, input.mcpTools, input.codeWorkspace ?? null, {
       uploadedMediaContext: undefined,
     }),
     ...webSearch.nativeTools,
@@ -1033,7 +1027,7 @@ async function generateDeepReplySuggestionText({ input, instructions: replyInstr
     warmStartupMemory(scope, () => buildMemoryContext(scope))
   }
   const relevantMemoryContext = await preloadRelevantMemories(prompt, scope)
-  const prepared = buildAgentInstructions(agentInput, memoryContext, relevantMemoryContext, tools, webSearchOn, imageGenOn)
+  const prepared = buildAgentInstructions(agentInput, memoryContext, relevantMemoryContext, tools, webSearchOn)
   const instructions: SystemModelMessage[] = [
     ...prepared.instructions,
     {

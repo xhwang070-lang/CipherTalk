@@ -167,7 +167,6 @@ const WECHAT_REPLY_MEDIA_PROMPT = `
 - 用户要求把图片/视频/文件作为本轮回复发回来时，可用 send_wechat_media / send_wechat_file 准备附件；真正发送由 weixinBotService 绑定当前 incoming session 完成。
 - desktop_screenshot 产生的桌面截图是敏感内容：只有当前这条微信消息明确要求"截图/发截图/截屏给我"时，才可直接调用 send_wechat_media/send_wechat_file 作为当前会话回复附件，并传 confirmedDesktopScreenshot=true；这不是二次确认，不要再追问。若用户没有明确要求发送截图，则不要发。
 - send_sticker / send_random_image / send_media_from_history 也只能回复当前触发会话，一轮最多 1 个点缀；不要跨会话发送。
-- 生成图片仍用 generate_image；工具返回 filePath 后会作为当前微信会话回复附件处理。
 - 任何主动任务、定时任务、关键词触发都不得调用这些工具给微信发消息。`
 
 const BASE_PROMPT = [ROLE_PROMPT, VOICE_PROMPT, TOOL_PROMPT, ROUTING_PROMPT, EVIDENCE_PROMPT, MEMORY_PROMPT].join('\n')
@@ -184,15 +183,6 @@ export const WEB_SEARCH_PROMPT = `
 - 仅当问题需要本地聊天记录之外的信息（新闻、公开数据、百科、行情、某个事实的核对等）才使用联网搜索；能用本地工具回答的一律别联网。
 - 联网得到的结论必须引用工具返回的来源，不要把搜索摘要当定论，必要时多搜一次或交叉验证。
 - 区分清楚：涉及"用户自己的聊天/联系人/朋友圈"用本地工具；涉及"外部世界的客观信息"才用 web_search。`
-
-/** AI 作图提示：用户开启「AI 作图」且配了 key 时追加，告诉模型 generate_image 工具可用（见 engine.ts）。 */
-export const IMAGE_GEN_PROMPT = `
-# AI 作图（已开启）
-本轮额外提供 generate_image 工具，可根据文字描述生成图片：
-- 仅当用户明确要求画图/作图/生成图片/配图时才用，不要主动配图。
-- prompt 写具体生动的画面描述（主体、风格、构图、色调）；用户描述含糊时按合理理解补全细节即可，不必反问。
-- 调用时必须传 size，按构图自选比例（用户指定了尺寸/比例则遵从）：风景/宽场景用横图（如 1792x1024）、人像/全身/竖构图用竖图（如 1024x1792）、图标/头像/无明确方向用方图（1024x1024）。不同服务商支持的尺寸不同：若报错提示尺寸不支持，改用报错信息里支持的尺寸重试，报错没给就省略 size 重试。
-- 图片生成后会自动展示给用户；用户明确说“只要图/不要文字”时无需补充文字，否则简要说明画了什么。不要输出文件路径或链接。`
 
 /** 代码工作区提示：选择 workspace 后追加，告诉模型 code_* 工具边界与工作方式。 */
 export const CODE_WORKSPACE_PROMPT = `

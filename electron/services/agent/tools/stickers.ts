@@ -107,7 +107,7 @@ async function buildStickerDict(): Promise<StickerEntry[]> {
   return entries
 }
 
-/** AI 媒体输出目录（与 generate_image 共用 ai-images），返回 null 表示拿不到缓存目录。 */
+/** AI 媒体输出目录（ai-images），返回 null 表示拿不到缓存目录。 */
 export async function getAiImageOutputDir(): Promise<string | null> {
   try {
     const { ConfigService } = await import('../../config')

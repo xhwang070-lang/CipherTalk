@@ -182,12 +182,10 @@ async function buildDeepSeekHistoryTurnContext(opts: {
     prompts,
     memory,
     runtimeCache,
-    imageGen,
   ] = await Promise.all([
     import('../../services/agent/prompts'),
     import('../../services/agent/tools/memory'),
     import('../../services/agent/runtimeCache'),
-    import('../../services/ai/imageGenService'),
   ])
   const promptParts = prompts.buildAgentPromptParts(opts.scope, opts.skills, {
     includeWechatOutbound: opts.includeWechatOutbound === true,
@@ -206,7 +204,6 @@ async function buildDeepSeekHistoryTurnContext(opts: {
     promptParts.dynamicSystem,
     opts.planMode ? prompts.PLAN_MODE_PROMPT : '',
     opts.codeWorkspace ? prompts.CODE_WORKSPACE_PROMPT : '',
-    !toolsDisabled && imageGen.isImageGenAvailable() ? prompts.IMAGE_GEN_PROMPT : '',
     memoryContext,
     promptParts.turnSystem,
     relevantMemoryContext,
@@ -1236,37 +1233,6 @@ export function registerAiHandlers(ctx: MainProcessContext): void {
     }
   })
 
-  // ========== AI 作图 ==========
-
-  ipcMain.handle('imageGen:getConfig', async () => {
-    try {
-      const { getImageGenConfig, isImageGenAvailable } = await import('../../services/ai/imageGenService')
-      const config = getImageGenConfig()
-      return { success: true, config, available: isImageGenAvailable(config) }
-    } catch (e) {
-      return { success: false, error: e instanceof Error ? e.message : String(e) }
-    }
-  })
-
-  ipcMain.handle('imageGen:setConfig', async (_e, patch: Record<string, unknown>) => {
-    try {
-      const { saveImageGenConfig } = await import('../../services/ai/imageGenService')
-      return { success: true, config: saveImageGenConfig(patch as any) }
-    } catch (e) {
-      return { success: false, error: e instanceof Error ? e.message : String(e) }
-    }
-  })
-
-  ipcMain.handle('imageGen:test', async (_e, cfg: any) => {
-    try {
-      const { testImageGenConfig } = await import('../../services/ai/imageGenService')
-      const { refreshResolvedProxyUrl } = await import('../../services/ai/proxyFetch')
-      await refreshResolvedProxyUrl() // 测试也走代理，保证"测试通过=实际可用"
-      return await testImageGenConfig(cfg)
-    } catch (e) {
-      return { success: false, error: e instanceof Error ? e.message : String(e) }
-    }
-  })
 
   // 某会话的向量化状态：是否启用嵌入 + 已建片段数
   ipcMain.handle('embedding:sessionStatus', async (_e, sessionId: string) => {

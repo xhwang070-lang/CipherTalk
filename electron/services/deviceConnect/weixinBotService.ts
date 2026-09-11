@@ -468,7 +468,6 @@ function extractMediaFromToolChunk(
 
   const toolName = c.toolName || (c.toolCallId ? toolNames.get(c.toolCallId) : undefined)
   switch (toolName) {
-    case 'generate_image':
     case 'send_random_image':
     case 'send_sticker':
     case 'send_media_from_history':

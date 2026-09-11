@@ -82,7 +82,7 @@ async function resolveCacheEntry(
   return entry
 }
 
-/** 包一层 google provider 的 fetch：自动管理 cachedContent。imageGen 等其他 google 调用不要用。 */
+/** 包一层 google provider 的 fetch：自动管理 cachedContent。其他 google 调用不要用。 */
 export function withGoogleExplicitCache(baseFetch?: FetchLike): FetchLike {
   const f = baseFetch ?? (globalThis.fetch as FetchLike)
   return (async (input: Parameters<FetchLike>[0], init?: RequestInit) => {

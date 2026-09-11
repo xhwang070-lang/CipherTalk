@@ -56,7 +56,6 @@ export const TOOL_LABELS: Record<string, string> = {
   moments_stats: '朋友圈统计',
   web_search: '联网搜索',
   google_search: '联网搜索',
-  generate_image: '生成图片',
   search_moment_media: '找朋友圈图片',
   search_media: '找历史媒体',
   search_similar_media: '以图找图',

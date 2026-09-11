@@ -1,7 +1,7 @@
 /**
  * send_random_image —— 从聊天记录里随机抽一张图片作为当前会话回复附件（彩蛋）。
  * 在 message_index 已索引行里随机取 localType=3 消息，经 chatService.getImageData
- * 解密成纯图片字节后落盘到 ai-images，前端用 local-image:// 展示（同 generate_image）。
+ * 解密成纯图片字节后落盘到 ai-images，前端用 local-image:// 展示。
  */
 import { tool } from 'ai'
 import { z } from 'zod'
