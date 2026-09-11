@@ -44,7 +44,8 @@
     "electron:dev": "node scripts/clean-dist-electron.cjs && vite --mode electron",
     "electron:build": "npm run build",
     "postinstall": "electron-rebuild",
-    "check:wcdb-dll": "node scripts/check-wcdb-dll.cjs"
+    "check:wcdb-dll": "node scripts/check-wcdb-dll.cjs",
+    "pack:win": "node scripts/pack-win-fast.cjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.18",

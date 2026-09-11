@@ -203,8 +203,11 @@ function getDmg(buildTarget) {
   return base.dmg
 }
 
+const fastPack = process.env.HUAJI_FAST_PACK === '1'
+
 module.exports = {
   ...base,
+  compression: fastPack ? 'store' : (base.compression || 'normal'),
   win: target === 'win' ? { ...(base.win || {}), files: [] } : base.win,
   mac: target === 'mac' ? { ...(base.mac || {}), files: [] } : base.mac,
   files: getFiles(target),
