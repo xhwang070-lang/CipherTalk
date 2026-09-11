@@ -452,6 +452,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getDownloadsPath: () => ipcRenderer.invoke('app:getDownloadsPath'),
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
     getPlatformInfo: () => ipcRenderer.invoke('app:getPlatformInfo'),
+    isElevated: () => ipcRenderer.invoke('app:isElevated'),
+    relaunchElevated: () => ipcRenderer.invoke('app:relaunchElevated'),
     getMcpLaunchConfig: () => getMcpLaunchConfigSafe(),
     getUpdateState: () => ipcRenderer.invoke('app:getUpdateState'),
     getUpdateSourceInfo: () => ipcRenderer.invoke('app:getUpdateSourceInfo'),

@@ -788,6 +788,8 @@ export interface ElectronAPI {
     getDownloadsPath: () => Promise<string>
     getVersion: () => Promise<string>
     getPlatformInfo: () => Promise<{ platform: string; arch: string }>
+    isElevated: () => Promise<boolean>
+    relaunchElevated: () => Promise<{ success: boolean; already?: boolean; error?: string }>
     getMcpLaunchConfig: () => Promise<{
       command: string
       args: string[]

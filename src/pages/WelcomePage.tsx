@@ -76,6 +76,7 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
   const [showWechatPathPrompt, setShowWechatPathPrompt] = useState(false)
   const [customWechatPath, setCustomWechatPath] = useState('')
   const [allowMemoryScan, setAllowMemoryScan] = useState(false)
+  const [needAdminRelaunch, setNeedAdminRelaunch] = useState(false)
   const [isDecrypting, setIsDecrypting] = useState(false)
   const [decryptStatus, setDecryptStatus] = useState('')
   const [countdown, setCountdown] = useState(0)
@@ -443,6 +444,7 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
     }
     setIsFetchingDbKey(true)
     setError('')
+    setNeedAdminRelaunch(false)
     setDbKeyStatus('正在扫描已登录微信内存...')
     try {
       await configService.setAllowLiveMemoryScan(true)
@@ -463,6 +465,10 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
         }
         setDbKeyStatus('已从本机微信内存取出密钥。仅保存在本地。')
         setError('')
+      } else if (result.needAdmin) {
+        setNeedAdminRelaunch(true)
+        setError(result.error || '华记没有提权，读不到微信内存。请以管理员身份重启。')
+        setDbKeyStatus('')
       } else {
         setError(result.error || '扫描微信内存失败')
         setDbKeyStatus('')
@@ -1014,6 +1020,17 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
         {isFetchingDbKey ? <Spinner size="sm" color="current" /> : <Sparkles width={16} height={16} />}
         扫描微信内存获取密钥
       </Button>
+      {needAdminRelaunch && (
+        <Button
+          type="button"
+          variant="primary"
+          className="self-start"
+          onPress={() => void window.electronAPI.app.relaunchElevated()}
+        >
+          <Lock width={16} height={16} />
+          以管理员身份重启华记
+        </Button>
+      )}
 
       {!isMac && showWechatPathPrompt && (
         <Card variant="secondary" className="w-full">

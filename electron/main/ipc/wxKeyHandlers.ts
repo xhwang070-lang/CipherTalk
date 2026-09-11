@@ -347,7 +347,7 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
       const needAdminResult = {
         success: false,
         needAdmin: true,
-        error: '无法读取微信内存（读到 0 字节），通常是权限不足。请用管理员身份重新打开Huaji后重试。'
+        error: '无法读取微信内存（读到 0 字节）。管理员账号默认仍是普通权限启动华记。请点「以管理员身份重启华记」，在 UAC 窗口选是。'
       }
       while (Date.now() < deadline) {
         rounds++
