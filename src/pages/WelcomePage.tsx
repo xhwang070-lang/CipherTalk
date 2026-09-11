@@ -227,6 +227,13 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
     void handleAutoDetectPath(true)
   }, [currentStep.id, dbPath])
 
+  useEffect(() => {
+    if (currentStep.id !== 'decrypt') return
+    if (isAccountVerified) return
+    if (!dbPath || !wxid || decryptKey.length !== 64) return
+    void verifyAccountDirectory(wxid, decryptKey, true)
+  }, [currentStep.id, dbPath, wxid, decryptKey, isAccountVerified])
+
   const handleOpenGuide = () => {
     void window.electronAPI.shell.openExternal(GUIDE_URL)
   }
@@ -589,11 +596,20 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
   const handleConfirm = async () => {
     if (!dbPath) { setError('请先选择数据库目录'); return }
     if (!wxid) { setError('请先选择账号目录'); return }
-    if (!isAccountVerified) { setError('账号目录尚未验证，请先验证'); return }
     if (!decryptKey || decryptKey.length !== 64) { setError('请填写 64 位解密密钥'); return }
 
     setIsDecrypting(true)
     setError('')
+    if (!isAccountVerified) {
+      setDecryptStatus('正在验证账号目录...')
+      const ok = await verifyAccountDirectory(wxid, decryptKey, true)
+      if (!ok) {
+        setError('账号目录验证失败。请回到第 4 步点「验证账号目录」，或确认密钥与账号是否匹配。')
+        setDecryptStatus('')
+        setIsDecrypting(false)
+        return
+      }
+    }
     setDecryptStatus('正在保存配置...')
 
     try {
