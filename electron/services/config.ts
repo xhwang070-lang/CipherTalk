@@ -72,9 +72,6 @@ interface ConfigSchema {
   // 协议相关
   agreementVersion: number
 
-  // 激活相关
-  activationData: string
-
   // STT 相关
   sttLanguages: string[]
   sttModelType: 'int8' | 'float32'
@@ -333,7 +330,6 @@ const defaults: ConfigSchema = {
   sttOnlineTimeoutMs: 60000,
   sttOnlineMaxConcurrency: 2,
   agreementVersion: 0,
-  activationData: '',
   logLevel: 'WARN', // 默认只记录警告和错误
   skipIntegrityCheck: false, // 默认进行完整性检查
   allowLiveMemoryScan: false, // 默认禁止扫微信内存
@@ -499,6 +495,12 @@ export class ConfigService {
       }
 
       this.migrateLegacySingleAccount()
+
+      const removedActivationData = this.db.prepare("DELETE FROM config WHERE key = 'activationData'").run()
+      if (removedActivationData.changes > 0) {
+        console.log('[Config] 已清理旧的激活数据')
+      }
+
 
       // 迁移：作图旧默认超时 10 分钟过短，后台图已生成时 Agent 工具可能先报超时。
       try {

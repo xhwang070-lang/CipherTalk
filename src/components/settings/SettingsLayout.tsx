@@ -7,7 +7,6 @@ import type { AccountProfile } from '../../types/account'
 import { dialog } from '../../services/ipc'
 import * as configService from '../../services/config'
 import AboutTab from './tabs/AboutTab'
-import ActivationTab from './tabs/ActivationTab'
 import AppearanceTab from './tabs/AppearanceTab'
 import SecurityTab from './tabs/SecurityTab'
 import type { UpdateInfo } from './types'
@@ -16,7 +15,7 @@ import { useSettingsStore } from './settingsStore'
 import { usePluginStore, ensurePluginStoreSubscribed, selectEnabledPlugins } from '../../stores/pluginStore'
 import PluginHost from '../../features/plugins/PluginHost'
 import { ConfirmDialog, FloatingSaveButton } from './ui'
-import { ArrowDownToLine, ArrowRotateLeft, ArrowsRotateLeft, Bulb, Check, ChevronDown, CircleCheck, CircleExclamation, CircleInfo, Database, Eye, EyeSlash, FaceSmile, FolderMagnifier, FolderOpen, HardDrive, Key, Layers, Lock, Magnifier, Microphone, Minus, Palette, Person, Picture, PlugConnection, Plus, Shield, ShieldCheck, Sparkles, Thunderbolt, TrashBin, Xmark } from '@gravity-ui/icons'
+import { ArrowDownToLine, ArrowRotateLeft, ArrowsRotateLeft, Bulb, Check, ChevronDown, CircleCheck, CircleExclamation, CircleInfo, Database, Eye, EyeSlash, FaceSmile, FolderMagnifier, FolderOpen, HardDrive, Key, Layers, Lock, Magnifier, Microphone, Minus, Palette, Person, Picture, PlugConnection, Plus, ShieldCheck, Sparkles, Thunderbolt, TrashBin, Xmark } from '@gravity-ui/icons'
 import '../../pages/SettingsPage.css'
 
 const AISummarySettings = lazy(() => import('../ai/AISummarySettings'))
@@ -26,7 +25,7 @@ const SttTab = lazy(() => import('./tabs/SttTab'))
 const MemoryTab = lazy(() => import('./tabs/MemoryTab'))
 const PluginsTab = lazy(() => import('./tabs/PluginsTab'))
 
-type SettingsTab = 'appearance' | 'database' | 'stt' | 'ai' | 'memory' | 'data' | 'plugins' | 'security' | 'activation' | 'about'
+type SettingsTab = 'appearance' | 'database' | 'stt' | 'ai' | 'memory' | 'data' | 'plugins' | 'security' | 'about'
 
 const tabs: { id: SettingsTab; label: string; icon: React.ElementType }[] = [
   { id: 'appearance', label: '外观', icon: Palette },
@@ -37,7 +36,6 @@ const tabs: { id: SettingsTab; label: string; icon: React.ElementType }[] = [
   { id: 'memory', label: '记忆', icon: Bulb },
   { id: 'data', label: '数据管理', icon: HardDrive },
   { id: 'plugins', label: '插件', icon: PlugConnection },
-  // { id: 'activation', label: '激活', icon: Shield },
   { id: 'about', label: '关于', icon: CircleInfo }
 ]
 
@@ -1243,7 +1241,6 @@ function SettingsLayout() {
             <PluginHost pluginId={activePluginTab.pluginId} viewId={activePluginTab.view} />
           </div>
         )}
-        {activeTab === 'activation' && <ActivationTab />}
         {activeTab === 'about' && (
           <AboutTab
             appVersion={appVersion}

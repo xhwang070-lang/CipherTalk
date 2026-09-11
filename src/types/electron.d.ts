@@ -1402,14 +1402,6 @@ export interface ElectronAPI {
       detail?: string
     }) => void) => () => void
   }
-  activation: {
-    getDeviceId: () => Promise<string>
-    verifyCode: (code: string) => Promise<{ success: boolean; message: string }>
-    activate: (code: string) => Promise<ActivationResult>
-    checkStatus: () => Promise<ActivationStatus>
-    getTypeDisplayName: (type: string | null) => Promise<string>
-    clearCache: () => Promise<boolean>
-  }
   cache: {
     clearImages: () => Promise<{ success: boolean; error?: string }>
     clearEmojis: () => Promise<{ success: boolean; error?: string }>
@@ -1884,25 +1876,6 @@ export interface DecryptProgress {
   fileProgress?: number
   error?: string
   images?: ImageFileInfo[]
-}
-
-export interface ActivationStatus {
-  isActivated: boolean
-  type: string | null
-  expiresAt: string | null
-  activatedAt: string | null
-  daysRemaining: number | null
-  deviceId: string
-}
-
-export interface ActivationResult {
-  success: boolean
-  message: string
-  data?: {
-    type: string
-    expires_at: string | null
-    activated_at: string
-  }
 }
 
 declare global {

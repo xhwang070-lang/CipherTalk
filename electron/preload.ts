@@ -819,15 +819,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
 
-  // 激活
-  activation: {
-    getDeviceId: () => ipcRenderer.invoke('activation:getDeviceId'),
-    verifyCode: (code: string) => ipcRenderer.invoke('activation:verifyCode', code),
-    activate: (code: string) => ipcRenderer.invoke('activation:activate', code),
-    checkStatus: () => ipcRenderer.invoke('activation:checkStatus'),
-    getTypeDisplayName: (type: string | null) => ipcRenderer.invoke('activation:getTypeDisplayName', type),
-    clearCache: () => ipcRenderer.invoke('activation:clearCache')
-  },
   cache: {
     clearImages: () => ipcRenderer.invoke('cache:clearImages'),
     clearEmojis: () => ipcRenderer.invoke('cache:clearEmojis'),

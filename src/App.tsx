@@ -17,7 +17,6 @@ import AgentPage from './pages/agent/AgentPage'
 import PersonasPage from './pages/PersonasPage'
 import DiaryPage from './pages/DiaryPage'
 import ExportPage from './pages/export/ExportPage'
-import ActivationPage from './pages/ActivationPage'
 import ImageWindow from './pages/ImageWindow'
 import VideoWindow from './pages/VideoWindow'
 import BrowserWindowPage from './pages/BrowserWindowPage'
@@ -35,7 +34,6 @@ import { useAppStore } from './stores/appStore'
 import { useThemeStore } from './stores/themeStore'
 import { useChatStore } from './stores/chatStore'
 import { useUpdateStatusStore } from './stores/updateStatusStore'
-import { useActivationStore } from './stores/activationStore'
 import * as configService from './services/config'
 import { initTldList } from './utils/linkify'
 import LockScreen from './pages/LockScreen'
@@ -86,16 +84,12 @@ function App() {
   const location = useLocation()
   const { setDbConnected } = useAppStore()
   const { themeMode, navLayout, isLoaded, loadTheme } = useThemeStore()
-  const { status: activationStatus, checkStatus: checkActivationStatus, initialized: activationInitialized } = useActivationStore()
   const { isLocked, init: initAuth } = useAuthStore()
 
 
   // 协议同意状态
   const [showAgreement, setShowAgreement] = useState(false)
   const [agreementLoading, setAgreementLoading] = useState(true)
-
-  // 激活状态
-  const [showActivation, setShowActivation] = useState(false)
 
   // 更新提示状态
   const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null)
@@ -236,12 +230,6 @@ function App() {
 
   const handleDisagree = () => {
     window.electronAPI.window.close()
-  }
-
-  // 华记不使用密语官方激活
-
-  const handleActivated = () => {
-    setShowActivation(false)
   }
 
   // 监听启动时的更新通知 - 已禁用

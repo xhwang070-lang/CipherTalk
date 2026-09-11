@@ -238,98 +238,6 @@
   border-radius: 3px;
 }
 
-.activation-tab {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.activation-status-card {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 24px 0;
-  border-radius: 12px;
-}
-.activation-status-card.activated .status-icon {
-  color: #22c55e;
-}
-.activation-status-card.inactive .status-icon {
-  color: #ef4444;
-}
-.activation-status-card .status-icon {
-  flex-shrink: 0;
-}
-.activation-status-card .status-content {
-  flex: 1;
-}
-.activation-status-card .status-content h3 {
-  margin: 0 0 4px;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.activation-status-card .status-content .status-type {
-  margin: 0 0 8px;
-  font-size: 15px;
-  color: var(--text-secondary);
-}
-.activation-status-card .status-content .status-expires {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 4px;
-  font-size: 14px;
-  color: var(--text-tertiary);
-}
-.activation-status-card .status-content .status-date {
-  margin: 0;
-  font-size: 13px;
-  color: var(--text-tertiary);
-}
-
-.device-info-card {
-  border-radius: 12px;
-  padding: 16px 0;
-}
-.device-info-card h4 {
-  margin: 0 0 12px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.device-info-card .device-id-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.device-info-card .device-id-row .label {
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-.device-info-card .device-id-row code {
-  flex: 1;
-  font-family: "Monaco", "Menlo", monospace;
-  font-size: 12px;
-  color: var(--text-primary);
-  padding: 6px 12px;
-  border-radius: 6px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.device-info-card .hint {
-  margin: 0;
-  font-size: 12px;
-  color: var(--text-tertiary);
-}
-
-.activation-actions {
-  display: flex;
-  gap: 12px;
-}
-
 .wxid-backdrop {
   position: fixed;
   top: 0;
@@ -1208,9 +1116,7 @@
 }
 .settings-page .quote-style-options .radio-label,
 .settings-page .home-background-preset-radio,
-.settings-page .window-close-options .window-close-radio,
-.settings-page .activation-status-card,
-.settings-page .device-info-card {
+.settings-page .window-close-options .window-close-radio {
   border-radius: var(--settings-card-radius);
   border: 1px solid var(--settings-card-border);
   background: var(--settings-card-bg);
@@ -1243,8 +1149,7 @@
 .settings-page .window-close-options .window-close-radio[data-selected=true],
 .settings-page .window-close-options .window-close-radio[data-selected="true"],
 .settings-page .window-close-options .window-close-radio[aria-checked=true],
-.settings-page .window-close-options .window-close-radio[aria-checked="true"],
-.settings-page .activation-status-card.activated {
+.settings-page .window-close-options .window-close-radio[aria-checked="true"] {
   border-color: rgba(var(--primary-rgb), 0.52);
   background: var(--settings-card-active);
   box-shadow: 0 0 0 1px rgba(var(--primary-rgb), 0.12);
