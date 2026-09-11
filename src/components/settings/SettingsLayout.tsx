@@ -239,7 +239,7 @@ function SettingsLayout() {
   const [autoUpdateDebounceTime, setAutoUpdateDebounceTime] = useState(500)  // 防抖时间（毫秒）
 
   // AI 相关配置状态
-  const [aiProvider, setAiProviderState] = useState('relayone')
+  const [aiProvider, setAiProviderState] = useState('custom')
   const [aiApiKey, setAiApiKeyState] = useState('')
   const [aiModel, setAiModelState] = useState('')
 

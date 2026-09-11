@@ -10,6 +10,7 @@ import { join } from 'path'
 import type { ModelMessage, UIMessageChunk } from 'ai'
 import { getAppPath, isElectronPackaged } from '../runtimePaths'
 import { getElectronWorkerEnv } from '../workerEnvironment'
+import { createDirectFetch, createProxyFetch, describeAiFetchTarget, getResolvedProxyUrl, isCloudflareOrHtmlBody } from '../ai/proxyFetch'
 import { codeWorkspaceService } from './codeWorkspaceService'
 import type { CodeWorkspaceToolCall } from './codeWorkspaceTypes'
 import type { AgentProgressEvent, AgentPromptOptimizeInput, AgentProviderConfig, AgentRunInput } from './types'
@@ -240,7 +241,13 @@ export class AgentProcessService {
         worker = utilityProcess.fork(utilityPath, [], {
           serviceName: 'CipherTalk AI Agent',
           stdio: 'pipe',
-          env: { ...getElectronWorkerEnv(), CT_AGENT_WCDB_PROXY: '1' },
+          env: (() => {
+            const env = { ...getElectronWorkerEnv(), CT_AGENT_WCDB_PROXY: '1', CT_AGENT_AI_FETCH_PROXY: '1' }
+            for (const key of ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']) {
+              delete env[key]
+            }
+            return env
+          })(),
         })
       } catch (e: any) {
         this.initPromise = null
@@ -288,6 +295,10 @@ export class AgentProcessService {
       worker.on('message', (msg: any) => {
         if (msg?.type === 'wcdb:call') {
           void this.handleWcdbCall(worker, msg.payload)
+          return
+        }
+        if (msg?.type === 'aiFetch:open') {
+          void this.handleAiFetch(worker, msg.payload)
           return
         }
         if (msg?.type === 'mcp:callTool') {
@@ -423,6 +434,61 @@ export class AgentProcessService {
    * 处理子进程发来的 wcdb 代理请求：用主进程已打开的 wcdbService 执行后回传。
    * 子进程的数据层（dbAdapter / chatService / contactNameResolver 等）由此复用原微信库连接。
    */
+  private async handleAiFetch(
+    worker: UtilityProcess,
+    payload: { reqId: number; url: string; method?: string; headers?: Record<string, string>; body?: string },
+  ): Promise<void> {
+    const reqId = payload?.reqId
+    const url = String(payload?.url || '')
+    const target = describeAiFetchTarget(url)
+    const method = payload?.method || 'GET'
+    console.log(`[aiFetch] open ${method} ${target}`)
+    try {
+      const headers = { ...(payload.headers || {}) }
+      const fetchImpl = createProxyFetch(getResolvedProxyUrl()) || createDirectFetch()
+      const response = await fetchImpl(url, {
+        method,
+        headers,
+        body: payload.body,
+      } as RequestInit)
+      const outHeaders: Record<string, string> = {}
+      response.headers.forEach((value, key) => { outHeaders[key] = value })
+      const contentType = outHeaders['content-type'] || outHeaders['Content-Type'] || ''
+      console.log(`[aiFetch] ${response.status} ${target} ct=${contentType}`)
+      worker.postMessage({ type: 'aiFetch:meta', payload: { reqId, status: response.status, headers: outHeaders } })
+      const reader = response.body?.getReader()
+      let preview = ''
+      let bytes = 0
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          if (value?.byteLength) {
+            bytes += value.byteLength
+            if (preview.length < 180) preview += Buffer.from(value).toString('utf8')
+            worker.postMessage({ type: 'aiFetch:chunk', payload: { reqId, chunk: Buffer.from(value).toString('base64') } })
+          }
+        }
+      } else {
+        const buf = Buffer.from(await response.arrayBuffer())
+        bytes = buf.length
+        preview = buf.toString('utf8').slice(0, 180)
+        if (buf.length) {
+          worker.postMessage({ type: 'aiFetch:chunk', payload: { reqId, chunk: buf.toString('base64') } })
+        }
+      }
+      if (isCloudflareOrHtmlBody(preview)) {
+        console.warn(`[aiFetch] Cloudflare/HTML 拦截 ${target} preview=${preview.slice(0, 80).replace(/\s+/g, ' ')}`)
+      } else {
+        console.log(`[aiFetch] end ${target} bytes=${bytes}`)
+      }
+      worker.postMessage({ type: 'aiFetch:end', payload: { reqId } })
+    } catch (e: any) {
+      console.error(`[aiFetch] error ${target}:`, e?.message || e)
+      worker.postMessage({ type: 'aiFetch:error', payload: { reqId, error: e?.message || String(e) } })
+    }
+  }
+
   private async handleWcdbCall(
     worker: UtilityProcess,
     payload: { reqId: number; method: string; payload: any },

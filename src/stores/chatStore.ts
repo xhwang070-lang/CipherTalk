@@ -35,6 +35,53 @@ function sortMessagesAsc(messages: Message[]): Message[] {
   })
 }
 
+const locallyReadSessions = new Map<string, number>()
+
+function overlayUnread(session: ChatSession, currentSessionId: string | null): ChatSession {
+  const ts = Number(session.lastTimestamp || 0)
+  if (currentSessionId && session.username === currentSessionId) {
+    const prev = locallyReadSessions.get(session.username) || 0
+    locallyReadSessions.set(session.username, Math.max(prev, ts))
+    return session.unreadCount ? { ...session, unreadCount: 0 } : session
+  }
+  const readAt = locallyReadSessions.get(session.username)
+  if (readAt != null && ts <= readAt && session.unreadCount) {
+    return { ...session, unreadCount: 0 }
+  }
+  return session
+}
+
+function overlaySessionList(list: ChatSession[], currentSessionId: string | null): ChatSession[] {
+  let changed = false
+  const next = list.map((session) => {
+    const overlaid = overlayUnread(session, currentSessionId)
+    if (overlaid !== session) changed = true
+    return overlaid
+  })
+  return changed ? next : list
+}
+
+function markUsernameRead(state: { sessions: ChatSession[]; filteredSessions: ChatSession[] }, sessionId: string | null) {
+  if (!sessionId) {
+    return {
+      sessions: overlaySessionList(state.sessions, null),
+      filteredSessions: overlaySessionList(state.filteredSessions, null)
+    }
+  }
+  const current = state.sessions.find((s) => s.username === sessionId)
+    || state.filteredSessions.find((s) => s.username === sessionId)
+  locallyReadSessions.set(sessionId, Number(current?.lastTimestamp || 0))
+  const zero = (list: ChatSession[]) => list.map((session) => (
+    session.username === sessionId && session.unreadCount
+      ? { ...session, unreadCount: 0 }
+      : session
+  ))
+  return {
+    sessions: overlaySessionList(zero(state.sessions), sessionId),
+    filteredSessions: overlaySessionList(zero(state.filteredSessions), sessionId)
+  }
+}
+
 export interface ChatState {
   // 连接状态
   isConnected: boolean
@@ -83,6 +130,7 @@ export interface ChatState {
   addContact: (contact: Contact) => void
   setSearchKeyword: (keyword: string) => void
   incrementSyncVersion: () => void
+  markSessionRead: (sessionId: string) => void
   reset: () => void
 }
 
@@ -108,20 +156,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setConnectionError: (error) => set({ connectionError: error }),
 
   setSessions: (sessions) => set((state) => {
-    const newSessions = typeof sessions === 'function' ? sessions(state.sessions) : sessions
+    const incoming = typeof sessions === 'function' ? sessions(state.sessions) : sessions
+    const newSessions = overlaySessionList(incoming, state.currentSessionId)
     // 搜索进行中不覆盖 filteredSessions，避免后台刷新冲掉搜索结果
     if (state.searchKeyword.trim()) {
-      return { sessions: newSessions }
+      return {
+        sessions: newSessions,
+        filteredSessions: overlaySessionList(state.filteredSessions, state.currentSessionId)
+      }
     }
     return { sessions: newSessions, filteredSessions: newSessions }
   }),
-  setFilteredSessions: (sessions) => set({ filteredSessions: sessions }),
+  setFilteredSessions: (sessions) => set((state) => ({
+    filteredSessions: overlaySessionList(sessions, state.currentSessionId)
+  })),
 
-  setCurrentSession: (sessionId) => set({
+  setCurrentSession: (sessionId) => set((state) => ({
     currentSessionId: sessionId,
     messages: [],
-    hasMoreMessages: true
-  }),
+    hasMoreMessages: true,
+    ...markUsernameRead(state, sessionId)
+  })),
 
   setLoadingSessions: (loading) => set({ isLoadingSessions: loading }),
 
@@ -241,20 +296,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   incrementSyncVersion: () => set((state) => ({ syncVersion: state.syncVersion + 1 })),
 
-  reset: () => set({
-    isConnected: false,
-    isConnecting: false,
-    connectionError: null,
-    sessions: [],
-    filteredSessions: [],
-    currentSessionId: null,
-    isLoadingSessions: false,
-    messages: [],
-    isLoadingMessages: false,
-    isLoadingMore: false,
-    hasMoreMessages: true,
-    sessionMessageCache: new Map(),
-    contacts: new Map(),
-    searchKeyword: ''
-  })
+  markSessionRead: (sessionId) => set((state) => markUsernameRead(state, sessionId)),
+
+  reset: () => {
+    locallyReadSessions.clear()
+    set({
+      isConnected: false,
+      isConnecting: false,
+      connectionError: null,
+      sessions: [],
+      filteredSessions: [],
+      currentSessionId: null,
+      isLoadingSessions: false,
+      messages: [],
+      isLoadingMessages: false,
+      isLoadingMore: false,
+      hasMoreMessages: true,
+      sessionMessageCache: new Map(),
+      contacts: new Map(),
+      searchKeyword: ''
+    })
+  }
 }))

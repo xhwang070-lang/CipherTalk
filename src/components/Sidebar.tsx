@@ -67,21 +67,13 @@ function Sidebar({ autoCollapse = false }: { autoCollapse?: boolean }) {
     return () => { mounted = false; off() }
   }, [])
 
- const openMomentsWindow = async () => {
-    try {
-      await window.electronAPI.window.openMomentsWindow()
-    } catch (e) {
-      console.error('打开朋友圈窗口失败:', e)
-    }
-  }
-
-  const navItems: NavItemConfig[] = [
+ const navItems: NavItemConfig[] = [
     { key: 'agent', label: 'CT-Agent', icon: <FaceRobot width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/agent' },
     { key: 'personas', label: 'AI 克隆', icon: <PersonGear width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/personas' },
     { key: 'diary', label: '日记', icon: <BookOpen width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/diary' },
     { key: 'pets', label: 'AI 宠物', icon: <Ghost width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/pets' },
     { key: 'chat', label: '聊天查看', icon: <Comment width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/chat' },
-    { key: 'moments', label: '朋友圈', icon: <Aperture width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'action', onClick: openMomentsWindow },
+    { key: 'moments', label: '朋友圈', icon: <Aperture width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/moments' },
     { key: 'export', label: '导出数据', icon: <ArrowDownToLine width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/export' },
     { key: 'data-management', label: '数据管理', icon: <Database width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/data-management' },
     { key: 'mcp', label: 'MCP & Skills', icon: <LogoMcp width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/mcp' },

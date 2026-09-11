@@ -27,7 +27,7 @@ class AIService {
   }
 
   private resolveProviderDefinition(providerName?: string, protocolOverride?: AIProviderProtocol) {
-    const rawName = providerName || this.configService.getAICurrentProvider() || 'relayone'
+    const rawName = providerName || this.configService.getAICurrentProvider() || 'custom'
     const name = normalizeProviderId(rawName)
     const definition = getProviderDefinition(name)
     if (!definition) {
@@ -77,7 +77,7 @@ class AIService {
       return {
         success: false,
         error: `连接失败: ${String(error)}`,
-        needsProxy: true
+        needsProxy: false
       }
     }
   }
@@ -189,6 +189,7 @@ class AIService {
         key || providerId,
         options.baseURL || providerConfig?.baseURL || definition.baseURL
       )
+      let remoteListError = ''
       const [modelsDevDetails, remoteModels] = await Promise.all([
         getModelsDevModelDetails(providerId).catch((error) => {
           console.warn('[AIService] models.dev 获取模型列表失败:', error instanceof Error ? error.message : String(error))
@@ -196,7 +197,8 @@ class AIService {
         }),
         key || definition.optionalApiKey
           ? provider.listModels().catch((error) => {
-              console.warn('[AIService] 服务商模型列表获取失败:', error instanceof Error ? error.message : String(error))
+              remoteListError = error instanceof Error ? error.message : String(error)
+              console.warn('[AIService] 服务商模型列表获取失败:', remoteListError)
               return []
             })
           : Promise.resolve([])
@@ -209,7 +211,11 @@ class AIService {
         this.normalizeRemoteModelList(remoteModels)
       )
       if (models.length === 0) {
-        return { success: false, error: '服务商未返回可用模型列表' }
+        const hint = '也可以在模型框里手动输入名称（和 CC Switch 里用的一样），然后保存并测试连接。'
+        if (remoteListError) {
+          return { success: false, error: `模型列表刷新失败：${remoteListError.slice(0, 180)} ${hint}` }
+        }
+        return { success: false, error: `服务商未返回可用模型列表。${hint}` }
       }
       const modelDetailsById = new Map(modelsDevDetails.map(model => [provider.getModelIdentity(model.id), model]))
       return {

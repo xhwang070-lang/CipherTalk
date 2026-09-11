@@ -95,6 +95,57 @@ const CUSTOM_PROVIDER_DEFINITION: AIProviderMetadata = {
   protocolOptions: ['openai-responses', 'openai-compatible', 'anthropic', 'google']
 }
 
+const DEEPSEEK_PROVIDER_ID = 'deepseek'
+
+const DEEPSEEK_MODEL_DETAILS: AIModelInfo[] = [
+  { id: 'deepseek-flash', name: 'DeepSeek Flash', providerId: DEEPSEEK_PROVIDER_ID, family: 'deepseek-flash', modalities: { input: ['text'], output: ['text'] }, capabilities: { attachment: false, reasoning: true, toolCall: true, structuredOutput: true, temperature: true, openWeights: true }, limits: { context: 1_000_000, output: 384_000 } },
+  { id: 'deepseek-chat', name: 'DeepSeek Chat', providerId: DEEPSEEK_PROVIDER_ID, family: 'deepseek', modalities: { input: ['text'], output: ['text'] }, capabilities: { attachment: false, reasoning: false, toolCall: true, structuredOutput: true, temperature: true, openWeights: true }, limits: { context: 128_000, output: 64_000 } },
+  { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', providerId: DEEPSEEK_PROVIDER_ID, family: 'deepseek', modalities: { input: ['text'], output: ['text'] }, capabilities: { attachment: false, reasoning: true, toolCall: true, structuredOutput: true, temperature: true, openWeights: true }, limits: { context: 128_000, output: 64_000 } },
+  { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', providerId: DEEPSEEK_PROVIDER_ID, family: 'deepseek-thinking', modalities: { input: ['text'], output: ['text'] }, capabilities: { attachment: false, reasoning: true, toolCall: true, structuredOutput: true, temperature: true, openWeights: true }, limits: { context: 1_000_000, output: 384_000 } },
+]
+
+const DEEPSEEK_PROVIDER_DEFINITION: AIProviderMetadata = {
+  id: DEEPSEEK_PROVIDER_ID,
+  name: DEEPSEEK_PROVIDER_ID,
+  displayName: 'DeepSeek',
+  description: '官方 OpenAI 兼容接口，填 Key 即可用',
+  protocol: 'openai-compatible',
+  baseURL: 'https://api.deepseek.com',
+  models: DEEPSEEK_MODEL_DETAILS.map((model) => model.id),
+  modelDetails: DEEPSEEK_MODEL_DETAILS,
+  pricing: '官方按量',
+  pricingDetail: { input: 0, output: 0 },
+  website: 'https://platform.deepseek.com',
+  logo: 'deepseek',
+  allowCustomBaseURL: true,
+}
+
+const XAI_PROVIDER_ID = 'xai'
+
+const XAI_MODEL_DETAILS: AIModelInfo[] = [
+  { id: 'grok-4.6', name: 'Grok 4.6', providerId: XAI_PROVIDER_ID, family: 'grok', modalities: { input: ['text', 'image'], output: ['text'] }, capabilities: { attachment: true, reasoning: true, toolCall: true, structuredOutput: true, temperature: true, openWeights: false }, limits: { context: 2_000_000, output: 256_000 } },
+  { id: 'grok-4.5', name: 'Grok 4.5', providerId: XAI_PROVIDER_ID, family: 'grok', modalities: { input: ['text', 'image'], output: ['text'] }, capabilities: { attachment: true, reasoning: true, toolCall: true, structuredOutput: true, temperature: true, openWeights: false }, limits: { context: 2_000_000, output: 256_000 } },
+  { id: 'grok-4.3', name: 'Grok 4.3', providerId: XAI_PROVIDER_ID, family: 'grok', modalities: { input: ['text', 'image'], output: ['text'] }, capabilities: { attachment: true, reasoning: true, toolCall: true, structuredOutput: true, temperature: true, openWeights: false }, limits: { context: 2_000_000, output: 256_000 } },
+  { id: 'grok-4.20-0309-reasoning', name: 'Grok 4.20 Reasoning', providerId: XAI_PROVIDER_ID, family: 'grok', modalities: { input: ['text', 'image'], output: ['text'] }, capabilities: { attachment: true, reasoning: true, toolCall: true, structuredOutput: true, temperature: true, openWeights: false }, limits: { context: 2_000_000, output: 256_000 } },
+  { id: 'grok-4.20-0309-non-reasoning', name: 'Grok 4.20', providerId: XAI_PROVIDER_ID, family: 'grok', modalities: { input: ['text', 'image'], output: ['text'] }, capabilities: { attachment: true, reasoning: false, toolCall: true, structuredOutput: true, temperature: true, openWeights: false }, limits: { context: 2_000_000, output: 256_000 } },
+]
+
+const XAI_PROVIDER_DEFINITION: AIProviderMetadata = {
+  id: XAI_PROVIDER_ID,
+  name: XAI_PROVIDER_ID,
+  displayName: 'xAI (Grok)',
+  description: '官方 Grok 接口，需科学上网',
+  protocol: 'openai-compatible',
+  baseURL: 'https://api.x.ai/v1',
+  models: XAI_MODEL_DETAILS.map((model) => model.id),
+  modelDetails: XAI_MODEL_DETAILS,
+  pricing: '官方按量',
+  pricingDetail: { input: 0, output: 0 },
+  website: 'https://console.x.ai',
+  logo: 'xai',
+  allowCustomBaseURL: true,
+}
+
 const RELAYONE_PROVIDER_DEFINITION: AIProviderMetadata = {
   id: 'relayone',
   name: 'relayone',
@@ -143,7 +194,8 @@ const PROVIDER_ID_ALIASES: Record<string, string> = {
   siliconflow: 'siliconflow-cn',
   zhipu: 'zhipuai',
   tencent: 'tencent-tokenhub',
-  'custom-responses': 'openai'
+  'custom-responses': 'openai',
+  grok: 'xai'
 }
 let modelsDevCache: { updatedAt: number; data: any } | null = null
 const MODELS_DEV_CACHE_MS = 1000 * 60 * 5
@@ -524,10 +576,17 @@ function sortProviderDefinitions(providers: AIProviderMetadata[]): AIProviderMet
 
 function withCustomProvider(providers: AIProviderMetadata[]): AIProviderMetadata[] {
   return [
-    cloneMetadata(RELAYONE_PROVIDER_DEFINITION),
     cloneMetadata(CUSTOM_PROVIDER_DEFINITION),
+    cloneMetadata(DEEPSEEK_PROVIDER_DEFINITION),
+    cloneMetadata(XAI_PROVIDER_DEFINITION),
     cloneMetadata(CODEX_SUBSCRIPTION_PROVIDER_DEFINITION),
-    ...providers.filter(provider => provider.id !== RELAYONE_PROVIDER_DEFINITION.id && provider.id !== CUSTOM_PROVIDER_DEFINITION.id && provider.id !== CODEX_SUBSCRIPTION_PROVIDER_ID)
+    ...providers.filter(provider =>
+      provider.id !== RELAYONE_PROVIDER_DEFINITION.id
+      && provider.id !== CUSTOM_PROVIDER_DEFINITION.id
+      && provider.id !== CODEX_SUBSCRIPTION_PROVIDER_ID
+      && provider.id !== DEEPSEEK_PROVIDER_ID
+      && provider.id !== XAI_PROVIDER_ID
+    )
   ]
 }
 
@@ -563,6 +622,12 @@ export function getProviderDefinition(providerId: string): AIProviderMetadata | 
   if (resolvedProviderId === CUSTOM_PROVIDER_DEFINITION.id) {
     return cloneMetadata(CUSTOM_PROVIDER_DEFINITION)
   }
+  if (resolvedProviderId === DEEPSEEK_PROVIDER_ID) {
+    return cloneMetadata(DEEPSEEK_PROVIDER_DEFINITION)
+  }
+  if (resolvedProviderId === XAI_PROVIDER_ID) {
+    return cloneMetadata(XAI_PROVIDER_DEFINITION)
+  }
   if (resolvedProviderId === RELAYONE_PROVIDER_DEFINITION.id) {
     return cloneMetadata(RELAYONE_PROVIDER_DEFINITION)
   }
@@ -583,6 +648,12 @@ export async function getProviderDefinitionOnline(providerId: string): Promise<A
   }
   if (resolvedProviderId === CUSTOM_PROVIDER_DEFINITION.id) {
     return cloneMetadata(CUSTOM_PROVIDER_DEFINITION)
+  }
+  if (resolvedProviderId === DEEPSEEK_PROVIDER_ID) {
+    return cloneMetadata(DEEPSEEK_PROVIDER_DEFINITION)
+  }
+  if (resolvedProviderId === XAI_PROVIDER_ID) {
+    return cloneMetadata(XAI_PROVIDER_DEFINITION)
   }
   if (resolvedProviderId === RELAYONE_PROVIDER_DEFINITION.id) {
     return cloneMetadata(RELAYONE_PROVIDER_DEFINITION)

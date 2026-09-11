@@ -373,98 +373,21 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
     }
   }
 
-  const handleAutoGetDbKey = async (wechatPath?: string) => {
+  const handleAutoGetDbKey = async (_wechatPath?: string) => {
     if (isFetchingDbKey) return
     setIsFetchingDbKey(true)
     setError('')
-    setDbKeyStatus('正在准备获取密钥...')
+    setDbKeyStatus('正在检查本地密钥包...')
     try {
-      const result = await window.electronAPI.wxKey.startGetKey(wechatPath, dbPath || undefined)
-      if (result.success && result.key) {
-        setDecryptKey(result.key)
-        // 留存内存提取到的账号字段，保存账号时写入档案
-        if (result.account) {
-          setAccountName(result.account.name || '')
-          setAccountNumber(result.account.number || '')
-          setAccountPhone(result.account.phone || '')
-        }
-        setDbKeyStatus('密钥获取成功，正在验证账号目录...')
-        setError('')
-        setShowWechatPathPrompt(false)
-
-        if (dbPath) {
-          const resolved = await window.electronAPI.wcdb.resolveValidWxid(dbPath, result.key)
-          if (resolved.success && resolved.wxid) {
-            setWxid(resolved.wxid)
-            setIsAccountVerified(true)
-            setDbKeyStatus(`密钥获取成功，已验证账号目录: ${resolved.wxid}`)
-            return
-          }
-        }
-
-        if (result.validatedWxid) {
-          setWxid(result.validatedWxid)
-          const acc = result.account
-          const extra = acc && (acc.name || acc.number)
-            ? `（${[acc.name && `昵称: ${acc.name}`, acc.number && `微信号: ${acc.number}`].filter(Boolean).join('，')}）`
-            : ''
-          setDbKeyStatus(`密钥获取成功，已验证账号目录: ${result.validatedWxid}${extra}`)
-          return
-        }
-
-        // DLL 直接返回了 wxid：用它定位并验证账号目录，避免落到“扫描文件夹让用户选”
-        if (result.account?.wxid) {
-          setWxid(result.account.wxid)
-          const ok = await verifyAccountDirectory(result.account.wxid, result.key, true)
-          if (ok) {
-            const a = result.account
-            const extra = (a.name || a.number)
-              ? `（${[a.name && `昵称: ${a.name}`, a.number && `微信号: ${a.number}`].filter(Boolean).join('，')}）`
-              : ''
-            setDbKeyStatus(`密钥获取成功，已验证账号目录: ${result.account.wxid}${extra}`)
-            return
-          }
-        }
-
-        // 先尝试当前登录账号检测（强信号）
-        let accountInfo: { wxid: string; dbPath: string } | null = null
-        if (dbPath) {
-          accountInfo = await window.electronAPI.wxKey.detectCurrentAccount(dbPath, 10)
-          if (!accountInfo) {
-            accountInfo = await window.electronAPI.wxKey.detectCurrentAccount(dbPath, 60)
-          }
-        }
-
-        if (accountInfo) {
-          setWxid(accountInfo.wxid)
-          const ok = await verifyAccountDirectory(accountInfo.wxid, result.key, true)
-          if (ok) {
-            setDbKeyStatus(`密钥获取成功，已验证账号目录: ${accountInfo.wxid}`)
-            return
-          }
-        }
-
-        const wxids = await handleScanWxid(true)
-        if (wxids.length > 1) {
-          // 多账号时仅作为候选，等待用户选择后再验证
-          setDbKeyStatus(`密钥获取成功，识别到 ${wxids.length} 个候选账号目录，请选择后验证`)
-        } else if (wxids.length === 1) {
-          const ok = await verifyAccountDirectory(wxids[0], result.key, true)
-          setDbKeyStatus(ok ? '密钥获取成功，已自动识别并验证账号目录' : '密钥获取成功，请手动确认账号目录')
-        } else {
-          setDbKeyStatus('密钥获取成功，请手动选择并验证账号目录')
-        }
+      const result = await window.electronAPI.wxKey.useLocalKeys()
+      if (result.success) {
+        setDbKeyStatus(`已使用本地密钥包（${result.count} 个库），未扫描微信`)
       } else {
-        if (result.needManualPath) {
-          setShowWechatPathPrompt(true)
-          setDbKeyStatus('需要手动选择微信安装位置')
-        } else {
-          setError(result.error || '自动获取密钥失败')
-          setDbKeyStatus('')
-        }
+        setError(result.error || '未找到本地密钥包。已禁止自动扫微信内存。')
+        setDbKeyStatus('')
       }
     } catch (e) {
-      setError(`自动获取密钥失败: ${e}`)
+      setError(`检查本地密钥失败: ${e}`)
       setDbKeyStatus('')
     } finally {
       setIsFetchingDbKey(false)
@@ -781,8 +704,8 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
             图片密钥用于解密微信图片，可自动获取，也可以稍后手动填写。
           </Typography.Paragraph>
           {renderInfoList([
-            isMac ? '优先通过 kvcomm 码和模板文件推导' : '通过 Rust native 扫描微信进程内存',
-            isMac ? 'kvcomm 失败时再回退到进程内存扫描' : '请先在电脑微信中打开几张图片',
+            '从本机 kvcomm 和图片模板推算，不扫描微信内存',
+            '不会调用密语原版内存扫描',
             '此步骤可跳过'
           ])}
         </div>
@@ -1005,9 +928,7 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
 
       {dbKeyStatus && renderStatusAlert(dbKeyStatus, isAccountVerified ? 'success' : 'default')}
       {renderStatusAlert(
-        isMac
-          ? '获取密钥会调用 mac helper，并尝试识别候选账号目录。macOS 可能需要管理员授权。'
-          : '点击自动获取后，程序会自动重启微信并扫描内存获取密钥，请耐心等待；如弹出微信登录请完成登录。',
+        '开库使用本地 all_keys.json 和自己的 DLL。自动获取只检查本地密钥包，不会扫微信内存。',
         'default'
       )}
     </div>
@@ -1033,8 +954,8 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
         {isFetchingImageKey ? '获取中' : '自动获取图片密钥'}
       </Button>
       {imageKeyStatus && renderStatusAlert(imageKeyStatus, 'default')}
-      {isFetchingImageKey && renderStatusAlert(isMac ? '正在尝试 kvcomm / 内存扫描，请稍候。' : '正在通过 Rust native 扫描微信内存，请稍候。', 'accent')}
-      <Description>{isMac ? '优先从 kvcomm 和模板文件推导，失败后回退到内存扫描。' : 'Windows 使用 Rust native 内存扫描；如获取失败，请先在电脑微信中打开查看几张图片后重试。'}</Description>
+      {isFetchingImageKey && renderStatusAlert('正在从本地缓存推算图片密钥...', 'accent')}
+      <Description>{'从本机 kvcomm 缓存推算，不扫描微信进程。'}</Description>
     </div>
   )
 

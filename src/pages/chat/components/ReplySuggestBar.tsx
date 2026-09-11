@@ -477,7 +477,7 @@ export function ReplySuggestBar({ session, messages }: { session: ChatSession; m
           setError(null)
           setPendingContinueKey(null)
           setLoading(false)
-          window.electronAPI.window.replyTile.dismiss(session.username)
+          try { window.electronAPI.window.replyTile?.dismiss?.(session.username) } catch { /* ignore */ }
         }}
       >
         <Xmark width={14} height={14} />

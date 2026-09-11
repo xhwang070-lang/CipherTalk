@@ -353,7 +353,7 @@ export const SessionRow = (props: RowComponentProps<SessionRowData>) => {
               )
             })()}
           </span>
-          {session.unreadCount > 0 && (
+          {session.unreadCount > 0 && currentSessionId !== session.username && (
             <span className="unread-badge">
               {session.unreadCount > 99 ? '99+' : session.unreadCount}
             </span>

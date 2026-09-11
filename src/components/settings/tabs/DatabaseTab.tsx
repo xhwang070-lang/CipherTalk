@@ -135,139 +135,19 @@ function DatabaseTab({ showMessage }: DatabaseTabProps) {
   const handleGetKey = async () => {
     if (isGettingKey) return
     setIsGettingKey(true)
-    setKeyStatus(isMac ? '正在准备 macOS helper...' : '正在检查微信进程...')
-
+    setKeyStatus('正在检查本地密钥包...')
     try {
-      if (isMac) {
-        const removeListener = window.electronAPI.wxKey.onStatus(({ status }) => {
-          setKeyStatus(status)
-        })
-
-        const result = await window.electronAPI.wxKey.startGetKey(undefined, dbPath || undefined)
-        removeListener()
-
-        if (result.success && result.key) {
-          setDecryptKey(result.key)
-
-          if (dbPath) {
-            const resolved = await window.electronAPI.wcdb.resolveValidWxid(dbPath, result.key)
-            if (resolved.success && resolved.wxid) {
-              setWxid(resolved.wxid)
-              setIsAccountVerified(true)
-              showMessage(`密钥获取成功！已验证账号: ${resolved.wxid}`, true)
-              setKeyStatus('')
-              return
-            }
-          }
-
-          if (result.validatedWxid) {
-            setWxid(result.validatedWxid)
-            setIsAccountVerified(true)
-            showMessage(`密钥获取成功！已验证账号: ${result.validatedWxid}`, true)
-            setKeyStatus('')
-            return
-          }
-
-          setKeyStatus('正在检测当前登录账号...')
-
-          let accountInfo = await window.electronAPI.wxKey.detectCurrentAccount(dbPath, 10)
-          if (!accountInfo) {
-            accountInfo = await window.electronAPI.wxKey.detectCurrentAccount(dbPath, 60)
-          }
-
-          if (accountInfo) {
-            setWxid(accountInfo.wxid)
-            setIsAccountVerified(false)
-            showMessage(`密钥获取成功！已识别候选账号: ${accountInfo.wxid}，请继续验证目录。`, true)
-          } else {
-            const wxids = await window.electronAPI.dbPath.scanWxids(dbPath)
-            setWxidOptions(wxids)
-            setIsAccountVerified(false)
-
-            if (wxids.length === 1) {
-              setWxid(wxids[0])
-              showMessage('密钥获取成功，已识别到 1 个候选账号目录，请继续验证。', true)
-            } else if (wxids.length > 1) {
-              showMessage(`密钥获取成功，识别到 ${wxids.length} 个候选账号目录，请选择后验证。`, true)
-            } else {
-              showMessage('密钥获取成功，请手动填写或扫描账号目录后继续验证。', true)
-            }
-          }
-
-          setKeyStatus('')
-        } else {
-          showMessage(result.error || '获取密钥失败', false)
-          setKeyStatus('')
-        }
-
-        return
-      }
-
-      // 由主进程统一编排：优先对正在运行的微信直接读取账号信息（无需退出重登）；
-      // 仅当直接读取失败时，才自动回退到重启微信抓取密钥的流程。
-      const removeListener = window.electronAPI.wxKey.onStatus(({ status }) => {
-        setKeyStatus(status)
-      })
-
-      setKeyStatus('正在读取微信账号信息...')
-      const result = await window.electronAPI.wxKey.startGetKey(undefined, dbPath || undefined)
-      removeListener()
-
-      if (result.success && result.key) {
-        setDecryptKey(result.key)
-
-        // 直接用 DLL 返回的 wxid 定位账号目录（目录名即 wxid），不再让用户从扫描结果中选择。
-        const acc = result.account
-        // 持久化内存提取到的账号字段：昵称→displayName，微信号/手机号入对应字段。
-        if (acc) {
-          if (acc.name) setField('displayName', acc.name)
-          if (acc.number) setField('wechatNumber', acc.number)
-          if (acc.phone) setField('phone', acc.phone)
-        }
-        const authoritativeWxid = result.validatedWxid || acc?.wxid || ''
-        if (authoritativeWxid) {
-          setWxid(authoritativeWxid)
-          setIsAccountVerified(!!result.validatedWxid)
-
-          const parts = acc
-            ? [
-                acc.name && `昵称: ${acc.name}`,
-                acc.number && `微信号: ${acc.number}`,
-                acc.phone && `手机号: ${acc.phone}`,
-              ].filter(Boolean)
-            : []
-          const detail = parts.length ? `（${parts.join('，')}）` : ''
-          const tip = result.validatedWxid ? '已验证账号目录' : '已自动绑定账号目录'
-          showMessage(`密钥获取成功！${tip}: ${authoritativeWxid}${detail}`, true)
-          setKeyStatus('')
-        } else {
-          // 兜底：DLL 未返回 wxid 时，才退回到按修改时间推断当前登录账号目录
-          setKeyStatus('正在检测当前登录账号...')
-
-          // 先尝试较短的时间范围（刚登录的情况）
-          let accountInfo = await window.electronAPI.wxKey.detectCurrentAccount(dbPath, 10) // 10分钟
-
-          // 如果没找到，尝试更长的时间范围
-          if (!accountInfo) {
-            accountInfo = await window.electronAPI.wxKey.detectCurrentAccount(dbPath, 60) // 1小时
-          }
-
-          if (accountInfo) {
-            setWxid(accountInfo.wxid)
-            showMessage(`密钥获取成功！已自动绑定账号: ${accountInfo.wxid}`, true)
-          } else {
-            showMessage('密钥获取成功，已自动保存！（未能自动检测账号，请手动输入 wxid）', true)
-          }
-          setKeyStatus('')
-        }
+      const result = await window.electronAPI.wxKey.useLocalKeys()
+      if (result.success) {
+        showMessage(`已使用本地密钥包（${result.count} 个库）。开库走自己的 DLL，未扫描微信。`, true)
+        if (wxid) setIsAccountVerified(true)
       } else {
-        showMessage(result.error || '获取密钥失败', false)
-        setKeyStatus('')
+        showMessage(result.error || '未找到本地密钥包。已禁止自动扫微信内存。', false)
       }
     } catch (e) {
-      showMessage(`获取密钥失败: ${e}`, false)
-      setKeyStatus('')
+      showMessage(`检查本地密钥失败: ${e}`, false)
     } finally {
+      setKeyStatus('')
       setIsGettingKey(false)
     }
   }
@@ -706,7 +586,7 @@ function DatabaseTab({ showMessage }: DatabaseTabProps) {
             <Card className="h-fit">
               <Card.Header>
                 <Card.Title>数据库配置</Card.Title>
-                <Card.Description>配置微信数据库路径和解密密钥。</Card.Description>
+                <Card.Description>配置微信数据目录。开库使用本地密钥包，不调用密语原版扫内存。</Card.Description>
               </Card.Header>
               <Card.Content>
                 <Fieldset>
@@ -714,8 +594,8 @@ function DatabaseTab({ showMessage }: DatabaseTabProps) {
                     {renderSecretField({
                       id: 'decryptKey',
                       label: '解密密钥',
-                      helperText: '64位十六进制密钥，用于验证当前账号数据库连接',
-                      placeholder: '请输入或自动获取解密密钥',
+                      helperText: '开库实际使用本地 all_keys.json + 自己的 DLL；此项仅作界面占位，不会去扫微信',
+                      placeholder: '本地密钥包已就绪时可留空或保持原值',
                       value: decryptKey,
                       onChange: (value) => {
                         setDecryptKey(value)
@@ -841,7 +721,7 @@ function DatabaseTab({ showMessage }: DatabaseTabProps) {
             <Card className="h-fit">
               <Card.Header>
                 <Card.Title>图片解密</Card.Title>
-                <Card.Description>您只负责获取密钥，其他的交给密语-CipherTalk。</Card.Description>
+                <Card.Description>图片密钥从本机 kvcomm 和缩略图推算，不扫描微信内存。</Card.Description>
               </Card.Header>
               <Card.Content>
                 <Fieldset>
@@ -857,14 +737,14 @@ function DatabaseTab({ showMessage }: DatabaseTabProps) {
                     {renderSecretField({
                       id: 'imageAesKey',
                       label: 'AES 密钥',
-                      helperText: isMac ? '16位字符串；优先走 kvcomm + wxid 验真，失败才回退到内存扫描' : '至少16个字符；自动获取时使用 Rust native 内存扫描',
+                      helperText: '至少16个字符；自动获取时从本机 kvcomm 推算，不扫微信内存',
                       placeholder: '例如: b123456789012345...',
                       value: imageAesKey,
                       onChange: setImageAesKey
                     })}
                     {renderStatus(imageKeyStatus)}
                     <Description>
-                      {isMac ? '优先扫描 kvcomm 和模板文件；只有前者不可用时才回退到微信进程内存扫描。' : 'Windows 使用 Rust native 扫描微信进程内存；请先在电脑微信中打开几张图片，再执行自动获取。'}
+                      从本机 kvcomm 缓存和图片模板推算 XOR/AES。不会扫描微信进程。
                     </Description>
                   </Fieldset.Group>
                 </Fieldset>
@@ -897,7 +777,7 @@ function DatabaseTab({ showMessage }: DatabaseTabProps) {
     }
 
     setIsGettingImageKey(true)
-    setImageKeyStatus(isMac ? '正在从 kvcomm / 模板文件获取图片密钥...' : '正在通过 Rust native 扫描微信内存...')
+    setImageKeyStatus('正在从本地缓存推算图片密钥...')
 
     try {
       // 构建用户目录路径（用于 wxid 匹配）

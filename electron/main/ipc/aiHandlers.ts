@@ -2134,8 +2134,6 @@ export function registerAiHandlers(ctx: MainProcessContext): void {
         return status.authenticated ? { success: true } : { success: false, error: status.error || '请先登录 ChatGPT 账号' }
       }
       const { aiService } = await import('../../services/ai/aiService')
-      const { refreshResolvedProxyUrl } = await import('../../services/ai/proxyFetch')
-      await refreshResolvedProxyUrl() // 测试连接也走代理，保证"测试通过=实际可用"
       return await aiService.testConnection(provider, apiKey, baseURL, protocol, model)
     } catch (e) {
       return { success: false, error: String(e) }

@@ -3,7 +3,7 @@ import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGoogle } from '@ai-sdk/google'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { createProxyFetch, getResolvedProxyUrl } from '../proxyFetch'
+import { createProxyFetch, getResolvedProxyUrl, isCloudflareOrHtmlBody, resolveAiFetch } from '../proxyFetch'
 import { withOpenAICompatibleStreamSanitizer } from '../openaiCompatibleStreamSanitizer'
 import { withOpenAIResponsesSanitizer } from '../openaiResponsesSanitizer'
 import { CODEX_SUBSCRIPTION_DUMMY_API_KEY, createCodexSubscriptionFetch, getCodexSubscriptionAuthPath } from '../codexSubscriptionAuth'
@@ -383,7 +383,7 @@ export abstract class BaseAIProvider implements AIProvider {
 
   protected getModelProvider(model: string): LanguageModel {
     const headers = this.getDefaultHeaders()
-    const fetch = createProxyFetch(getResolvedProxyUrl()) // 无代理时为 undefined → 默认直连，国内零影响
+    const fetch = resolveAiFetch(this.baseURL)
     if (this.providerKind === 'codex-subscription') {
       const subscriptionFetch = createCodexSubscriptionFetch({
         authFilePath: this.authFilePath || getCodexSubscriptionAuthPath(),
@@ -452,20 +452,31 @@ export abstract class BaseAIProvider implements AIProvider {
     }
 
     const requestJson = async (path: string, init?: RequestInit) => {
-      const response = await fetch(joinEndpoint(this.baseURL, path), {
+      const fetchImpl = resolveAiFetch(this.baseURL) || fetch
+      const response = await fetchImpl(joinEndpoint(this.baseURL, path), {
         ...init,
         headers: {
           ...headers,
           ...(init?.headers as Record<string, string> | undefined)
         }
       })
-      if (!response.ok) {
-        const text = await response.text().catch(() => '')
-        const error: any = new Error(text || `${response.status} ${response.statusText}`)
+      const text = await response.text().catch(() => '')
+      if (isCloudflareOrHtmlBody(text)) {
+        const error: any = new Error('中转站被 Cloudflare 拦截。多半是系统代理 IP 被拦，密语对自定义接口已改为直连。请再点一次刷新；仍失败可手动输入模型名后保存。')
         error.status = response.status
         throw error
       }
-      return response
+      if (!response.ok) {
+        const error: any = new Error(text.slice(0, 300) || `${response.status} ${response.statusText}`)
+        error.status = response.status
+        throw error
+      }
+      return {
+        json: async () => JSON.parse(text || '{}'),
+        text: async () => text,
+        ok: true,
+        status: response.status
+      }
     }
 
     return {
@@ -535,7 +546,11 @@ export abstract class BaseAIProvider implements AIProvider {
       ? response.data
       : Array.isArray(response?.models)
         ? response.models
-        : []
+        : Array.isArray(response?.data?.data)
+          ? response.data.data
+          : Array.isArray(response?.data?.models)
+            ? response.data.models
+            : []
 
     const ids = Array.isArray(rawItems)
       ? rawItems
@@ -799,68 +814,70 @@ export abstract class BaseAIProvider implements AIProvider {
   }
 
   async testConnection(model?: string): Promise<{ success: boolean; error?: string; needsProxy?: boolean }> {
+    const requestedModel = this.getRequestedModel({ model })
+    const fetchImpl = resolveAiFetch(this.baseURL) || fetch
+    const useResponses = this.providerKind === 'openai-responses'
+    const path = this.providerKind === 'anthropic'
+      ? '/messages'
+      : this.providerKind === 'google'
+        ? `/models/${requestedModel}:generateContent`
+        : useResponses
+          ? '/responses'
+          : '/chat/completions'
+    const url = joinEndpoint(this.baseURL, path.replace('{requestedModel}', requestedModel))
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+      ...(this.getDefaultHeaders() || {})
+    }
+    if (this.providerKind === 'anthropic') {
+      headers['x-api-key'] = this.apiKey
+      headers['anthropic-version'] = '2023-06-01'
+    } else if (this.providerKind === 'google') {
+      headers['x-goog-api-key'] = this.apiKey
+    } else {
+      headers['Authorization'] = `Bearer ${this.apiKey}`
+    }
+
+    const body = this.providerKind === 'anthropic'
+      ? { model: requestedModel, max_tokens: 8, messages: [{ role: 'user', content: 'ping' }] }
+      : this.providerKind === 'google'
+        ? { contents: [{ role: 'user', parts: [{ text: 'ping' }] }] }
+        : useResponses
+          ? { model: requestedModel, input: 'ping', max_output_tokens: 8 }
+          : { model: requestedModel, messages: [{ role: 'user', content: 'ping' }], max_tokens: 8 }
+
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 45000)
     try {
-      const requestedModel = this.getRequestedModel({ model })
-      const modelProvider = this.getModelProvider(requestedModel)
-      await generateText({
-        model: modelProvider,
-        messages: [{ role: 'user', content: 'Hello' }],
-        maxOutputTokens: 16,
-        timeout: 30000,
-        maxRetries: 0,
-        telemetry: { functionId: 'provider-connection-test' }
-      })
+      const response = await fetchImpl(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: controller.signal
+      } as RequestInit)
+      const text = await response.text().catch(() => '')
+      if (isCloudflareOrHtmlBody(text)) {
+        return { success: false, error: '中转站被 Cloudflare 拦截。自定义接口应直连，不要开系统代理。可把协议改成 OpenAI Compatible 后再测。', needsProxy: false }
+      }
+      if (!response.ok) {
+        const lower = text.toLowerCase()
+        if (response.status === 401 || lower.includes('unauthorized')) {
+          return { success: false, error: 'API Key 无效，请检查配置', needsProxy: false }
+        }
+        if (response.status === 404) {
+          return { success: false, error: '接口或模型不存在。国内中转请用 OpenAI Compatible，模型名与 CC Switch 保持一致。', needsProxy: false }
+        }
+        return { success: false, error: `连接失败（${response.status}）：${text.slice(0, 180)}`, needsProxy: false }
+      }
       return { success: true }
     } catch (error: any) {
-      const errorMessage = error?.message || String(error)
-      const status = Number(error?.statusCode ?? error?.status)
-      console.error(`[${this.name}] 连接测试失败:`, errorMessage)
-
-      const needsProxy =
-        errorMessage.includes('ECONNREFUSED') ||
-        errorMessage.includes('ETIMEDOUT') ||
-        errorMessage.includes('ENOTFOUND') ||
-        errorMessage.includes('CONNECTION_TIMEOUT') ||
-        errorMessage.includes('fetch failed') ||
-        errorMessage.includes('getaddrinfo') ||
-        /timeout|timed out|abort/i.test(errorMessage) ||
-        error?.code === 'ECONNREFUSED' ||
-        error?.code === 'ETIMEDOUT' ||
-        error?.code === 'ENOTFOUND'
-
-      let errorMsg = '连接失败'
-
-      if (status === 408 || errorMessage.includes('CONNECTION_TIMEOUT') || /timeout|timed out|abort/i.test(errorMessage)) {
-        errorMsg = '连接超时，请开启代理或检查网络'
-      } else if (errorMessage.includes('ECONNREFUSED')) {
-        errorMsg = '连接被拒绝，请开启代理或检查网络'
-      } else if (errorMessage.includes('ETIMEDOUT')) {
-        errorMsg = '连接超时，请开启代理或检查网络'
-      } else if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('getaddrinfo')) {
-        errorMsg = '无法解析域名，请开启代理或检查网络'
-      } else if (status === 401 || errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
-        errorMsg = 'API Key 无效，请检查配置'
-      } else if (status === 402 || errorMessage.includes('402')) {
-        errorMsg = '账户余额或额度不足'
-      } else if (status === 403 || errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
-        errorMsg = '访问被禁止，请检查 API Key 权限'
-      } else if (status === 404 || errorMessage.includes('404')) {
-        errorMsg = '模型或接口不存在，请检查模型名称和服务地址'
-      } else if (status === 429 || errorMessage.includes('429')) {
-        errorMsg = '请求过于频繁，请稍后再试'
-      } else if ([500, 502, 503].includes(status) || errorMessage.includes('500') || errorMessage.includes('502') || errorMessage.includes('503')) {
-        errorMsg = '服务器错误，请稍后再试'
-      } else if (needsProxy) {
-        errorMsg = '网络连接失败，请开启代理或检查网络'
-      } else {
-        errorMsg = `连接失败: ${errorMessage}`
+      const message = error?.message || String(error)
+      if (error?.name === 'AbortError' || /timeout|timed out|abort/i.test(message)) {
+        return { success: false, error: '连接超时。自定义中转不要开系统代理，协议选 OpenAI Compatible 后再测。', needsProxy: false }
       }
-
-      return {
-        success: false,
-        error: errorMsg,
-        needsProxy
-      }
+      return { success: false, error: `连接失败：${message.slice(0, 180)}`, needsProxy: false }
+    } finally {
+      clearTimeout(timer)
     }
   }
 }

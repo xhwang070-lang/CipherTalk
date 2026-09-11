@@ -26,7 +26,7 @@ import {
   useOverlayState,
   type Key
 } from '@heroui/react'
-import { ArrowUpRight, ArrowsRotateLeft, Bulb, CircleCheck, CircleQuestion, CurlyBrackets, Eye, EyeSlash, FileText, GearDot, Pencil, Picture, Plus, Rocket, Sparkles, Speedometer, TrashBin, Wallet, Wrench } from '@gravity-ui/icons'
+import { ArrowUpRight, ArrowsRotateLeft, Bulb, CircleCheck, CircleQuestion, CurlyBrackets, Eye, EyeSlash, FileText, GearDot, Magnifier, Pencil, Picture, Plus, Rocket, Sparkles, Speedometer, TrashBin, Wallet, Wrench } from '@gravity-ui/icons'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { getAIProviders, type AIModelInfo, type AIProviderInfo } from '../../types/ai'
@@ -67,13 +67,16 @@ interface SelectOption {
 }
 
 const DEEPSEEK_LEGACY_MODEL_MAP: Record<string, string> = {
-  'DeepSeek V3': 'deepseek-v4-flash',
-  'DeepSeek R1 (推理)': 'deepseek-v4-flash',
-  'deepseek-chat': 'deepseek-v4-flash',
-  'deepseek-reasoner': 'deepseek-v4-flash'
+  'DeepSeek V3': 'deepseek-chat',
+  'DeepSeek R1 (推理)': 'deepseek-reasoner',
+  'deepseek-v4-flash': 'deepseek-flash',
+  'deepseek-v4-flash-vision-exp': 'deepseek-flash'
 }
 
+const DEEPSEEK_DEFAULT_BASE_URL = 'https://api.deepseek.com'
+
 const LEGACY_CUSTOM_PROVIDER_MAP: Record<string, string> = {
+  grok: 'xai',
   gemini: 'google',
   qwen: 'alibaba-cn',
   kimi: 'moonshotai-cn',
@@ -112,11 +115,16 @@ function normalizeProviderModel(providerId: string, modelName: string) {
     : modelName
 }
 
-function normalizeProviderBaseURL(providerId: string, baseURL: string) {
-  if (providerId === 'ollama') {
-    return (baseURL || 'http://localhost:11434/v1').trim().replace(/\/+$/, '')
-  }
-  return baseURL.trim().replace(/\/+$/, '')
+function defaultProviderBaseURL(providerId: string, providerInfo?: AIProviderInfo) {
+  if (providerId === 'ollama') return 'http://localhost:11434/v1'
+  if (providerId === 'deepseek') return DEEPSEEK_DEFAULT_BASE_URL
+  if (providerId === 'xai' || providerId === 'grok') return 'https://api.x.ai/v1'
+  return String(providerInfo?.baseURL || '').trim()
+}
+
+function normalizeProviderBaseURL(providerId: string, baseURL: string, providerInfo?: AIProviderInfo) {
+  const trimmed = baseURL.trim().replace(/\/+$/, '')
+  return trimmed || defaultProviderBaseURL(providerId, providerInfo)
 }
 
 function canFetchProviderModelList(providerId: string, baseURL: string, providerInfo?: AIProviderInfo) {
@@ -278,6 +286,89 @@ function ProviderOptionContent({ providerInfo }: { providerInfo: AIProviderInfo 
   )
 }
 
+function providerSearchHaystack(providerInfo: AIProviderInfo) {
+  return [providerInfo.displayName, providerInfo.id, providerInfo.description, providerInfo.protocol]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
+function ProviderSelect({
+  selectedKey,
+  onSelect,
+  providers,
+}: {
+  selectedKey: string | null
+  onSelect: (providerId: string) => void
+  providers: AIProviderInfo[]
+}) {
+  const [query, setQuery] = useState('')
+  const selected = providers.find(item => item.id === selectedKey)
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    if (!needle) return providers
+    return providers.filter(item => providerSearchHaystack(item).includes(needle))
+  }, [providers, query])
+
+  return (
+    <Select
+      selectedKey={selectedKey}
+      onSelectionChange={(key) => {
+        if (key != null && String(key) !== '__empty') onSelect(String(key))
+      }}
+      onOpenChange={(open) => {
+        if (!open) setQuery('')
+      }}
+      placeholder="请选择服务商"
+      variant="secondary"
+      fullWidth
+    >
+      <Label>服务商</Label>
+      <Select.Trigger>
+        <Select.Value>
+          {({ defaultChildren, isPlaceholder }) =>
+            isPlaceholder || !selected ? defaultChildren : <ProviderOptionContent providerInfo={selected} />
+          }
+        </Select.Value>
+        <Select.Indicator />
+      </Select.Trigger>
+      <Select.Popover>
+        <div
+          className="sticky top-0 z-10 border-b border-border/60 bg-background p-2"
+          onPointerDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          <TextField fullWidth value={query} onChange={setQuery} aria-label="搜索服务商">
+            <InputGroup variant="secondary" fullWidth>
+              <InputGroup.Prefix>
+                <Magnifier width={14} height={14} />
+              </InputGroup.Prefix>
+              <InputGroup.Input placeholder="搜索 grok、deepseek、openai..." autoFocus />
+            </InputGroup>
+          </TextField>
+        </div>
+        <ListBox className={AI_DROPDOWN_LIST_CLASS}>
+          {filtered.length === 0 ? (
+            <ListBox.Item id="__empty" textValue="没有匹配的服务商" isDisabled className="shrink-0">
+              没有匹配的服务商
+            </ListBox.Item>
+          ) : filtered.map(item => (
+            <ListBox.Item
+              key={item.id}
+              id={item.id}
+              textValue={providerSearchHaystack(item)}
+              className="shrink-0"
+            >
+              <ProviderOptionContent providerInfo={item} />
+              <ListBox.ItemIndicator />
+            </ListBox.Item>
+          ))}
+        </ListBox>
+      </Select.Popover>
+    </Select>
+  )
+}
+
 function GuideModal({ title, html, onClose }: { title: string; html: string; onClose: () => void }) {
   const modalState = useOverlayState({
     defaultOpen: true,
@@ -375,12 +466,6 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
         content: <ModelOptionContent modelId={item} modelDetail={modelDetailById.get(item)} />
       }))
   }, [currentProvider?.models, modelDetailById, remoteModels])
-  const providerOptions = useMemo<SelectOption[]>(() => providers.map(item => ({
-    value: item.id,
-    label: item.displayName,
-    description: [item.id, item.description, item.protocol].filter(Boolean).join(' '),
-    content: <ProviderOptionContent providerInfo={item} />
-  })), [providers])
   const protocolOptions = useMemo<SelectOption[]>(() => (
     CUSTOM_PROTOCOL_OPTIONS
       .filter(item => currentProvider?.protocolOptions?.includes(item.value))
@@ -433,7 +518,7 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
     if (!provider) return
     const config = providerConfigs[provider]
     if (currentProvider?.allowCustomBaseURL) {
-      setBaseURL(config?.baseURL || (provider === 'ollama' ? 'http://localhost:11434/v1' : ''))
+      setBaseURL(config?.baseURL || defaultProviderBaseURL(provider, currentProvider))
     } else {
       setBaseURL('')
     }
@@ -458,8 +543,11 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
   }, [provider, model, setField])
 
   const loadProviders = async () => {
-    const list = await getAIProviders()
+    const list = (await getAIProviders()).filter(item => item.id !== 'relayone')
     setProviders(list)
+    if (provider === 'relayone') {
+      setField('aiProvider', 'custom')
+    }
     const normalizedProvider = normalizeProviderId(provider)
     const nextProvider = list.some(item => item.id === normalizedProvider)
       ? normalizedProvider
@@ -519,8 +607,8 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
       provider: nextProvider,
       apiKey: '',
       model: '',
-      baseURL: nextProvider === 'ollama' ? 'http://localhost:11434/v1' : '',
-      protocol: providerInfo?.protocol || 'openai-responses'
+      baseURL: defaultProviderBaseURL(nextProvider, providerInfo),
+      protocol: providerInfo?.protocol || 'openai-compatible'
     }
   }
 
@@ -585,7 +673,7 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
       apiKey: nextApiKey,
       model: normalizeProviderModel(nextProvider, nextModel),
       baseURL: providerInfo?.allowCustomBaseURL
-        ? normalizeProviderBaseURL(nextProvider, nextBaseURL)
+        ? normalizeProviderBaseURL(nextProvider, nextBaseURL, providerInfo)
         : undefined,
       protocol: providerInfo?.protocolOptions?.length ? nextProtocol : undefined
     }
@@ -755,6 +843,8 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
       if (result.success) {
         await persistProviderConfig()
       }
+    } catch (error) {
+      showMessage(`连接测试异常: ${error instanceof Error ? error.message : String(error)}`, false)
     } finally {
       setIsTesting(false)
     }
@@ -811,7 +901,7 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
       apiKey: presetDraft.apiKey,
       model: normalizeProviderModel(presetDraft.provider, presetDraft.model),
       baseURL: draftProviderInfo?.allowCustomBaseURL
-        ? (normalizeProviderBaseURL(presetDraft.provider, presetDraft.baseURL) || undefined)
+        ? (normalizeProviderBaseURL(presetDraft.provider, presetDraft.baseURL, draftProviderInfo) || undefined)
         : undefined,
       protocol: draftProviderInfo?.protocolOptions?.length ? presetDraft.protocol : undefined
     }
@@ -922,26 +1012,6 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
           </div>
         )}
 
-        {configMode === 'llm' && provider !== 'relayone' && (
-          <Alert status="accent">
-            <Alert.Indicator>
-              <Rocket width={20} height={20} />
-            </Alert.Indicator>
-            <Alert.Content>
-              <Alert.Title>还没有 API Key？</Alert.Title>
-              <Alert.Description>RelayOne 官方中转：一个 Key 直连全模型，国内可用，低于官方价，注册即用。</Alert.Description>
-            </Alert.Content>
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              className="shrink-0 self-center"
-              onPress={() => void window.electronAPI.shell.openExternal('https://hicccc.cc')}
-            >
-              注册获取 Key
-            </Button>
-          </Alert>
-        )}
 
         {configMode === 'llm' && isCodexSubscription && (
           <Card>
@@ -973,35 +1043,11 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
                 )}
                 <Fieldset className="w-full">
                   <Fieldset.Group className="grid gap-4">
-                    <Select
+                    <ProviderSelect
                       selectedKey={provider || null}
-                      onSelectionChange={(key) => {
-                        if (key != null) void handleSelectProvider(String(key))
-                      }}
-                      placeholder="请选择服务商"
-                      variant="secondary"
-                      fullWidth
-                    >
-                      <Label>服务商</Label>
-                      <Select.Trigger>
-                        <Select.Value>
-                          {({ defaultChildren, isPlaceholder }) =>
-                            isPlaceholder || !currentProvider ? defaultChildren : <ProviderOptionContent providerInfo={currentProvider} />
-                          }
-                        </Select.Value>
-                        <Select.Indicator />
-                      </Select.Trigger>
-                      <Select.Popover>
-                        <ListBox className={AI_DROPDOWN_LIST_CLASS}>
-                          {providerOptions.map(option => (
-                            <ListBox.Item key={option.value} id={option.value} textValue={`${option.label} ${option.value} ${option.description || ''}`} isDisabled={option.disabled} className="shrink-0">
-                              {option.content ?? option.label}
-                              <ListBox.ItemIndicator />
-                            </ListBox.Item>
-                          ))}
-                        </ListBox>
-                      </Select.Popover>
-                    </Select>
+                      providers={providers}
+                      onSelect={(providerId) => { void handleSelectProvider(providerId) }}
+                    />
 
                   <div className="grid gap-4 lg:grid-cols-2">
                     {currentProvider?.allowCustomBaseURL && (
@@ -1084,6 +1130,8 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
                         </InputGroup>
                       </TextField>
                       {provider === 'relayone' && <Description>通过上方账户创建 Key 后会自动填入，并刷新模型列表。</Description>}
+                      {provider === 'deepseek' && <Description>在 platform.deepseek.com 申请 API Key。默认地址 https://api.deepseek.com，一般不用改。</Description>}
+                      {(provider === 'xai' || provider === 'grok') && <Description>在 console.x.ai 申请 API Key。地址 https://api.x.ai/v1。Grok 在国外，Clash 系统代理开着即可，不要给 x.ai 开直连绕过。</Description>}
                     </div>
                   )}
 
@@ -1372,35 +1420,11 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
                     </Tabs.Panel>
 
                     <Tabs.Panel id="provider" className="pt-4">
-                      <Select
+                      <ProviderSelect
                         selectedKey={presetDraft.provider || null}
-                        onSelectionChange={(key) => {
-                          if (key != null) setPresetDraft(createPresetDraftFromProvider(String(key)))
-                        }}
-                        placeholder="请选择服务商"
-                        variant="secondary"
-                        fullWidth
-                      >
-                        <Label>服务商</Label>
-                        <Select.Trigger>
-                          <Select.Value>
-                            {({ defaultChildren, isPlaceholder }) =>
-                              isPlaceholder || !presetDraftProvider ? defaultChildren : <ProviderOptionContent providerInfo={presetDraftProvider} />
-                            }
-                          </Select.Value>
-                          <Select.Indicator />
-                        </Select.Trigger>
-                        <Select.Popover>
-                          <ListBox className={AI_DROPDOWN_LIST_CLASS}>
-                            {providerOptions.map(option => (
-                              <ListBox.Item key={option.value} id={option.value} textValue={`${option.label} ${option.value} ${option.description || ''}`} isDisabled={option.disabled} className="shrink-0">
-                                {option.content ?? option.label}
-                                <ListBox.ItemIndicator />
-                              </ListBox.Item>
-                            ))}
-                          </ListBox>
-                        </Select.Popover>
-                      </Select>
+                        providers={providers}
+                        onSelect={(providerId) => setPresetDraft(createPresetDraftFromProvider(providerId))}
+                      />
                     </Tabs.Panel>
 
                     <Tabs.Panel id="config" className="pt-4">

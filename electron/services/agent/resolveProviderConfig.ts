@@ -8,14 +8,14 @@ import {
   getProviderDefinition,
   normalizeProviderId,
 } from '../ai/providers/catalog'
-import { getResolvedProxyUrl } from '../ai/proxyFetch'
+import { getResolvedProxyUrl, shouldProxyAiRequest } from '../ai/proxyFetch'
 import { getCodexSubscriptionAuthPath, CODEX_SUBSCRIPTION_DUMMY_API_KEY } from '../ai/codexSubscriptionAuth'
 import type { AgentProviderConfig, AgentProviderConfigOverride } from './types'
 
 export function resolveProviderConfig(override?: AgentProviderConfigOverride | null): AgentProviderConfig {
   const config = new ConfigService()
   try {
-    const name = normalizeProviderId(override?.provider || config.getAICurrentProvider() || 'relayone')
+    const name = normalizeProviderId(override?.provider || config.getAICurrentProvider() || 'custom')
     const def = getProviderDefinition(name)
     if (!def) throw new Error(`不支持的 AI 服务商: ${name}`)
 
@@ -47,7 +47,7 @@ export function resolveProviderConfig(override?: AgentProviderConfigOverride | n
       model,
       ...(isCodexSubscription ? { authFilePath: getCodexSubscriptionAuthPath() } : {}),
       reasoningEffort: providerConfig?.reasoningEffort,
-      proxyUrl: getResolvedProxyUrl() || undefined,
+      proxyUrl: shouldProxyAiRequest(baseURL) ? (getResolvedProxyUrl() || undefined) : undefined,
       contextWindow: typeof contextWindow === 'number' && contextWindow > 0 ? contextWindow : undefined,
       anthropicCacheTtl: config.get('anthropicCacheTtl') === '1h' ? '1h' : '5m',
     }

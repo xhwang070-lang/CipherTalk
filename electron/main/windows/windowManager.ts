@@ -29,7 +29,7 @@ type ReleaseAnnouncementPayload = {
   generatedAt?: string
 }
 
-const MAIN_WINDOW_ROUTES = new Set(['/home', '/agent', '/settings', '/pets', '/diary', '/export', '/chat'])
+const MAIN_WINDOW_ROUTES = new Set(['/home', '/agent', '/settings', '/pets', '/diary', '/export', '/chat', '/moments'])
 
 function supportsReplyTileWindow(): boolean {
   return process.platform === 'win32' || process.platform === 'darwin'
@@ -839,7 +839,7 @@ export function createWindowManager(ctx: MainProcessContext): WindowManager {
     },
 
     focusMainWindow(route?: string) {
-      const targetRoute = route && MAIN_WINDOW_ROUTES.has(route) ? route : undefined
+      const targetRoute = route && MAIN_WINDOW_ROUTES.has(route.split('?')[0]) ? route : undefined
       let win = ctx.getMainWindow()
       if (!win || win.isDestroyed()) {
         win = manager.createMainWindow()
@@ -886,57 +886,13 @@ export function createWindowManager(ctx: MainProcessContext): WindowManager {
 
     openMomentsWindow(filterUsername?: string) {
       if (momentsWindow && !momentsWindow.isDestroyed()) {
-        if (momentsWindow.isMinimized()) momentsWindow.restore()
-        momentsWindow.focus()
-        if (filterUsername) {
-          momentsWindow.webContents.send('moments:filterUser', filterUsername)
-        }
-        return momentsWindow
-      }
-
-      const isDark = nativeTheme.shouldUseDarkColors
-      momentsWindow = new BrowserWindow({
-        width: 1200,
-        height: 800,
-        minWidth: 900,
-        minHeight: 600,
-        ...getWindowIconOptions(ctx),
-        webPreferences: {
-          preload: join(__dirname, 'preload.js'),
-          devTools: ctx.allowDevTools,
-          contextIsolation: true,
-          nodeIntegration: false,
-          webSecurity: false
-        },
-        titleBarStyle: 'hidden',
-        titleBarOverlay: {
-          color: '#00000000',
-          symbolColor: '#666666',
-          height: 40
-        },
-        show: false,
-        backgroundColor: isDark ? '#1A1A1A' : '#F0F0F0'
-      })
-
-      momentsWindow.once('ready-to-show', () => momentsWindow?.show())
-
-      const filterParam = filterUsername ? `&filterUsername=${encodeURIComponent(filterUsername)}` : ''
-      if (process.env.VITE_DEV_SERVER_URL) {
-        momentsWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}?${getThemeQueryParams(ctx)}${filterParam}#/moments-window`)
-        setupDevToolsShortcut(momentsWindow)
-      } else {
-        const query = getThemeQuery(ctx)
-        if (filterUsername) query.filterUsername = filterUsername
-        momentsWindow.loadFile(join(__dirname, '../dist/index.html'), {
-          hash: '/moments-window',
-          query
-        })
-      }
-
-      momentsWindow.on('closed', () => {
+        momentsWindow.close()
         momentsWindow = null
-      })
-      return momentsWindow
+      }
+      const route = filterUsername
+        ? `/moments?filterUsername=${encodeURIComponent(filterUsername)}`
+        : '/moments'
+      return manager.focusMainWindow(route)
     },
 
     openChatHistoryWindow(sessionId: string, messageId: number) {

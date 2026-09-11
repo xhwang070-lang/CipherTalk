@@ -59,7 +59,9 @@ export interface ResolvedAgentProfile {
 
 export class AgentProfileService {
   async resolve(request: AgentProfileRequest): Promise<ResolvedAgentProfile> {
-    await refreshProxyCached()
+    if (request.mode !== 'wechat-bot') {
+      await refreshProxyCached()
+    }
     const providerConfig = resolveProviderConfig(request.modelConfig)
     let codeWorkspace = request.codeWorkspace && typeof request.codeWorkspace.root === 'string'
       ? request.codeWorkspace

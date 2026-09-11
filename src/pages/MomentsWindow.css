@@ -1482,3 +1482,12 @@
     background-position: -200% 0;
   }
 }
+
+.moments-window.is-embedded .moments-sidebar-drag-region {
+  height: 12px;
+  min-height: 12px;
+  -webkit-app-region: no-drag;
+}
+.moments-window.is-embedded .moments-title-bar {
+  display: none;
+}

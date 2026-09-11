@@ -1,19 +1,44 @@
+import crypto from 'crypto'
 import * as fs from 'fs'
+import * as os from 'os'
 import * as path from 'path'
-import { wxKeyService } from './wxKeyService'
+
+type ImageKeyResult = {
+  success: boolean
+  xorKey?: number
+  aesKey?: string
+  error?: string
+}
+
+function cleanWxid(wxid: string): string {
+  const trimmed = String(wxid || '').trim()
+  if (!trimmed) return ''
+  if (trimmed.toLowerCase().startsWith('wxid_')) {
+    const match = trimmed.match(/^(wxid_[^_]+)/i)
+    return match?.[1] || trimmed
+  }
+  const suffixMatch = trimmed.match(/^(.+)_([a-zA-Z0-9]{4})$/)
+  return suffixMatch ? suffixMatch[1] : trimmed
+}
+
+function isImageMagic(dec: Buffer): boolean {
+  return (
+    (dec[0] === 0xFF && dec[1] === 0xD8 && dec[2] === 0xFF) ||
+    (dec[0] === 0x89 && dec[1] === 0x50 && dec[2] === 0x4E && dec[3] === 0x47) ||
+    (dec[0] === 0x52 && dec[1] === 0x49 && dec[2] === 0x46 && dec[3] === 0x46) ||
+    (dec[0] === 0x77 && dec[1] === 0x78 && dec[2] === 0x67 && dec[3] === 0x66) ||
+    (dec[0] === 0x47 && dec[1] === 0x49 && dec[2] === 0x46)
+  )
+}
 
 /**
- * 图片密钥服务。
- * Windows AES 密钥只通过 Rust native 内存扫描获取；macOS 走 wxKeyServiceMac。
+ * Windows 图片密钥：只从磁盘推算（kvcomm + 缩略图），不扫微信进程。
  */
 class ImageKeyService {
-  /**
-   * 查找模板文件 (_t.dat)
-   */
   private findTemplateDatFiles(rootDir: string): string[] {
     const files: string[] = []
     const stack = [rootDir]
-    const maxFiles = 32
+    const maxFiles = 48
 
     while (stack.length && files.length < maxFiles) {
       const dir = stack.pop() as string
@@ -42,7 +67,6 @@ class ImageKeyService {
 
     if (!files.length) return []
 
-    // 按日期排序（优先最新的）
     const dateReg = /(\d{4}-\d{2})/
     files.sort((a, b) => {
       const ma = a.match(dateReg)?.[1]
@@ -51,12 +75,9 @@ class ImageKeyService {
       return 0
     })
 
-    return files.slice(0, 16)
+    return files.slice(0, 24)
   }
 
-  /**
-   * 从模板文件获取 XOR 密钥
-   */
   private getXorKey(templateFiles: string[]): number | null {
     const counts = new Map<string, number>()
 
@@ -68,7 +89,7 @@ class ImageKeyService {
         const y = bytes[bytes.length - 1]
         const key = `${x}_${y}`
         counts.set(key, (counts.get(key) ?? 0) + 1)
-      } catch { }
+      } catch { /* ignore */ }
     }
 
     if (!counts.size) return null
@@ -83,27 +104,19 @@ class ImageKeyService {
     })
 
     if (!mostKey) return null
-
     const [xStr, yStr] = mostKey.split('_')
     const x = Number(xStr)
     const y = Number(yStr)
     const xorKey = x ^ 0xFF
     const check = y ^ 0xD9
-
     return xorKey === check ? xorKey : null
   }
 
-  /**
-   * 从模板文件获取密文（用于验证 AES 密钥）
-   * 只从 V2 格式文件中读取密文
-   */
   private getCiphertextFromTemplate(templateFiles: string[]): Buffer | null {
     for (const file of templateFiles) {
       try {
         const bytes = fs.readFileSync(file)
         if (bytes.length < 0x1f) continue
-        
-        // 检查 V2 签名: 0x07, 0x08, 0x56, 0x32, 0x08, 0x07
         if (
           bytes[0] === 0x07 &&
           bytes[1] === 0x08 &&
@@ -112,95 +125,148 @@ class ImageKeyService {
           bytes[4] === 0x08 &&
           bytes[5] === 0x07
         ) {
-          console.log(`使用 V2 模板文件: ${file}`)
           return bytes.subarray(0x0f, 0x1f)
         }
-      } catch { }
+      } catch { /* ignore */ }
     }
     return null
   }
 
-  /**
-   * 从进程内存获取 AES 密钥
-   */
-  private async getAesKeyFromMemory(ciphertext: Buffer, onProgress?: (msg: string) => void): Promise<string | null> {
-    try {
-      onProgress?.('正在调用 Rust 内存扫描获取 AES 密钥...')
-      const rustKey = wxKeyService.scanImageAesKey(ciphertext)
-      if (rustKey) {
-        onProgress?.('Rust 内存扫描命中 AES 密钥')
-        return rustKey
+  private collectWxidCandidates(userDir: string): string[] {
+    const names = new Set<string>()
+    const push = (raw: string) => {
+      const trimmed = String(raw || '').trim()
+      if (!trimmed) return
+      names.add(trimmed)
+      const cleaned = cleanWxid(trimmed)
+      if (cleaned) names.add(cleaned)
+    }
+    push(path.basename(userDir))
+    push(path.basename(path.dirname(userDir)))
+    return [...names]
+  }
+
+  private collectKvcommDirs(): string[] {
+    const home = os.homedir()
+    const roots = [
+      path.join(home, 'AppData', 'Roaming', 'Tencent', 'xwechat'),
+      path.join(home, 'AppData', 'Roaming', 'Tencent', 'WeChat')
+    ]
+    const dirs: string[] = []
+    for (const root of roots) {
+      if (!fs.existsSync(root)) continue
+      const stack = [root]
+      let seen = 0
+      while (stack.length && seen < 400) {
+        const dir = stack.pop() as string
+        seen += 1
+        let entries: fs.Dirent[]
+        try {
+          entries = fs.readdirSync(dir, { withFileTypes: true })
+        } catch {
+          continue
+        }
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue
+          const full = path.join(dir, entry.name)
+          if (entry.name.toLowerCase() === 'kvcomm') dirs.push(full)
+          else stack.push(full)
+        }
       }
-    } catch (e) {
-      console.error('Rust 图片密钥扫描异常:', e)
     }
-    onProgress?.('Rust 内存扫描未命中 AES 密钥')
-    return null
+    return dirs
   }
 
-  /**
-   * 获取图片密钥
-   */
+  private collectKvcommCodes(): number[] {
+    const codes = new Set<number>()
+    const patterns = [
+      /^key_(\d+)_/i,
+      /^(\d+)_\d+_/
+    ]
+    for (const dir of this.collectKvcommDirs()) {
+      let files: string[]
+      try {
+        files = fs.readdirSync(dir)
+      } catch {
+        continue
+      }
+      for (const file of files) {
+        if (!/\.statistic$/i.test(file) && !file.toLowerCase().startsWith('key_')) continue
+        for (const pattern of patterns) {
+          const match = file.match(pattern)
+          if (!match) continue
+          const code = Number(match[1])
+          if (Number.isFinite(code) && code >= 0 && code <= 0xFFFFFFFF) {
+            codes.add(code)
+          }
+        }
+      }
+    }
+    return [...codes]
+  }
+
+  private verifyAesKey(aesKey: string, ciphertext: Buffer): boolean {
+    try {
+      const keyBytes = Buffer.from(aesKey, 'ascii').subarray(0, 16)
+      if (keyBytes.length < 16) return false
+      const decipher = crypto.createDecipheriv('aes-128-ecb', keyBytes, null)
+      decipher.setAutoPadding(false)
+      const dec = Buffer.concat([decipher.update(ciphertext), decipher.final()])
+      return isImageMagic(dec)
+    } catch {
+      return false
+    }
+  }
+
+  async getImageKeysFromDisk(
+    userDir: string,
+    onProgress?: (msg: string) => void
+  ): Promise<ImageKeyResult> {
+    onProgress?.('正在从本地缓存推算图片密钥...')
+    const templateFiles = this.findTemplateDatFiles(userDir)
+    if (templateFiles.length === 0) {
+      return { success: false, error: '未找到图片缓存，可能该账号还没有下载过图片' }
+    }
+
+    const xorFromFile = this.getXorKey(templateFiles)
+    const ciphertext = this.getCiphertextFromTemplate(templateFiles)
+    const codes = this.collectKvcommCodes()
+    const wxids = this.collectWxidCandidates(userDir)
+
+    if (!ciphertext) {
+      if (xorFromFile === null) {
+        return { success: false, error: '未找到 V2 图片，也无法计算 XOR' }
+      }
+      return { success: true, xorKey: xorFromFile }
+    }
+
+    onProgress?.(`找到 ${codes.length} 个 kvcomm 候选，正在校验...`)
+    for (const code of codes) {
+      for (const wxid of wxids) {
+        const xorKey = code & 0xFF
+        const aesKey = crypto.createHash('md5').update(`${code}${wxid}`).digest('hex').substring(0, 16)
+        if (!this.verifyAesKey(aesKey, ciphertext)) continue
+        if (xorFromFile !== null && xorFromFile !== xorKey) continue
+        onProgress?.('图片密钥已从本地缓存推算成功')
+        return { success: true, xorKey, aesKey }
+      }
+    }
+
+    if (xorFromFile !== null) {
+      return {
+        success: false,
+        xorKey: xorFromFile,
+        error: 'XOR 已从图片算出，但 AES 未能从 kvcomm 匹配。未扫描微信内存。'
+      }
+    }
+    return { success: false, error: '未能从本地缓存推算图片密钥' }
+  }
+
   async getImageKeys(
     userDir: string,
     onProgress?: (msg: string) => void
-  ): Promise<{ success: boolean; xorKey?: number; aesKey?: string; error?: string }> {
-    try {
-      onProgress?.('正在收集模板文件...')
-      
-      const templateFiles = this.findTemplateDatFiles(userDir)
-      if (templateFiles.length === 0) {
-        return { success: false, error: '未找到模板文件，可能该微信账号没有图片缓存' }
-      }
-
-      onProgress?.(`找到 ${templateFiles.length} 个模板文件，正在计算 XOR 密钥...`)
-
-      const xorKey = this.getXorKey(templateFiles)
-      if (xorKey === null) {
-        return { success: false, error: '无法获取 XOR 密钥' }
-      }
-
-      onProgress?.(`XOR 密钥: 0x${xorKey.toString(16).padStart(2, '0')}，正在读取加密数据...`)
-
-      const ciphertext = this.getCiphertextFromTemplate(templateFiles)
-      if (!ciphertext) {
-        // 没有 V2 文件，只返回 XOR 密钥
-        onProgress?.('未找到 V2 格式模板文件，仅返回 XOR 密钥')
-        return {
-          success: true,
-          xorKey,
-          aesKey: undefined
-        }
-      }
-
-      // 重试机制：最多尝试 3 次，每次间隔 2 秒
-      const maxRetries = 3
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        onProgress?.(`正在扫描微信进程内存获取 AES 密钥... (第 ${attempt}/${maxRetries} 次)`)
-
-        const aesKey = await this.getAesKeyFromMemory(ciphertext, onProgress)
-        if (aesKey) {
-          return {
-            success: true,
-            xorKey,
-            aesKey: aesKey.substring(0, 16)
-          }
-        }
-
-        if (attempt < maxRetries) {
-          onProgress?.(`未找到密钥，等待 2 秒后重试... 请确保已打开朋友圈图片`)
-          await new Promise(resolve => setTimeout(resolve, 2000))
-        }
-      }
-
-      return { 
-        success: false, 
-        error: '无法从内存中获取 AES 密钥。\n\n请尝试：\n1. 确保微信已登录\n2. 打开朋友圈查看几张图片\n3. 重新获取密钥' 
-      }
-    } catch (e) {
-      console.error('获取图片密钥失败:', e)
-      return { success: false, error: String(e) }
-    }
+  ): Promise<ImageKeyResult> {
+    return this.getImageKeysFromDisk(userDir, onProgress)
   }
 }
 

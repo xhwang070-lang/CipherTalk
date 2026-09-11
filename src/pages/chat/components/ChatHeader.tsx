@@ -1,5 +1,6 @@
 import { Aperture, ArrowDownToLine, ArrowsRotateLeft, Bell, BellSlash, Bulb, CircleCheck, CircleDashed, CircleInfo, Ellipsis, FaceRobot, FileText, Layers, LayoutSideContentRight, MagicWand, Microphone, Picture, Sparkles } from '@gravity-ui/icons'
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Button, Drawer, Dropdown, Label, Switch, Tooltip } from '@heroui/react'
 import { CloneSelfModal } from './CloneSelfModal'
 import { DateJumpPicker } from './DateJumpPicker'
@@ -138,6 +139,8 @@ export function ChatHeader({
   batchDecryptProgress,
   onBatchDecrypt
 }: ChatHeaderProps) {
+  const navigate = useNavigate()
+
   // 向量化（语义索引）状态：null=未知/未启用嵌入，count=已建片段数
   const [vecBuilding, setVecBuilding] = useState(false)
   const [vecStatus, setVecStatus] = useState<{ enabled: boolean; mediaEnabled: boolean; count: number; mediaCount: number } | null>(null)
@@ -770,7 +773,7 @@ export function ChatHeader({
                 size="sm"
                 variant="ghost"
                 aria-label="查看朋友圈"
-                onPress={() => window.electronAPI.window.openMomentsWindow(currentSession.username)}
+                onPress={() => navigate(`/moments?filterUsername=${encodeURIComponent(currentSession.username)}`)}
               >
                 <Aperture width={18} height={18} />
               </Button>

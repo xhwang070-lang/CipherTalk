@@ -103,11 +103,6 @@ function BottomDock() {
     scheduleHide()
   }
 
-  const openMomentsWindow = async () => {
-    try { await window.electronAPI.window.openMomentsWindow() }
-    catch (e) { console.error('打开朋友圈窗口失败:', e) }
-  }
-
   // 顺序与侧边栏导航一致（Sidebar.tsx navItems + 底部 ClawLink/设置）
   const allApps: DockApp[] = [
     { id: 'home', name: '首页', icon: makeIcon(House) },
@@ -138,7 +133,7 @@ function BottomDock() {
       case 'diary': navigate('/diary'); break
       case 'pets': navigate('/pets'); break
       case 'chat': navigate('/chat'); break
-      case 'moments': void openMomentsWindow(); break
+      case 'moments': navigate('/moments'); break
       case 'device-connect': setDeviceConnectOpen(true); break
       case 'export': navigate('/export'); break
       case 'data-management': navigate('/data-management'); break

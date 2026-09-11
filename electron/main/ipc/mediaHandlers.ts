@@ -5,7 +5,6 @@ import { basename, dirname, join } from 'path'
 import { imageDecryptService } from '../../services/imageDecryptService'
 import { imageKeyService } from '../../services/imageKeyService'
 import { videoService } from '../../services/videoService'
-import { wxKeyService } from '../../services/wxKeyService'
 import { wxKeyServiceMac } from '../../services/wxKeyServiceMac'
 import type { MainProcessContext } from '../context'
 
@@ -283,33 +282,22 @@ export function registerMediaHandlers(ctx: MainProcessContext): void {
     }
 
     try {
-      const wechatPid = wxKeyService.getWeChatPid()
-      if (!wechatPid) {
-        ctx.getLogService()?.info('ImageKey', '未检测到微信进程，无法执行 Rust 内存扫描')
-        return {
-          success: false,
-          error: '获取图片密钥失败：未检测到微信进程。请登录微信并打开几张图片后重试。'
-        }
-      }
-
-      event.sender.send('imageKey:progress', '正在通过 Rust 内存扫描获取图片密钥...')
-      const memResult = await imageKeyService.getImageKeys(
+      event.sender.send('imageKey:progress', '正在从本地缓存推算图片密钥...')
+      const diskResult = await imageKeyService.getImageKeys(
         resolvedUserDir,
         (msg) => event.sender.send('imageKey:progress', msg)
       )
-      if (memResult.success) {
-        ctx.getLogService()?.info('ImageKey', '图片密钥获取成功（Rust 内存扫描）', {
-          xorKey: memResult.xorKey,
-          aesKey: memResult.aesKey
+      if (diskResult.success && diskResult.aesKey) {
+        ctx.getLogService()?.info('ImageKey', '图片密钥获取成功（本地 kvcomm）', {
+          xorKey: diskResult.xorKey
         })
-        return memResult
+        return diskResult
       }
 
-      ctx.getLogService()?.warn('ImageKey', 'Rust 内存扫描图片密钥失败', { error: memResult.error })
-
+      ctx.getLogService()?.warn('ImageKey', '本地推算图片密钥失败', { error: diskResult.error })
       return {
         success: false,
-        error: memResult.error || '获取图片密钥失败：Rust 内存扫描未命中。请确保微信已登录并查看过图片后重试。'
+        error: diskResult.error || '未能从本地缓存推算图片密钥。未扫描微信内存。'
       }
     } catch (e) {
       ctx.getLogService()?.error('ImageKey', '图片密钥获取异常', { error: String(e) })

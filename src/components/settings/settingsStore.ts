@@ -78,7 +78,7 @@ export const DEFAULT_SETTINGS_CONFIG: SettingsConfig = {
   sttOnlineTimeoutMs: 60000,
   sttOnlineMaxConcurrency: 2,
 
- aiProvider: 'relayone',
+ aiProvider: 'custom',
  aiApiKey: '',
  aiModel: '',
 

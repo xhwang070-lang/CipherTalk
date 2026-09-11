@@ -8,7 +8,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { LanguageModel, ToolSet } from 'ai'
 import type { FilesV4 } from '@ai-sdk/provider'
-import { createProxyFetch } from '../ai/proxyFetch'
+import { resolveAiFetch } from '../ai/proxyFetch'
 import { withOpenAIResponsesSanitizer } from '../ai/openaiResponsesSanitizer'
 import { CODEX_SUBSCRIPTION_DUMMY_API_KEY, createCodexSubscriptionFetch, getCodexSubscriptionAuthPath } from '../ai/codexSubscriptionAuth'
 import { withOpenAICompatibleStreamSanitizer } from '../ai/openaiCompatibleStreamSanitizer'
@@ -106,8 +106,8 @@ function injectOpenAICompatiblePromptCacheKey(args: Record<string, any>, promptC
 }
 
 export function createLanguageModel(config: AgentProviderConfig, options: AgentLanguageModelOptions = {}): LanguageModel {
-  const { providerKind, name, apiKey, baseURL, model, headers, proxyUrl } = config
-  const fetch = createProxyFetch(proxyUrl)
+  const { providerKind, name, apiKey, baseURL, model, headers } = config
+  const fetch = resolveAiFetch(baseURL)
 
   if (providerKind === 'codex-subscription') {
     const subscriptionFetch = createCodexSubscriptionFetch({
@@ -146,8 +146,8 @@ export function createLanguageModel(config: AgentProviderConfig, options: AgentL
 }
 
 export function createProviderFilesApi(config: AgentProviderConfig): FilesV4 | null {
-  const { providerKind, name, apiKey, baseURL, headers, proxyUrl } = config
-  const fetch = createProxyFetch(proxyUrl)
+  const { providerKind, name, apiKey, baseURL, headers } = config
+  const fetch = resolveAiFetch(baseURL)
 
   if (providerKind === 'codex-subscription') return null
   if (providerKind === 'anthropic') {

@@ -966,6 +966,7 @@ export interface ElectronAPI {
     killWeChat: () => Promise<boolean>
     launchWeChat: () => Promise<boolean>
     waitForWindow: (maxWaitSeconds?: number) => Promise<boolean>
+    useLocalKeys: () => Promise<{ success: boolean; count?: number; error?: string }>
     startGetKey: (customWechatPath?: string, dbPath?: string) => Promise<{ success: boolean; key?: string; error?: string; needManualPath?: boolean; needAdmin?: boolean; validatedWxid?: string; account?: { dbKey: string | null; wxid: string; name: string; number: string; phone: string; seed: number } | null }>
     cancel: () => Promise<boolean>
     detectCurrentAccount: (dbPath?: string, maxTimeDiffMinutes?: number) => Promise<{ wxid: string; dbPath: string } | null>

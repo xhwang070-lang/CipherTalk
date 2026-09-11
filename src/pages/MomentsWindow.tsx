@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { Button, Card } from '@heroui/react'
 import { ArrowDownToLine, ArrowUp, ArrowsRotateLeft, Calendar, ChevronLeft, ChevronRight, CircleDashed, Copy, FileArrowDown, Funnel, HeartFill, Link, Magnifier, MusicNote, Person, Play, SquareArticle, TriangleExclamation, Xmark } from '@gravity-ui/icons'
 import { ImagePreview } from '../components/ImagePreview'
@@ -842,6 +843,9 @@ interface Contact {
 }
 
 function MomentsWindow() {
+  const location = useLocation()
+  const [searchParams] = useSearchParams()
+  const isPopupWindow = location.pathname === '/moments-window'
   const [isLoading, setIsLoading] = useState(true)
   const [loadingNewer, setLoadingNewer] = useState(false)
   const [posts, setPosts] = useState<SnsPost[]>([])
@@ -855,8 +859,7 @@ function MomentsWindow() {
 
   // 筛选状态
   const [selectedUsernames, setSelectedUsernames] = useState<string[]>(() => {
-    const p = new URLSearchParams(window.location.search)
-    const u = p.get('filterUsername')
+    const u = searchParams.get('filterUsername') || new URLSearchParams(window.location.search).get('filterUsername')
     return u ? [u] : []
   })
   const [jumpTargetDate, setJumpTargetDate] = useState<Date | undefined>(undefined)
@@ -888,6 +891,11 @@ function MomentsWindow() {
   const isInitialLoad = useRef(true)
 
   // 监听已有窗口收到的筛选消息
+  useEffect(() => {
+    const username = searchParams.get('filterUsername')
+    if (username) setSelectedUsernames([username])
+  }, [searchParams])
+
   useEffect(() => {
     const cleanup = window.electronAPI?.window?.onMomentsFilterUser?.((username: string) => {
       setSelectedUsernames([username])
@@ -1628,7 +1636,7 @@ document.querySelectorAll('.vi video').forEach(function(v) {
   const handleGlassReady = useCallback(() => setGlassReady(true), [])
 
   return (
-    <div className={`moments-window${glassReady ? ' moments-glass-ready' : ''}`}>
+    <div className={`moments-window${glassReady ? ' moments-glass-ready' : ''}${isPopupWindow ? ' is-popup' : ' is-embedded'}`}>
       <MomentsGlassDefs onReady={handleGlassReady} />
       {/* 侧边栏 (左侧) */}
       <aside className={`sns-sidebar ${isSidebarOpen ? 'open' : 'closed'}`}>
@@ -1749,11 +1757,13 @@ document.querySelectorAll('.vi video').forEach(function(v) {
       </aside>
 
       <div className="moments-workspace">
-        <TitleBar
-          className="moments-title-bar"
-          showTitle={false}
-          variant="app"
-        />
+        {isPopupWindow ? (
+          <TitleBar
+            className="moments-title-bar"
+            showTitle={false}
+            variant="app"
+          />
+        ) : null}
         {/* 主内容区 */}
         <div className="moments-main">
           <div className="moments-main-actions">

@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { join } from 'path'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { dbPathService } from '../../services/dbPathService'
 import { wcdbService } from '../../services/wcdbService'
 import { wxKeyService } from '../../services/wxKeyService'
@@ -47,7 +47,34 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
     return wxKeyService.waitForWeChatWindow(maxWaitSeconds)
   })
 
+  ipcMain.handle('wxkey:useLocalKeys', async () => {
+    const localPath = process.env.WEFLOW_ALL_KEYS_JSON
+      || 'C:\\Users\\Administrator\\Desktop\\WeFlow\\tools\\wechat-key-extractor\\all_keys.json'
+    try {
+      if (!existsSync(localPath)) {
+        return { success: false, error: '未找到本地密钥包 all_keys.json。已禁止自动扫微信内存。' }
+      }
+      const raw = readFileSync(localPath, 'utf8')
+      const data = JSON.parse(raw)
+      const count = Object.keys(data).filter((k: string) => !k.startsWith('_') && data[k]?.enc_key).length
+      if (count <= 0) {
+        return { success: false, error: '本地密钥包是空的。已禁止自动扫微信内存。' }
+      }
+      return { success: true, count }
+    } catch (e) {
+      return { success: false, error: String(e) }
+    }
+  })
+
   ipcMain.handle('wxkey:startGetKey', async (event, customWechatPath?: string, dbPath?: string) => {
+    const allowLive = process.env.WEFLOW_ALLOW_LIVE_MEMORY_SCAN === '1'
+    if (!allowLive) {
+      ctx.getLogService()?.warn('WxKey', '拒绝扫微信内存（未授权）')
+      return {
+        success: false,
+        error: '已禁用登录微信时扫描内存。开库使用本地 all_keys.json 和自己的 DLL。如需扫内存，必须你明确同意。'
+      }
+    }
     ctx.getLogService()?.info('WxKey', '开始获取微信密钥', { customWechatPath })
     if (process.platform === 'darwin') {
       try {

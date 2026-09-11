@@ -44,6 +44,14 @@ const PERSONA_PENDING_FLUSH_MAX_MS = 10_000
 const PERSONA_PENDING_AFTER_BUSY_MS = 1_200
 const WECHAT_TEXT_BUBBLE_SEPARATOR = '---wx-next---'
 const WECHAT_REPLY_FALLBACK_TEXT = '不好意思，我有点嘎了，等一会儿哈！'
+
+function isPreambleOnlyWechatReply(text: string): boolean {
+  const compact = String(text || '').replace(/\s+/g, '')
+  if (!compact || compact.length > 80) return false
+  if (/[0-9]月|报价|不含税|合同|货期|总结如下|###/.test(compact)) return false
+  return /接着|捋一遍|捋到现在|写完|不绕了|我来看|开始整理|等我/.test(compact)
+}
+
 const WECHAT_INCOMING_MAX_FILES = 6
 const WECHAT_INCOMING_MAX_FILE_BYTES = 8 * 1024 * 1024
 const WECHAT_INCOMING_FETCH_TIMEOUT_MS = 15_000
@@ -1213,6 +1221,18 @@ class WeixinBotService {
       const allowDesktopScreenshotReply = wantsDesktopScreenshotReply(commandText)
       console.log(`[WechatBot] 开始调用普通 Agent history=${history.length} forceVoice=${forceVoice}`)
       let rawReply = await this.runAgent(history, { allowDesktopScreenshotReply })
+      if (isPreambleOnlyWechatReply(rawReply.text) && rawReply.media.length === 0) {
+        console.warn('[WechatBot] 检测到只有过渡句，自动续写完整正文')
+        const followHistory = [
+          ...history,
+          { id: `wx-a-preamble-${Date.now()}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: rawReply.text }] },
+          { id: `wx-u-continue-${Date.now()}`, role: 'user' as const, parts: [{ type: 'text' as const, text: '不要过渡句。立刻从上次停下的地方写出完整正文，按日期分段。' }] },
+        ]
+        const continued = await this.runAgent(followHistory, { allowDesktopScreenshotReply })
+        if (continued.text.trim() && continued.text.replace(/\s+/g, '').length > rawReply.text.replace(/\s+/g, '').length) {
+          rawReply = continued
+        }
+      }
       rawReply = await this.completeDesktopScreenshotReplyIfNeeded(rawReply, allowDesktopScreenshotReply)
       console.log(`[WechatBot] 普通 Agent 原始回复 textLength=${rawReply.text.length} bubbles=${rawReply.textBubbles?.length || 0} media=${rawReply.media.length}`)
       const reply = splitVoiceMarkedReply(rawReply, forceVoice)
@@ -1237,7 +1257,9 @@ class WeixinBotService {
         this.logger?.warn('WechatBot', '已回复微信消息', { from, replyLength: reply.text.length, mediaCount: reply.media.length })
         console.log('[WechatBot] 已调用 sendmessage 发送回复')
       } else {
-        console.warn('[WechatBot] Agent 回复为空，未发送')
+        console.warn('[WechatBot] Agent 回复为空，发送兜底回复')
+        const session = this.session
+        if (session) await sendText(session, from, WECHAT_REPLY_FALLBACK_TEXT, contextToken)
       }
     } catch (e) {
       const errorData = errorToLogData(e)
@@ -1946,8 +1968,9 @@ class WeixinBotService {
     const profile = await agentProfileService.resolve({
       mode: 'wechat-bot',
       scope: { kind: 'global' },
-      ensureCodeWorkspace: true,
-      includeMcpSkills: true,
+      ensureCodeWorkspace: false,
+      includeMcpSkills: false,
+      toolProfile: 'chat',
       queryText: lastUserTextFromUiMessages(uiMessages),
     })
     const messages = await convertToModelMessages(uiMessages)
@@ -1957,6 +1980,9 @@ class WeixinBotService {
     const media: WechatBotMedia[] = []
     const personaActions: WechatPersonaAction[] = []
     const toolNames = new Map<string, string>()
+    const abort = new AbortController()
+    const timeout = setTimeout(() => abort.abort(), 300_000)
+    try {
     await agentProcessService.run(
       {
         messages,
@@ -2005,7 +2031,12 @@ class WeixinBotService {
           this.logger?.warn('WechatBot', '已收集 Agent 数字分身动作', personaAction)
         }
       },
+      undefined,
+      abort.signal,
     )
+    } finally {
+      clearTimeout(timeout)
+    }
     const rawReplyBubbles = textBlocks.length > 0
       ? normalizeWechatTextBubbles(textBlocks)
       : normalizeWechatTextBubbles([reply])

@@ -127,7 +127,8 @@ function ChatPage(_props: ChatPageProps) {
     restoreSessionMessageCache,
     clearSessionMessageCache,
     setSearchKeyword,
-    incrementSyncVersion
+    incrementSyncVersion,
+    markSessionRead
   } = useChatStore()
 
   const messageListRef = useRef<HTMLDivElement>(null)
@@ -650,6 +651,10 @@ function ChatPage(_props: ChatPageProps) {
 
   // 上报当前正在查看的会话给消息提醒（"正在看的不提醒"）；离开聊天页时清空
   useEffect(() => {
+    if (currentSessionId) markSessionRead(currentSessionId)
+  }, [currentSessionId, markSessionRead])
+
+  useEffect(() => {
     window.electronAPI.notify.setActiveSession(currentSessionId)
     return () => window.electronAPI.notify.setActiveSession(null)
   }, [currentSessionId])
@@ -722,7 +727,8 @@ function ChatPage(_props: ChatPageProps) {
     if (session.isFoldGroup || session.isOfficialFolder) {
       return
     }
-    window.electronAPI.window.replyTile.dismiss(session.username)
+    try { window.electronAPI.window.replyTile?.dismiss?.(session.username) } catch { /* ignore */ }
+    markSessionRead(session.username)
 
     if (session.username === currentSessionId) {
       // 如果是当前会话，重新加载消息（用于刷新）
