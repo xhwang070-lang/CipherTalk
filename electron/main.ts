@@ -14,6 +14,7 @@ import { applyKeyPackEnv, resolveKeyPackPath } from './services/localKeyPack'
 import { LogService } from './services/logService'
 import type { MainProcessContext, WindowManager } from './main/context'
 import { createWindowManager } from './main/windows/windowManager'
+import { isProcessElevated, relaunchProcessElevated } from './main/elevation'
 import { registerModularIpcHandlers } from './main/ipc/register'
 import { registerLocalProtocols, registerPluginProtocol } from './main/protocols'
 import { registerPluginNavigationGuard } from './main/pluginNavigationGuard'
@@ -206,13 +207,20 @@ if (process.platform === 'win32') {
   app.setAppUserModelId('com.huabo.huaji')
 }
 
-const gotSingleInstanceLock = app.requestSingleInstanceLock()
+const gotSingleInstanceLock = app.requestSingleInstanceLock({
+  elevated: isProcessElevated()
+})
 if (!gotSingleInstanceLock) {
   warnStartupMilestone('startup:second-instance-quit')
   app.quit()
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, _argv, _cwd, additionalData) => {
     warnStartupMilestone('startup:second-instance')
+    const incomingElevated = Boolean((additionalData as { elevated?: boolean } | undefined)?.elevated)
+    if (incomingElevated && !isProcessElevated()) {
+      relaunchProcessElevated()
+      return
+    }
     const targetWindow = ctx.getMainWindow()
       || ctx.getSplashWindow()
       || BrowserWindow.getAllWindows().find(win => !win.isDestroyed())

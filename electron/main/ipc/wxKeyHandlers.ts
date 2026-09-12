@@ -7,6 +7,7 @@ import { wxKeyService } from '../../services/wxKeyService'
 import { wxKeyServiceMac } from '../../services/wxKeyServiceMac'
 import { applyKeyPackEnv, importKeyPack, parseKeyPack, pickEncKey, resolveKeyPackPath, upsertEncKey } from '../../services/localKeyPack'
 import type { MainProcessContext } from '../context'
+import { isProcessElevated } from '../elevation'
 
 /**
  * 微信密钥获取 IPC。
@@ -347,10 +348,24 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
       let lastError = ''
       let sawBytes = false
       let rounds = 0
-      const needAdminResult = {
-        success: false,
-        needAdmin: true,
-        error: '无法读取微信内存（读到 0 字节）。管理员账号默认仍是普通权限启动华记。请点「以管理员身份重启华记」，在 UAC 窗口选是。'
+      let lastDiag: { pids?: number; opened?: number; bytes?: number } | null = null
+      const zeroReadResult = () => {
+        const elevated = isProcessElevated()
+        const detail = lastDiag
+          ? `（进程 ${lastDiag.pids ?? 0}，打开 ${lastDiag.opened ?? 0}，字节 ${lastDiag.bytes ?? 0}）`
+          : '（读到 0 字节）'
+        if (elevated) {
+          return {
+            success: false,
+            needAdmin: false,
+            error: `已是管理员仍无法读取微信内存${detail}。请先完全退出华记后再打开，并确认微信已登录。不要用属性页「以管理员身份运行」。`
+          }
+        }
+        return {
+          success: false,
+          needAdmin: true,
+          error: `无法读取微信内存${detail}。管理员账号默认仍是普通权限。请先在任务管理器结束全部 Huaji.exe，再右键华记「以管理员身份运行」。UAC 可能不弹窗，这不影响提权。`
+        }
       }
       while (Date.now() < deadline) {
         rounds++
@@ -385,6 +400,7 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
           if (!contactDb) continue
           const diag = wxKeyService.scanDbKeyDiag(contactDb)
           if (!diag) continue
+          lastDiag = diag
           if (diag.bytes > 0) sawBytes = true
           if (diag.key) {
             event.sender.send('wxkey:status', { status: `已捕获候选密钥，正在验证账号: ${wxid}`, level: 1 })
@@ -400,15 +416,15 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
         }
         // 连续多轮一字节都读不到 → 基本可判定权限不足，提前结束提示提权
         if (rounds >= 8 && !sawBytes) {
-          ctx.getLogService()?.warn('WxKey', '内存读取为 0 字节，疑似权限不足')
-          return needAdminResult
+          ctx.getLogService()?.warn('WxKey', '内存读取为 0 字节，疑似权限不足', { lastDiag, elevated: isProcessElevated() })
+          return zeroReadResult()
         }
         await new Promise(resolve => setTimeout(resolve, 1500))
       }
 
       if (!sawBytes) {
-        ctx.getLogService()?.warn('WxKey', '内存读取始终为 0 字节，疑似权限不足')
-        return needAdminResult
+        ctx.getLogService()?.warn('WxKey', '内存读取始终为 0 字节，疑似权限不足', { lastDiag, elevated: isProcessElevated() })
+        return zeroReadResult()
       }
       ctx.getLogService()?.warn('WxKey', '内存扫描超时未获取到密钥', { lastError })
       return {

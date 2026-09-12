@@ -504,6 +504,21 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
     }
   }
 
+  const handleRelaunchElevated = async () => {
+    try {
+      const result = await window.electronAPI.app.relaunchElevated()
+      if (result?.already) {
+        setError('当前窗口已经是管理员，但可能仍被旧进程占着。请打开任务管理器结束全部 Huaji.exe，再右键华记「以管理员身份运行」。内置管理员账号常常不弹 UAC，没有提示窗也没关系。')
+        return
+      }
+      if (result && result.success === false) {
+        setError(result.error || '提权重启失败')
+      }
+    } catch (e) {
+      setError(`提权重启失败: ${e}`)
+    }
+  }
+
   const handleScanMemoryKey = async (wechatPath?: string) => {
     if (isFetchingDbKey) return
     if (!allowMemoryScan) {
@@ -1103,7 +1118,7 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
           type="button"
           variant="primary"
           className="self-start"
-          onPress={() => void window.electronAPI.app.relaunchElevated()}
+          onPress={() => void handleRelaunchElevated()}
         >
           <Lock width={16} height={16} />
           以管理员身份重启华记
