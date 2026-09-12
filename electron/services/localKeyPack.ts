@@ -126,18 +126,10 @@ export function upsertEncKey(encKey: string, dbRoot?: string, wxid?: string): st
   if (existing && existsSync(existing)) {
     try { data = JSON.parse(readFileSync(existing, 'utf8')) } catch { data = {} }
   }
-  const files: string[] = []
-  const root = dbRoot && wxid ? join(dbRoot, wxid) : dbRoot
-  if (root && existsSync(root)) collectDbFiles(root, files)
-  let wrote = 0
-  for (const file of files) {
-    const salt = readSaltHex(file)
-    if (!salt || salt.length !== 32) continue
-    data[basename(file)] = { salt, enc_key: key }
-    wrote += 1
-  }
-  if (wrote === 0 && key.length === 64) {
-    data.scanned = { salt: '', enc_key: key }
+  // Scanned hex is a process-wide candidate, not the per-file derived AES key.
+  // Overwriting every db entry with it makes HMAC fail or forces a slow PBKDF2.
+  if (key.length === 64) {
+    data._scanned = { enc_key: key, salt: '' }
   }
   mkdirSync(dirname(target), { recursive: true })
   writeFileSync(target, JSON.stringify(data, null, 2), 'utf8')
