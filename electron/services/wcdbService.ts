@@ -393,10 +393,25 @@ export class WcdbService extends EventEmitter {
     const id = ++this.seq
     const w = this.worker
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject })
+      const timer = setTimeout(() => {
+        if (!this.pending.has(id)) return
+        this.pending.delete(id)
+        reject(new Error('WCDB 查询超时'))
+      }, 30_000)
+      this.pending.set(id, {
+        resolve: (value) => {
+          clearTimeout(timer)
+          resolve(value)
+        },
+        reject: (err) => {
+          clearTimeout(timer)
+          reject(err)
+        }
+      })
       try {
         w.postMessage({ id, type, payload } as UtilityRequest)
       } catch (e: any) {
+        clearTimeout(timer)
         this.pending.delete(id)
         reject(new Error(`utility postMessage 失败: ${e?.message || String(e)}`))
       }

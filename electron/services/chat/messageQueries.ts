@@ -82,18 +82,18 @@ export async function getMessages(state: ChatServiceState,
                  n.user_name AS sender_username
                  FROM ${tableName} m
                  LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid
-                 ORDER BY m.sort_seq DESC, m.create_time DESC, m.local_id DESC
+                 ORDER BY m.sort_seq DESC, m.local_id DESC
                  LIMIT ? OFFSET ?`
           params = [myRowId, minFetchPerDb, 0]
         } else if (hasName2IdTable) {
           sql = `SELECT m.*, n.user_name AS sender_username
                  FROM ${tableName} m
                  LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid
-                 ORDER BY m.sort_seq DESC, m.create_time DESC, m.local_id DESC
+                 ORDER BY m.sort_seq DESC, m.local_id DESC
                  LIMIT ? OFFSET ?`
           params = [minFetchPerDb, 0]
         } else {
-          sql = `SELECT * FROM ${tableName} ORDER BY sort_seq DESC, create_time DESC, local_id DESC LIMIT ? OFFSET ?`
+          sql = `SELECT * FROM ${tableName} ORDER BY sort_seq DESC, local_id DESC LIMIT ? OFFSET ?`
           params = [minFetchPerDb, 0]
         }
 
@@ -352,7 +352,7 @@ export async function getMessagesByTimeRangeForSummary(state: ChatServiceState,
                  FROM ${tableName} m
                  LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid
                  ${whereClause}
-                 ORDER BY m.sort_seq DESC, m.create_time DESC, m.local_id DESC
+                 ORDER BY m.sort_seq DESC, m.local_id DESC
                  LIMIT ?`
           rows = await dbAdapter.all<any>('message', dbPath, sql, [myRowId, ...params, fetchLimitPerDb])
         } else if (hasName2IdTable) {
@@ -360,14 +360,14 @@ export async function getMessagesByTimeRangeForSummary(state: ChatServiceState,
                  FROM ${tableName} m
                  LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid
                  ${whereClause}
-                 ORDER BY m.sort_seq DESC, m.create_time DESC, m.local_id DESC
+                 ORDER BY m.sort_seq DESC, m.local_id DESC
                  LIMIT ?`
           rows = await dbAdapter.all<any>('message', dbPath, sql, [...params, fetchLimitPerDb])
         } else {
           sql = `SELECT *
                  FROM ${tableName}
                  ${whereClause}
-                 ORDER BY sort_seq DESC, create_time DESC, local_id DESC
+                 ORDER BY sort_seq DESC, local_id DESC
                  LIMIT ?`
           rows = await dbAdapter.all<any>('message', dbPath, sql, [...params, fetchLimitPerDb])
         }
@@ -472,7 +472,7 @@ export async function getMessagesBefore(state: ChatServiceState,
                      OR (m.sort_seq = ? AND m.create_time < ?)
                      OR (m.sort_seq = ? AND m.create_time = ? AND m.local_id < ?)
                    )
-                   ORDER BY m.sort_seq DESC, m.create_time DESC, m.local_id DESC
+                   ORDER BY m.sort_seq DESC, m.local_id DESC
                    LIMIT ?`
             rows = await dbAdapter.all<any>('message', dbPath, sql, [
               myRowId,
@@ -514,7 +514,7 @@ export async function getMessagesBefore(state: ChatServiceState,
                      OR (m.sort_seq = ? AND m.create_time < ?)
                      OR (m.sort_seq = ? AND m.create_time = ? AND m.local_id < ?)
                    )
-                   ORDER BY m.sort_seq DESC, m.create_time DESC, m.local_id DESC
+                   ORDER BY m.sort_seq DESC, m.local_id DESC
                    LIMIT ?`
             rows = await dbAdapter.all<any>('message', dbPath, sql, [
               cursorSortSeq,
@@ -550,7 +550,7 @@ export async function getMessagesBefore(state: ChatServiceState,
                      OR (sort_seq = ? AND create_time < ?)
                      OR (sort_seq = ? AND create_time = ? AND local_id < ?)
                    )
-                   ORDER BY sort_seq DESC, create_time DESC, local_id DESC
+                   ORDER BY sort_seq DESC, local_id DESC
                    LIMIT ?`
             rows = await dbAdapter.all<any>('message', dbPath, sql, [
               cursorSortSeq,
@@ -658,7 +658,7 @@ export async function getMessagesAfter(state: ChatServiceState,
                      OR (m.sort_seq = ? AND m.create_time > ?)
                      OR (m.sort_seq = ? AND m.create_time = ? AND m.local_id > ?)
                    )
-                   ORDER BY m.sort_seq ASC, m.create_time ASC, m.local_id ASC
+                   ORDER BY m.sort_seq ASC, m.local_id ASC
                    LIMIT ?`
             rows = await dbAdapter.all<any>('message', dbPath, sql, [
               myRowId,
@@ -700,7 +700,7 @@ export async function getMessagesAfter(state: ChatServiceState,
                      OR (m.sort_seq = ? AND m.create_time > ?)
                      OR (m.sort_seq = ? AND m.create_time = ? AND m.local_id > ?)
                    )
-                   ORDER BY m.sort_seq ASC, m.create_time ASC, m.local_id ASC
+                   ORDER BY m.sort_seq ASC, m.local_id ASC
                    LIMIT ?`
             rows = await dbAdapter.all<any>('message', dbPath, sql, [
               cursorSortSeq,
@@ -736,7 +736,7 @@ export async function getMessagesAfter(state: ChatServiceState,
                      OR (sort_seq = ? AND create_time > ?)
                      OR (sort_seq = ? AND create_time = ? AND local_id > ?)
                    )
-                   ORDER BY sort_seq ASC, create_time ASC, local_id ASC
+                   ORDER BY sort_seq ASC, local_id ASC
                    LIMIT ?`
             rows = await dbAdapter.all<any>('message', dbPath, sql, [
               cursorSortSeq,
@@ -973,7 +973,7 @@ export async function getMessagesForChatLab(state: ChatServiceState,
                  FROM ${tableName} m
                  LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid
                  ${whereClause}
-                 ORDER BY m.sort_seq ASC, m.create_time ASC, m.local_id ASC
+                 ORDER BY m.sort_seq ASC, m.local_id ASC
                  LIMIT ?`
           rows = await dbAdapter.all<any>('message', dbPath, sql, [myRowId, ...params, fetchLimitPerDb])
         } else if (hasName2IdTable) {
@@ -981,14 +981,14 @@ export async function getMessagesForChatLab(state: ChatServiceState,
                  FROM ${tableName} m
                  LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid
                  ${whereClause}
-                 ORDER BY m.sort_seq ASC, m.create_time ASC, m.local_id ASC
+                 ORDER BY m.sort_seq ASC, m.local_id ASC
                  LIMIT ?`
           rows = await dbAdapter.all<any>('message', dbPath, sql, [...params, fetchLimitPerDb])
         } else {
           sql = `SELECT *
                  FROM ${tableName}
                  ${whereClause}
-                 ORDER BY sort_seq ASC, create_time ASC, local_id ASC
+                 ORDER BY sort_seq ASC, local_id ASC
                  LIMIT ?`
           rows = await dbAdapter.all<any>('message', dbPath, sql, [...params, fetchLimitPerDb])
         }
