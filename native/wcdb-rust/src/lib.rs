@@ -365,66 +365,44 @@ fn materialize_plaintext(db_path: &str, hex_key: &str) -> Result<String, Box<dyn
         }
     }
     let wal_src = format!("{}-wal", db_path);
+    let mut wal_applied = !std::path::Path::new(&wal_src).is_file();
     if std::path::Path::new(&wal_src).is_file() {
-        match decryptor.decrypt_wal_file(&wal_src) {
-            Ok(wal_bytes) => {
-                std::fs::write(&cache_wal, wal_bytes)?;
-                log_info(&format!("Decrypted WAL into {}", cache_wal.display()));
+        match decryptor.apply_wal_to_plain_db(db_path, &wal_src, &cache) {
+            Ok(commits) => {
+                wal_applied = true;
+                log_info(&format!("Applied {} WAL commits into {}", commits, cache.display()));
             }
             Err(e) => {
-                log_error(&format!("WAL decrypt failed, using checkpoint snapshot: {}", e));
-                let _ = std::fs::remove_file(&cache_wal);
+                log_error(&format!("WAL apply failed, using checkpoint snapshot: {}", e));
             }
         }
-    } else {
-        let _ = std::fs::remove_file(&cache_wal);
     }
+    let _ = std::fs::remove_file(&cache_wal);
     let _ = std::fs::remove_file(&cache_shm);
-    // 不在这里写 .sig。必须等 sqlite 带着 WAL 打开成功后再盖章，
-    // 否则打开失败删掉 WAL 后会永远跳过重解密。
     prune_cache(&dir);
+    if wal_applied {
+        let _ = std::fs::write(&sig_path, sig.as_bytes());
+    }
     Ok(cache.to_string_lossy().to_string())
 }
 
-fn stamp_cache_sig(db_path: &str, plain: &str) {
-    let sig = cache_sig(db_path);
-    let _ = std::fs::write(std::path::Path::new(plain).with_extension("sig"), sig.as_bytes());
-}
 
 fn open_db_connection(db_path: &str, hex_key: &str) -> Result<Connection, Box<dyn std::error::Error>> {
     let plain = materialize_plaintext(db_path, hex_key)?;
     let wal_path = format!("{}-wal", plain);
     let shm_path = format!("{}-shm", plain);
+    let _ = std::fs::remove_file(&wal_path);
+    let _ = std::fs::remove_file(&shm_path);
     match Connection::open(&plain) {
         Ok(conn) => {
-            if std::path::Path::new(&wal_path).is_file() {
-                match conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);") {
-                    Ok(_) => log_info(&format!("WAL checkpointed into {}", plain)),
-                    Err(e) => log_error(&format!("WAL checkpoint failed: {}", e)),
-                }
-            }
-            stamp_cache_sig(db_path, &plain);
             log_info(&format!("Opened local-decrypted sqlite: {}", plain));
             Ok(conn)
         }
         Err(e) => {
-            log_error(&format!("sqlite open with WAL failed, retry without WAL: {}", e));
-            let _ = std::fs::remove_file(&wal_path);
-            let _ = std::fs::remove_file(&shm_path);
+            log_error(&format!("sqlite open failed, dropped cache {}: {}", plain, e));
+            let _ = std::fs::remove_file(&plain);
             let _ = std::fs::remove_file(std::path::Path::new(&plain).with_extension("sig"));
-            match Connection::open(&plain) {
-                Ok(conn) => {
-                    log_error("opened snapshot without WAL; will retry WAL on next query");
-                    Ok(conn)
-                }
-                Err(e2) => {
-                    let _ = std::fs::remove_file(&plain);
-                    let path = std::path::Path::new(&plain);
-                    let _ = std::fs::remove_file(path.with_extension("sig"));
-                    log_error(&format!("sqlite open failed, dropped cache {}: {}", plain, e2));
-                    Err(e2.into())
-                }
-            }
+            Err(e.into())
         }
     }
 }

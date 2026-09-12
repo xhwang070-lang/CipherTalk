@@ -108,6 +108,29 @@ impl WeChatDecryptor {
         let wal = read_shared(wal_path.as_ref())?;
         decrypt_wal_bytes(&enc_key, &wal)
     }
+
+    /// 把加密 WAL 里已提交的页直接打进明文缓存库，不走 sqlite 的 WAL 校验。
+    pub fn apply_wal_to_plain_db<P, Q, R>(
+        &self,
+        encrypted_db: P,
+        wal_path: Q,
+        plain_db: R,
+    ) -> Result<u32, Box<dyn std::error::Error>>
+    where
+        P: AsRef<Path>,
+        Q: AsRef<Path>,
+        R: AsRef<Path>,
+    {
+        let mut page1 = [0u8; PAGE_SIZE];
+        {
+            use std::io::Read;
+            let mut f = fs::File::open(encrypted_db.as_ref())?;
+            f.read_exact(&mut page1)?;
+        }
+        let enc_key = resolve_enc_key(&self.key_bytes, &page1)?;
+        let wal = read_shared(wal_path.as_ref())?;
+        apply_wal_pages(&enc_key, &wal, plain_db.as_ref())
+    }
 }
 
 fn resolve_enc_key(
@@ -243,6 +266,62 @@ fn wal_checksum(data: &[u8], mut s0: u32, mut s1: u32) -> (u32, u32) {
         i += 8;
     }
     (s0, s1)
+}
+
+fn apply_wal_pages(
+    enc_key: &[u8; 32],
+    wal: &[u8],
+    plain_db: &Path,
+) -> Result<u32, Box<dyn std::error::Error>> {
+    use std::io::{Seek, SeekFrom, Write};
+    if wal.len() < WAL_HDR {
+        return Err("WAL 太小".into());
+    }
+    if wal[0..4] != [0x37, 0x7f, 0x06, 0x82] {
+        return Err("WAL 头不是 SQLite WAL".into());
+    }
+    let page_size = u32::from_be_bytes(wal[8..12].try_into().unwrap()) as usize;
+    if page_size != PAGE_SIZE {
+        return Err(format!("不支持的 WAL page_size {}", page_size).into());
+    }
+    let header_salt = &wal[16..24];
+    let frame_size = WAL_FRAME_HDR + page_size;
+    let mut pending: Vec<(u32, Vec<u8>)> = Vec::new();
+    let mut commits = 0u32;
+    let mut offset = WAL_HDR;
+    let mut file = fs::OpenOptions::new().read(true).write(true).open(plain_db)?;
+    let original_len = file.metadata()?.len();
+    while offset + frame_size <= wal.len() {
+        let frame = &wal[offset..offset + frame_size];
+        let pgno = u32::from_be_bytes(frame[0..4].try_into().unwrap());
+        if pgno == 0 {
+            break;
+        }
+        if &frame[8..16] != header_salt {
+            break;
+        }
+        let dbsize = u32::from_be_bytes(frame[4..8].try_into().unwrap());
+        match decrypt_page(enc_key, &frame[WAL_FRAME_HDR..], pgno) {
+            Ok(page) => pending.push((pgno, page)),
+            Err(_) => break,
+        }
+        if dbsize != 0 {
+            for (pg, page) in pending.drain(..) {
+                let pos = (pg as u64 - 1) * PAGE_SIZE as u64;
+                file.seek(SeekFrom::Start(pos))?;
+                file.write_all(&page)?;
+            }
+            let new_len = dbsize as u64 * PAGE_SIZE as u64;
+            // WAL 环回后可能混进旧提交；禁止把缓存截得比原明文更短。
+            if new_len >= original_len {
+                file.set_len(new_len)?;
+            }
+            commits += 1;
+        }
+        offset += frame_size;
+    }
+    file.flush()?;
+    Ok(commits)
 }
 
 fn decrypt_wal_bytes(
