@@ -1957,12 +1957,22 @@ class WeixinBotService {
         this.logger?.warn('WechatBot', '微信正在输入状态保活失败', { to: toUserId, error: String(e) })
       })
     }, TYPING_KEEPALIVE_MS)
+    const ackTimer = setTimeout(() => {
+      if (stopped || !this.session) return
+      void sendText(this.session, toUserId, '收到，正在处理，请稍等。', contextToken).catch(() => {})
+    }, 12_000)
+    const beatTimer = setInterval(() => {
+      if (stopped || !this.session) return
+      void sendText(this.session, toUserId, '还在处理，没挂。', contextToken).catch(() => {})
+    }, 25_000)
 
     return {
       stop: async () => {
         if (stopped) return
         stopped = true
         clearInterval(timer)
+        clearTimeout(ackTimer)
+        clearInterval(beatTimer)
         try {
           await sendTyping(session, toUserId, ticket, 2)
           this.logger?.warn('WechatBot', '已取消微信正在输入状态', { to: toUserId })
