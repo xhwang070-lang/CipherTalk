@@ -153,13 +153,31 @@ class ImageKeyService {
       path.join(home, 'AppData', 'Roaming', 'Tencent', 'WeChat')
     ]
     const dirs: string[] = []
+    const seen = new Set<string>()
+    const add = (full: string) => {
+      if (!full || seen.has(full) || !fs.existsSync(full)) return
+      seen.add(full)
+      dirs.push(full)
+    }
+
     for (const root of roots) {
       if (!fs.existsSync(root)) continue
+      add(path.join(root, 'ilink', 'kvcomm'))
+      add(path.join(root, 'net', 'kvcomm'))
+      add(path.join(root, 'net_1', 'kvcomm'))
+      const ilink = path.join(root, 'radium', 'ilink')
+      if (fs.existsSync(ilink)) {
+        try {
+          for (const name of fs.readdirSync(ilink)) {
+            add(path.join(ilink, name, 'kvcomm'))
+          }
+        } catch { /* ignore */ }
+      }
       const stack = [root]
-      let seen = 0
-      while (stack.length && seen < 400) {
+      let walked = 0
+      while (stack.length && walked < 4000) {
         const dir = stack.pop() as string
-        seen += 1
+        walked += 1
         let entries: fs.Dirent[]
         try {
           entries = fs.readdirSync(dir, { withFileTypes: true })
@@ -169,7 +187,7 @@ class ImageKeyService {
         for (const entry of entries) {
           if (!entry.isDirectory()) continue
           const full = path.join(dir, entry.name)
-          if (entry.name.toLowerCase() === 'kvcomm') dirs.push(full)
+          if (entry.name.toLowerCase() === 'kvcomm') add(full)
           else stack.push(full)
         }
       }
