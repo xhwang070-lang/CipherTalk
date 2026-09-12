@@ -23,6 +23,26 @@ export class DbPathService {
     }
   }
 
+  hasDbStorageAccount(rootPath: string): boolean {
+    try {
+      if (existsSync(join(rootPath, 'db_storage'))) return true
+      return this.findAccountDirs(rootPath).some((account) => existsSync(join(rootPath, account, 'db_storage')))
+    } catch {
+      return false
+    }
+  }
+
+  /** 微信 4.x（Weixin.exe）在跑时，不要用 3.x 的 WeChat Files。 */
+  preferLiveWeixinPath(current?: string): string {
+    const detected = this.collectCandidates()[0]?.path || ''
+    const cur = String(current || '').trim()
+    if (this.isWeixinRunning()) {
+      if (cur && this.hasDbStorageAccount(cur)) return cur
+      if (detected && this.hasDbStorageAccount(detected)) return detected
+    }
+    return cur || detected
+  }
+
   scanWxids(rootPath: string): string[] {
     try {
       if (this.isAccountDir(rootPath)) {
@@ -63,6 +83,37 @@ export class DbPathService {
     return join(home, 'Documents', 'xwechat_files')
   }
 
+  private isWeixinRunning(): boolean {
+    if (process.platform !== 'win32') return false
+    try {
+      const { execSync } = require('child_process') as typeof import('child_process')
+      return execSync('tasklist /FI "IMAGENAME eq Weixin.exe" /NH', { encoding: 'utf8', windowsHide: true })
+        .toLowerCase()
+        .includes('weixin.exe')
+    } catch {
+      return false
+    }
+  }
+
+  private windowsHomeDirs(): string[] {
+    const homes = new Set<string>()
+    for (const value of [homedir(), process.env.USERPROFILE || '', process.env.HOME || '']) {
+      if (value) homes.add(value)
+    }
+    try {
+      const execPath = process.execPath || ''
+      const matched = execPath.match(/^([A-Za-z]:\\Users\\[^\\]+)/)
+      if (matched) homes.add(matched[1])
+    } catch { /* ignore */ }
+    for (const drive of 'CDEFGHIJ') {
+      for (const name of this.safeReadDir(`${drive}:\\Users`)) {
+        if (name === 'Public' || name === 'Default' || name === 'Default User') continue
+        homes.add(`${drive}:\\Users\\${name}`)
+      }
+    }
+    return [...homes]
+  }
+
   private getPossibleRoots(): string[] {
     const home = homedir()
     const possiblePaths: string[] = []
@@ -93,10 +144,12 @@ export class DbPathService {
       return possiblePaths
     }
 
-    return [
-      join(home, 'Documents', 'xwechat_files'),
-      join(home, 'Documents', 'WeChat Files')
-    ]
+    const paths: string[] = []
+    for (const homeDir of this.windowsHomeDirs()) {
+      paths.push(join(homeDir, 'Documents', 'xwechat_files'))
+      paths.push(join(homeDir, 'Documents', 'WeChat Files'))
+    }
+    return paths
   }
 
   private collectCandidates(): PathCandidate[] {
@@ -123,22 +176,31 @@ export class DbPathService {
       if (accounts.length === 0) return
 
       let latestModified = 0
+      let dbStorageAccounts = 0
       for (const account of accounts) {
-        latestModified = Math.max(latestModified, this.getAccountModifiedTime(join(normalized, account)))
+        const accountPath = join(normalized, account)
+        latestModified = Math.max(latestModified, this.getAccountModifiedTime(accountPath))
+        if (existsSync(join(accountPath, 'db_storage'))) dbStorageAccounts += 1
       }
 
       const rootName = basename(normalized).toLowerCase()
+      const weixinRunning = this.isWeixinRunning()
+      const recencyDays = Math.max(0, (Date.now() - latestModified) / 86_400_000)
+      const recencyScore = Math.max(0, 10_000 - recencyDays * 50)
+      const typeBonus = dbStorageAccounts > 0 ? 1_000_000 : 0
+      const weixinBonus = weixinRunning && dbStorageAccounts > 0 ? 500_000 : 0
+      const weixinPenalty = weixinRunning && dbStorageAccounts === 0 ? -800_000 : 0
       const rootBonus =
         process.platform === 'darwin' && this.isMacVersionDir(rootName) ? 50_000 :
-          rootName === 'xwechat_files' ? 30_000 :
-            rootName === 'wechat files' ? 20_000 :
+          rootName === 'xwechat_files' ? 100_000 :
+            rootName === 'wechat files' ? 10_000 :
               0
 
       candidates.push({
         path: normalized,
         accountCount: accounts.length,
         latestModified,
-        score: rootBonus + accounts.length * 10_000 + latestModified
+        score: typeBonus + weixinBonus + weixinPenalty + rootBonus + accounts.length * 1_000 + recencyScore
       })
     }
 

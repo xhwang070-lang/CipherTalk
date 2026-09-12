@@ -222,6 +222,11 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
 
     try {
       const scanLogPath = getWxKeyScanLogPath()
+      const preferredDbPath = dbPathService.preferLiveWeixinPath(dbPath)
+      if (preferredDbPath && preferredDbPath !== dbPath) {
+        appendWxKeyScanLog(`dbPath rewrite ${dbPath} -> ${preferredDbPath}`)
+        dbPath = preferredDbPath
+      }
       const debugPriv = enableSeDebugPrivilege()
       const weixinRunning = wxKeyService.isWeChatRunning()
       let wechatClassic = false
