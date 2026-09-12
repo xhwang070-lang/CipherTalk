@@ -117,7 +117,8 @@ async function ensureMessageDbIndexed(state: ChatServiceState, dbPath: string): 
       state.msgTableIndex.set(hash, list)
     }
   } catch {
-    // 单库失败不影响其它库
+    // 打开失败时不要标记已索引，否则这库里的会话会永久找不到
+    return
   }
   state.indexedMessageDbs.add(dbPath)
 }
