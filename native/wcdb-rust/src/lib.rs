@@ -274,7 +274,35 @@ fn file_sig(path: &str) -> String {
 fn cache_sig(db_path: &str) -> String {
     // Keep one file per database. WAL mtime only goes into the sidecar so
     // WeChat writes refresh the same cache instead of creating a new copy.
-    format!("{}|{}", file_sig(db_path), file_sig(&format!("{}-wal", db_path)))
+    let wal = format!("{}-wal", db_path);
+    format!("{}|{}|{}", file_sig(db_path), file_sig(&wal), wal_header_salt(&wal))
+}
+
+fn wal_header_salt(path: &str) -> String {
+    use std::io::Read;
+    let mut buf = [0u8; 24];
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return "none".to_string();
+    };
+    if file.read_exact(&mut buf).is_err() {
+        return "none".to_string();
+    }
+    hex::encode(&buf[16..24])
+}
+
+fn cache_db_sig(sig: &str) -> &str {
+    sig.split('|').next().unwrap_or("")
+}
+
+fn sqlite_quick_ok(path: &std::path::Path) -> bool {
+    let Ok(conn) = Connection::open(path) else {
+        return false;
+    };
+    let _ = conn.pragma_update(None, "query_only", true);
+    match conn.query_row("PRAGMA quick_check", [], |row| row.get::<_, String>(0)) {
+        Ok(value) => value.eq_ignore_ascii_case("ok"),
+        Err(_) => false,
+    }
 }
 
 const CACHE_CAP_BYTES: u64 = 8 * 1024 * 1024 * 1024;
@@ -334,15 +362,21 @@ fn materialize_plaintext(db_path: &str, hex_key: &str) -> Result<String, Box<dyn
     let sig = cache_sig(db_path);
     if cache.is_file() {
         if let Ok(old) = std::fs::read_to_string(&sig_path) {
-            if old.trim() == sig {
+            if old.trim() == sig && sqlite_quick_ok(&cache) {
                 return Ok(cache.to_string_lossy().to_string());
             }
+        }
+        if !sqlite_quick_ok(&cache) {
+            log_error(&format!("Corrupt wcdb cache, rebuilding: {}", cache.display()));
+            let _ = std::fs::remove_file(&cache);
         }
     }
     let decryptor = decrypt::WeChatDecryptor::new(&enc_key)?;
     let enc_len = std::fs::metadata(db_path)?.len();
     let cache_len = cache.metadata().map(|m| m.len()).unwrap_or(0);
-    if !cache.is_file() || cache_len == 0 || cache_len > enc_len {
+    let old_sig = std::fs::read_to_string(&sig_path).unwrap_or_default();
+    let db_changed = cache_db_sig(old_sig.trim()) != cache_db_sig(&sig);
+    if db_changed || !cache.is_file() || cache_len == 0 || cache_len > enc_len {
         log_info(&format!("Decrypting live db into cache: {}", db_path));
         let bytes = decryptor.decrypt_database_file(db_path)?;
         let tmp = dir.join(format!("{}.tmp", id));
@@ -366,13 +400,27 @@ fn materialize_plaintext(db_path: &str, hex_key: &str) -> Result<String, Box<dyn
     }
     let wal_src = format!("{}-wal", db_path);
     let mut wal_applied = !std::path::Path::new(&wal_src).is_file();
-    if std::path::Path::new(&wal_src).is_file() {
-        match decryptor.apply_wal_to_plain_db(db_path, &wal_src, &cache) {
-            Ok(commits) => {
+    if std::path::Path::new(&wal_src).is_file() && cache.is_file() {
+        let staged = dir.join(format!("{}.walstage", id));
+        std::fs::copy(&cache, &staged)?;
+        match decryptor.apply_wal_to_plain_db(db_path, &wal_src, &staged) {
+            Ok(commits) if sqlite_quick_ok(&staged) => {
+                std::fs::rename(&staged, &cache)?;
                 wal_applied = true;
                 log_info(&format!("Applied {} WAL commits into {}", commits, cache.display()));
             }
+            Ok(commits) => {
+                let _ = std::fs::remove_file(&staged);
+                wal_applied = sqlite_quick_ok(&cache);
+                log_error(&format!(
+                    "WAL apply produced a corrupt sqlite after {} commits, keeping checkpoint {}",
+                    commits,
+                    cache.display()
+                ));
+            }
             Err(e) => {
+                let _ = std::fs::remove_file(&staged);
+                wal_applied = sqlite_quick_ok(&cache);
                 log_error(&format!("WAL apply failed, using checkpoint snapshot: {}", e));
             }
         }

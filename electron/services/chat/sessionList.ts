@@ -211,15 +211,32 @@ async function enrichSessionsWithContacts(state: ChatServiceState, sessions: Cha
     for (let i = 0; i < usernames.length; i += 400) {
       const batch = usernames.slice(i, i + 400)
       const placeholders = batch.map(() => '?').join(',')
-      const batchContacts = await dbAdapter.all<any>(
-        'contact',
-        '',
-        `SELECT ${selectCols.join(', ')}
-         FROM contact
-         WHERE username IN (${placeholders})`,
-        batch
-      )
-      contacts.push(...batchContacts)
+      try {
+        const batchContacts = await dbAdapter.all<any>(
+          'contact',
+          '',
+          `SELECT ${selectCols.join(', ')}
+           FROM contact
+           WHERE username IN (${placeholders})`,
+          batch
+        )
+        contacts.push(...batchContacts)
+      } catch (batchErr) {
+        console.error('ChatService: 批量获取联系人失败，改为逐条查询:', batchErr)
+        for (const username of batch) {
+          try {
+            const one = await dbAdapter.all<any>(
+              'contact',
+              '',
+              `SELECT ${selectCols.join(', ')} FROM contact WHERE username = ? LIMIT 1`,
+              [username]
+            )
+            contacts.push(...one)
+          } catch {
+            // Skip a single corrupt contact row instead of falling back to wxid for everyone.
+          }
+        }
+      }
     }
     const contactMap = new Map<string, any>(contacts.map((contact: any) => [contact.username, contact]))
 
