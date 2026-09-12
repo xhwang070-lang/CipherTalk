@@ -339,6 +339,8 @@ fn materialize_plaintext(db_path: &str, hex_key: &str) -> Result<String, Box<dyn
     std::fs::create_dir_all(&dir)?;
     let id = stable_cache_id(db_path, &salt, &enc_key);
     let cache = dir.join(format!("{}.db", id));
+    let cache_wal = std::path::PathBuf::from(format!("{}-wal", cache.to_string_lossy()));
+    let cache_shm = std::path::PathBuf::from(format!("{}-shm", cache.to_string_lossy()));
     let sig_path = dir.join(format!("{}.sig", id));
     let sig = cache_sig(db_path);
     if cache.is_file() {
@@ -347,15 +349,38 @@ fn materialize_plaintext(db_path: &str, hex_key: &str) -> Result<String, Box<dyn
                 return Ok(cache.to_string_lossy().to_string());
             }
         }
-        if cache_is_fresh(&cache) {
+        if cache_is_fresh(&cache) && cache_wal.is_file() {
             return Ok(cache.to_string_lossy().to_string());
         }
     }
-    log_info(&format!("Decrypting live db into cache: {}", db_path));
-    let bytes = decrypt::WeChatDecryptor::new(&enc_key)?.decrypt_database_file(db_path)?;
-    let tmp = dir.join(format!("{}.tmp", id));
-    std::fs::write(&tmp, &bytes)?;
-    std::fs::rename(&tmp, &cache)?;
+    let decryptor = decrypt::WeChatDecryptor::new(&enc_key)?;
+    let old_db_sig = std::fs::read_to_string(&sig_path)
+        .ok()
+        .and_then(|s| s.trim().split('|').next().map(|v| v.to_string()));
+    let db_sig_now = file_sig(db_path);
+    if old_db_sig.as_deref() != Some(db_sig_now.as_str()) || !cache.is_file() {
+        log_info(&format!("Decrypting live db into cache: {}", db_path));
+        let bytes = decryptor.decrypt_database_file(db_path)?;
+        let tmp = dir.join(format!("{}.tmp", id));
+        std::fs::write(&tmp, &bytes)?;
+        std::fs::rename(&tmp, &cache)?;
+    }
+    let wal_src = format!("{}-wal", db_path);
+    if std::path::Path::new(&wal_src).is_file() {
+        match decryptor.decrypt_wal_file(db_path, &wal_src) {
+            Ok(wal_bytes) => {
+                std::fs::write(&cache_wal, wal_bytes)?;
+                log_info(&format!("Decrypted WAL into {}", cache_wal.display()));
+            }
+            Err(e) => {
+                log_error(&format!("WAL decrypt failed, using checkpoint snapshot: {}", e));
+                let _ = std::fs::remove_file(&cache_wal);
+            }
+        }
+    } else {
+        let _ = std::fs::remove_file(&cache_wal);
+    }
+    let _ = std::fs::remove_file(&cache_shm);
     let _ = std::fs::write(&sig_path, sig.as_bytes());
     prune_cache(&dir);
     Ok(cache.to_string_lossy().to_string())
@@ -369,8 +394,10 @@ fn open_db_connection(db_path: &str, hex_key: &str) -> Result<Connection, Box<dy
             Ok(conn)
         }
         Err(e) => {
+            let _ = std::fs::remove_file(&plain);
+            let _ = std::fs::remove_file(format!("{}-wal", plain));
+            let _ = std::fs::remove_file(format!("{}-shm", plain));
             let path = std::path::Path::new(&plain);
-            let _ = std::fs::remove_file(path);
             let _ = std::fs::remove_file(path.with_extension("sig"));
             log_error(&format!("sqlite open failed, dropped cache {}: {}", plain, e));
             Err(e.into())

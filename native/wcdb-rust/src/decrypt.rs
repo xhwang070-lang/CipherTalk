@@ -70,6 +70,23 @@ impl WeChatDecryptor {
         }
         Ok(decrypted_data)
     }
+
+    pub fn decrypt_wal_file<P: AsRef<Path>, Q: AsRef<Path>>(
+        &self,
+        db_path: P,
+        wal_path: Q,
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let page1 = {
+            let mut f = fs::File::open(db_path.as_ref())?;
+            let mut buf = vec![0u8; PAGE_SIZE];
+            use std::io::Read;
+            f.read_exact(&mut buf)?;
+            buf
+        };
+        let enc_key = resolve_enc_key(&self.key_bytes, &page1)?;
+        let wal = fs::read(wal_path.as_ref())?;
+        decrypt_wal_bytes(&enc_key, &wal)
+    }
 }
 
 fn resolve_enc_key(
@@ -170,4 +187,60 @@ fn is_valid_sqlite_header(data: &[u8]) -> bool {
         512 | 1024 | 2048 | 4096 | 8192 | 16384 | 32768 | 65536
     ) && matches!(data[18], 1 | 2)
         && matches!(data[19], 1 | 2)
+}
+
+const WAL_HDR: usize = 32;
+const WAL_FRAME_HDR: usize = 24;
+
+fn wal_checksum(data: &[u8], mut s0: u32, mut s1: u32) -> (u32, u32) {
+    let mut i = 0;
+    while i + 8 <= data.len() {
+        let x0 = u32::from_le_bytes(data[i..i + 4].try_into().unwrap());
+        let x1 = u32::from_le_bytes(data[i + 4..i + 8].try_into().unwrap());
+        s0 = s0.wrapping_add(x0).wrapping_add(s1);
+        s1 = s1.wrapping_add(x1).wrapping_add(s0);
+        i += 8;
+    }
+    (s0, s1)
+}
+
+fn decrypt_wal_bytes(
+    enc_key: &[u8; 32],
+    wal: &[u8],
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    if wal.len() < WAL_HDR {
+        return Err("WAL 太小".into());
+    }
+    if wal[0..4] != [0x37, 0x7f, 0x06, 0x82] {
+        return Err("WAL 头不是 SQLite WAL".into());
+    }
+    let page_size = u32::from_be_bytes(wal[8..12].try_into().unwrap()) as usize;
+    if page_size != PAGE_SIZE {
+        return Err(format!("不支持的 WAL page_size {}", page_size).into());
+    }
+    let frame_size = WAL_FRAME_HDR + page_size;
+    let mut out = Vec::with_capacity(wal.len());
+    out.extend_from_slice(&wal[..WAL_HDR]);
+    let (mut s0, mut s1) = wal_checksum(&out[..24], 0, 0);
+    out[24..28].copy_from_slice(&s0.to_le_bytes());
+    out[28..32].copy_from_slice(&s1.to_le_bytes());
+
+    let mut offset = WAL_HDR;
+    while offset + frame_size <= wal.len() {
+        let frame = &wal[offset..offset + frame_size];
+        let pgno = u32::from_be_bytes(frame[0..4].try_into().unwrap());
+        if pgno == 0 {
+            break;
+        }
+        let decrypted = decrypt_page(enc_key, &frame[WAL_FRAME_HDR..], pgno)?;
+        out.extend_from_slice(&frame[..8]);
+        out.extend_from_slice(&frame[8..16]);
+        (s0, s1) = wal_checksum(&frame[..8], s0, s1);
+        (s0, s1) = wal_checksum(&decrypted, s0, s1);
+        out.extend_from_slice(&s0.to_le_bytes());
+        out.extend_from_slice(&s1.to_le_bytes());
+        out.extend_from_slice(&decrypted);
+        offset += frame_size;
+    }
+    Ok(out)
 }
