@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import type { ImageViewerListItem, ImageViewerOpenOptions, MainProcessContext, ReplyTileEntry } from '../context'
 import { replyTileService } from '../../services/replyTileService'
+import { startBackgroundSync } from '../startup'
 
 type TitleBarOverlayState = {
   hidden: boolean
@@ -269,7 +270,9 @@ export function registerWindowHandlers(ctx: MainProcessContext): void {
   })
 
   ipcMain.handle('window:completeWelcome', async () => {
-    return ctx.getWindowManager().completeWelcome()
+    const ok = ctx.getWindowManager().completeWelcome()
+    startBackgroundSync(ctx)
+    return ok
   })
 
   ipcMain.handle('window:isChatWindowOpen', async () => {

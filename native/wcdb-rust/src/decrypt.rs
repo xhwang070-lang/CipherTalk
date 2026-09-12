@@ -96,20 +96,16 @@ impl WeChatDecryptor {
         Ok(out)
     }
 
-    pub fn decrypt_wal_file<P: AsRef<Path>, Q: AsRef<Path>>(
+    pub fn decrypt_wal_file<Q: AsRef<Path>>(
         &self,
-        db_path: P,
         wal_path: Q,
     ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        let page1 = {
-            let mut f = fs::File::open(db_path.as_ref())?;
-            let mut buf = vec![0u8; PAGE_SIZE];
-            use std::io::Read;
-            f.read_exact(&mut buf)?;
-            buf
-        };
-        let enc_key = resolve_enc_key(&self.key_bytes, &page1)?;
-        let wal = fs::read(wal_path.as_ref())?;
+        if self.key_bytes.len() != 32 {
+            return Err("密钥长度必须是 32 字节".into());
+        }
+        let mut enc_key = [0u8; 32];
+        enc_key.copy_from_slice(&self.key_bytes);
+        let wal = read_shared(wal_path.as_ref())?;
         decrypt_wal_bytes(&enc_key, &wal)
     }
 }
@@ -212,6 +208,26 @@ fn is_valid_sqlite_header(data: &[u8]) -> bool {
         512 | 1024 | 2048 | 4096 | 8192 | 16384 | 32768 | 65536
     ) && matches!(data[18], 1 | 2)
         && matches!(data[19], 1 | 2)
+}
+
+fn read_shared(path: &Path) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    use std::io::Read;
+    let mut last = None;
+    for _ in 0..5 {
+        match fs::File::open(path) {
+            Ok(mut f) => {
+                let mut buf = Vec::new();
+                match f.read_to_end(&mut buf) {
+                    Ok(_) if !buf.is_empty() => return Ok(buf),
+                    Ok(_) => last = Some("empty wal".into()),
+                    Err(e) => last = Some(e.to_string()),
+                }
+            }
+            Err(e) => last = Some(e.to_string()),
+        }
+        std::thread::sleep(std::time::Duration::from_millis(30));
+    }
+    Err(last.unwrap_or_else(|| "read wal failed".into()).into())
 }
 
 const WAL_HDR: usize = 32;

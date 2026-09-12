@@ -366,7 +366,7 @@ fn materialize_plaintext(db_path: &str, hex_key: &str) -> Result<String, Box<dyn
     }
     let wal_src = format!("{}-wal", db_path);
     if std::path::Path::new(&wal_src).is_file() {
-        match decryptor.decrypt_wal_file(db_path, &wal_src) {
+        match decryptor.decrypt_wal_file(&wal_src) {
             Ok(wal_bytes) => {
                 std::fs::write(&cache_wal, wal_bytes)?;
                 log_info(&format!("Decrypted WAL into {}", cache_wal.display()));
@@ -380,7 +380,10 @@ fn materialize_plaintext(db_path: &str, hex_key: &str) -> Result<String, Box<dyn
         let _ = std::fs::remove_file(&cache_wal);
     }
     let _ = std::fs::remove_file(&cache_shm);
-    let _ = std::fs::write(&sig_path, sig.as_bytes());
+    let wal_ready = !std::path::Path::new(&wal_src).is_file() || cache_wal.is_file();
+    if wal_ready {
+        let _ = std::fs::write(&sig_path, sig.as_bytes());
+    }
     prune_cache(&dir);
     Ok(cache.to_string_lossy().to_string())
 }
@@ -393,13 +396,19 @@ fn open_db_connection(db_path: &str, hex_key: &str) -> Result<Connection, Box<dy
             Ok(conn)
         }
         Err(e) => {
-            let _ = std::fs::remove_file(&plain);
+            log_error(&format!("sqlite open with WAL failed, retry without WAL: {}", e));
             let _ = std::fs::remove_file(format!("{}-wal", plain));
             let _ = std::fs::remove_file(format!("{}-shm", plain));
-            let path = std::path::Path::new(&plain);
-            let _ = std::fs::remove_file(path.with_extension("sig"));
-            log_error(&format!("sqlite open failed, dropped cache {}: {}", plain, e));
-            Err(e.into())
+            match Connection::open(&plain) {
+                Ok(conn) => Ok(conn),
+                Err(e2) => {
+                    let _ = std::fs::remove_file(&plain);
+                    let path = std::path::Path::new(&plain);
+                    let _ = std::fs::remove_file(path.with_extension("sig"));
+                    log_error(&format!("sqlite open failed, dropped cache {}: {}", plain, e2));
+                    Err(e2.into())
+                }
+            }
         }
     }
 }

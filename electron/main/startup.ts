@@ -218,23 +218,31 @@ export function checkForUpdatesOnStartup(ctx: MainProcessContext): void {
  * 通过 wcdbService（WCDB Worker 代理）+ monitorBridge（native pipe 优先，fs.watch 兜底）
  * 订阅 db_storage 层的变更，再经 chatService.attachMonitor 转发给业务侧。
  */
-export function startBackgroundSync(ctx: MainProcessContext): void {
-  chatService.on('sessions-update-available', (sessions) => {
-    ctx.broadcastToWindows('chat:sessions-updated', sessions)
-  })
+let backgroundSyncEventsWired = false
+let dbMonitorReady = false
+let dbMonitorStarting = false
 
-  // 初始化 WCDB Worker + 订阅变更。无配置时静默跳过，等待用户在 Welcome 页完成配置。
+export function startBackgroundSync(ctx: MainProcessContext): void {
+  if (!backgroundSyncEventsWired) {
+    backgroundSyncEventsWired = true
+    chatService.on('sessions-update-available', (sessions) => {
+      ctx.broadcastToWindows('chat:sessions-updated', sessions)
+    })
+  }
+
+  // 初始化 WCDB Worker + 订阅变更。无配置时静默跳过，Welcome 完成后会再调一次。
   void (async () => {
+    if (dbMonitorReady || dbMonitorStarting) return
     const configService = ensureConfigService(ctx)
     const dbPath = String(configService.get('dbPath') || '').trim()
     const decryptKey = String(configService.get('decryptKey') || '').trim()
     const wxid = String(configService.get('myWxid') || '').trim()
 
     if (!dbPath || !decryptKey || !wxid) {
-      // 首启未配置：不启动 monitor，由 Welcome 引导完成后再触发。
       markStartupMilestone('startup:background-sync-skip-unconfigured')
       return
     }
+    dbMonitorStarting = true
 
     try {
       markStartupMilestone('startup:background-wcdb-worker-init-start')
@@ -280,7 +288,10 @@ export function startBackgroundSync(ctx: MainProcessContext): void {
     if (typeof (chatService as any).attachMonitor === 'function') {
       (chatService as any).attachMonitor(monitorBridge)
     }
-  })()
+    dbMonitorReady = true
+  })().finally(() => {
+    dbMonitorStarting = false
+  })
 }
 
 /**
