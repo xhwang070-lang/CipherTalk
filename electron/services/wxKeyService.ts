@@ -274,6 +274,77 @@ export class WxKeyService {
     return this.scanDbKeyDiag(contactDbPath)?.key ?? null
   }
 
+  collectWeixinCommandLines(): string[] {
+    try {
+      const { execSync } = require('child_process') as typeof import('child_process')
+      const raw = execSync('wmic process where "name=\'Weixin.exe\'" get ProcessId,CommandLine /FORMAT:LIST', {
+        encoding: 'utf8',
+        windowsHide: true,
+      })
+      return raw
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith('CommandLine=') || line.startsWith('ProcessId='))
+        .slice(0, 40)
+    } catch {
+      return []
+    }
+  }
+
+  private signedScanPointer(exportName: string, extraArgs: unknown[] = []): string | null {
+    if (!this.initScanLib()) return null
+    const koffi = require('koffi')
+    const wktChallenge = this.scanLib.func('int wkt_challenge(uint8_t*, size_t)')
+    const wktFn = extraArgs.length > 0
+      ? this.scanLib.func(`void* ${exportName}(uint8_t*, size_t, str)`)
+      : this.scanLib.func(`void* ${exportName}(uint8_t*, size_t)`)
+    const wktFree = this.scanLib.func('void wkt_free(void*)')
+    const nonce = Buffer.alloc(32)
+    if (wktChallenge(nonce, 32) !== 32) return null
+    const sig = crypto.sign(null, nonce, this.getScanPrivateKey())
+    const ptr = extraArgs.length > 0 ? wktFn(sig, sig.length, extraArgs[0]) : wktFn(sig, sig.length)
+    if (!ptr) return null
+    const jsonStr = koffi.decode(ptr, 'char', -1)
+    wktFree(ptr)
+    return String(jsonStr || '').replace(/\0/g, '')
+  }
+
+  /** DLL 内部校验失败时，取出全部候选再用我们自己的 WCDB 去验。 */
+  scanDbKeyCandidates(contactDbPath: string): { keys: string[]; rawPreview: string } {
+    const keys = new Set<string>()
+    let rawPreview = ''
+    const takeHex = (text: string) => {
+      for (const match of text.match(/\b[0-9a-fA-F]{64}\b/g) || []) keys.add(match.toLowerCase())
+    }
+    for (const name of ['wkt_scan_key_full_auth', 'wkt_scan_key_auth']) {
+      try {
+        const raw = this.signedScanPointer(name, [contactDbPath])
+        if (!raw) continue
+        if (!rawPreview) rawPreview = raw.slice(0, 300)
+        takeHex(raw)
+        try {
+          const parsed = JSON.parse(raw)
+          if (parsed && typeof parsed === 'object') {
+            for (const value of Object.values(parsed as Record<string, unknown>)) {
+              if (typeof value === 'string') takeHex(value)
+              if (Array.isArray(value)) {
+                for (const item of value) {
+                  if (typeof item === 'string') takeHex(item)
+                }
+              }
+            }
+          }
+        } catch {
+          /* 可能是纯 hex */
+        }
+        if (keys.size > 0) break
+      } catch (error) {
+        if (!rawPreview) rawPreview = `${name} failed: ${error instanceof Error ? error.message : String(error)}`
+      }
+    }
+    return { keys: [...keys].slice(0, 200), rawPreview }
+  }
+
   /**
    * 一次性提取完整账号信息（Ed25519 鉴权）。
    * 走 weixin.dll keystream 推导 + global_config 结构游走，直接读出

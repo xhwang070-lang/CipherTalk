@@ -54,6 +54,51 @@ export class DbPathService {
     ].join(' ')
   }
 
+  latestWalTime(rootPath: string): number {
+    let latest = 0
+    const accounts = this.isAccountDir(rootPath) ? [basename(rootPath)] : this.findAccountDirs(rootPath)
+    const roots = this.isAccountDir(rootPath) ? [rootPath] : accounts.map((account) => join(rootPath, account))
+    for (const accountPath of roots) {
+      for (const rel of [
+        join('db_storage', 'contact', 'contact.db-wal'),
+        join('db_storage', 'session', 'session.db-wal'),
+        join('db_storage', 'contact', 'contact.db'),
+      ]) {
+        const filePath = join(accountPath, rel)
+        if (!existsSync(filePath)) continue
+        try {
+          latest = Math.max(latest, statSync(filePath).mtimeMs)
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    return latest
+  }
+
+  accountWalTime(rootPath: string, wxid: string): number {
+    return this.latestWalTime(join(rootPath, wxid))
+  }
+
+  sortWxidsByRecency(rootPath: string, wxids: string[]): string[] {
+    return [...wxids].sort((a, b) => this.accountWalTime(rootPath, b) - this.accountWalTime(rootPath, a))
+  }
+
+  preferHottestWalPath(current?: string): string {
+    const cur = String(current || '').trim()
+    let bestPath = cur
+    let bestTime = cur ? this.latestWalTime(cur) : 0
+    for (const item of this.collectCandidates()) {
+      if (!this.hasDbStorageAccount(item.path)) continue
+      const time = this.latestWalTime(item.path)
+      if (time > bestTime) {
+        bestTime = time
+        bestPath = item.path
+      }
+    }
+    return bestPath || cur
+  }
+
   /** 微信 4.x（Weixin.exe）在跑时，不要用 3.x 的 WeChat Files。 */
   preferLiveWeixinPath(current?: string): string {
     const candidates = this.collectCandidates()
@@ -61,6 +106,8 @@ export class DbPathService {
     const cur = String(current || '').trim()
     const fourX = candidates.find((item) => this.hasDbStorageAccount(item.path) && !this.isLegacyWeChatFiles(item.path))
     if (this.isWeixinRunning()) {
+      const hot = this.preferHottestWalPath(cur)
+      if (hot && this.hasDbStorageAccount(hot) && !this.isLegacyWeChatFiles(hot)) return hot
       if (cur && this.hasDbStorageAccount(cur) && !this.isLegacyWeChatFiles(cur)) return cur
       if (fourX) return fourX.path
       const anyDb = candidates.find((item) => this.hasDbStorageAccount(item.path))

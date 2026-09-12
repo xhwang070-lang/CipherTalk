@@ -239,6 +239,8 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
       }
       const dllPath = wxKeyService.getScanDllPath()
       appendWxKeyScanLog(`start elevated=${isProcessElevated()} seDebug=${JSON.stringify(debugPriv)} weixin=${weixinRunning} wechat=${wechatClassic} dll=${dllPath} dllExists=${existsSync(dllPath)}`)
+      const weixinCmds = wxKeyService.collectWeixinCommandLines()
+      if (weixinCmds.length) appendWxKeyScanLog(`weixinCmd ${weixinCmds.join(' | ')}`)
       ctx.getLogService()?.info('WxKey', '扫描前诊断', {
         elevated: isProcessElevated(),
         seDebug: debugPriv,
@@ -373,7 +375,8 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
         appendWxKeyScanLog(`contactDb wxid=${wxid} hit=${hit || 'NONE'} tried=${candidates.slice(0, 6).join(' | ')}`)
         return hit
       }
-      appendWxKeyScanLog(`dbPath=${dbPath} wxids=${wxids.join(',')}`)
+      wxids.splice(0, wxids.length, ...dbPathService.sortWxidsByRecency(dbPath, wxids))
+      appendWxKeyScanLog(`dbPath=${dbPath} wxids=${wxids.join(',')} walMs=${wxids.map((id) => `${id}:${dbPathService.accountWalTime(dbPath, id)}`).join(',')}`)
       if (wxKeyService.isWeChatRunning() && !dbPathService.hasDbStorageAccount(dbPath)) {
         appendWxKeyScanLog(`reject path without db_storage dbPath=${dbPath}`)
         return {
@@ -463,6 +466,20 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
             }
             lastError = testResult.error || ''
           }
+          if (!diag.key && (diag.candidates || 0) > 0) {
+            const extra = wxKeyService.scanDbKeyCandidates(contactDb)
+            appendWxKeyScanLog(`fullKeys wxid=${wxid} count=${extra.keys.length} preview=${extra.rawPreview.replace(/\s+/g, ' ').slice(0, 180)}`)
+            for (const hexKey of extra.keys) {
+              event.sender.send('wxkey:status', { status: `正在用自研解密校验候选密钥: ${wxid}`, level: 1 })
+              const testResult = await wcdbService.testConnection(dbPath, hexKey, wxid)
+              if (testResult.success) {
+                upsertEncKey(hexKey, dbPath, wxid)
+                appendWxKeyScanLog(`fullKeys matched wxid=${wxid}`)
+                return { success: true, key: hexKey, validatedWxid: wxid, account: account ?? null }
+              }
+              lastError = testResult.error || ''
+            }
+          }
         }
         // 连续多轮一字节都读不到 → 基本可判定权限不足，提前结束提示提权
         if (rounds >= 8 && !sawBytes) {
@@ -486,7 +503,7 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
         : '已读到微信内存，但没有得到可用密钥。'
       return {
         success: false,
-        error: `${detail}密钥只在刚登录时比较容易扫到。请先完全退出微信（托盘里也退出），再打开并登录，进入任意聊天后立刻点「扫描微信内存获取密钥」。华记不会替你关微信。若数据是从另一台电脑拷来的，请改用「导入 all_keys.json」。`
+        error: `${detail}这是这台电脑自己的密钥，不能用别的电脑的 all_keys.json。请确认选中的是微信正在写入的 xwechat_files（看 contact.db-wal 是否刚更新过），完全退出微信后再登录，进入聊天后立刻扫描。`
       }
     } catch (e) {
       ctx.getLogService()?.error('WxKey', '获取密钥异常', { error: String(e) })
