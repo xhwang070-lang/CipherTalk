@@ -871,13 +871,23 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
         : undefined,
       protocol: draftProviderInfo?.protocolOptions?.length ? presetDraft.protocol : undefined
     }
+    let presetId = editingPresetId
     if (editingPresetId) {
       await configService.updateAiConfigPreset(editingPresetId, payload)
       showMessage('配置预设已更新', true)
     } else {
-      await configService.saveAiConfigPreset(payload)
-      showMessage('配置预设已保存', true)
+      const existing = presets.find(item => item.name.trim() === name)
+      if (existing) {
+        await configService.updateAiConfigPreset(existing.id, payload)
+        presetId = existing.id
+        showMessage('同名预设已更新', true)
+      } else {
+        presetId = await configService.saveAiConfigPreset(payload)
+        showMessage('配置预设已保存', true)
+      }
     }
+    await persistProviderConfig(payload.provider, payload.apiKey, payload.model, payload.baseURL || '', payload.protocol || 'openai-responses')
+    if (presetId) await configService.setActiveAiConfigPresetId(presetId)
     setShowSavePresetDialog(false)
     setEditingPresetId(null)
     setPresetName('')
@@ -895,6 +905,25 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
       model: '',
       baseURL: '',
       protocol: 'openai-responses'
+    })
+    setShowSavePresetDialog(true)
+  }
+
+  const openSaveCurrentAsPresetDialog = () => {
+    if (!provider) {
+      showMessage('请先选择服务商', false)
+      return
+    }
+    const suggested = [currentProvider?.displayName || provider, model].filter(Boolean).join(' · ')
+    setEditingPresetId(null)
+    setPresetName(suggested)
+    setPresetTab('name')
+    setPresetDraft({
+      provider,
+      apiKey,
+      model: normalizeProviderModel(provider, model),
+      baseURL,
+      protocol: customProtocol,
     })
     setShowSavePresetDialog(true)
   }
@@ -1157,6 +1186,9 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
                 <Button type="button" variant="outline" size="sm" onPress={handleTestConnection} isDisabled={isTesting}>
                   {isTesting ? <Spinner size="sm" /> : <Sparkles width={16} height={16} />}
                   {isTesting ? '测试中...' : '测试连接'}
+                </Button>
+                <Button type="button" variant="outline" size="sm" onPress={openSaveCurrentAsPresetDialog}>
+                  保存为预设
                 </Button>
                 <Button type="submit" variant="primary" size="sm">
                   保存当前服务商
