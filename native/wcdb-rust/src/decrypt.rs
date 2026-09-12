@@ -263,8 +263,9 @@ fn decrypt_wal_bytes(
     let mut out = Vec::with_capacity(wal.len());
     out.extend_from_slice(&wal[..WAL_HDR]);
     let (mut s0, mut s1) = wal_checksum(&out[..24], 0, 0);
-    out[24..28].copy_from_slice(&s0.to_le_bytes());
-    out[28..32].copy_from_slice(&s1.to_le_bytes());
+    // magic 0x377f0682: SQLite 用小端累加，校验和按大端写入
+    out[24..28].copy_from_slice(&s0.to_be_bytes());
+    out[28..32].copy_from_slice(&s1.to_be_bytes());
 
     let mut offset = WAL_HDR;
     while offset + frame_size <= wal.len() {
@@ -278,8 +279,8 @@ fn decrypt_wal_bytes(
         out.extend_from_slice(&frame[8..16]);
         (s0, s1) = wal_checksum(&frame[..8], s0, s1);
         (s0, s1) = wal_checksum(&decrypted, s0, s1);
-        out.extend_from_slice(&s0.to_le_bytes());
-        out.extend_from_slice(&s1.to_le_bytes());
+        out.extend_from_slice(&s0.to_be_bytes());
+        out.extend_from_slice(&s1.to_be_bytes());
         out.extend_from_slice(&decrypted);
         offset += frame_size;
     }

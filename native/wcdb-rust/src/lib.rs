@@ -380,27 +380,43 @@ fn materialize_plaintext(db_path: &str, hex_key: &str) -> Result<String, Box<dyn
         let _ = std::fs::remove_file(&cache_wal);
     }
     let _ = std::fs::remove_file(&cache_shm);
-    let wal_ready = !std::path::Path::new(&wal_src).is_file() || cache_wal.is_file();
-    if wal_ready {
-        let _ = std::fs::write(&sig_path, sig.as_bytes());
-    }
+    // 不在这里写 .sig。必须等 sqlite 带着 WAL 打开成功后再盖章，
+    // 否则打开失败删掉 WAL 后会永远跳过重解密。
     prune_cache(&dir);
     Ok(cache.to_string_lossy().to_string())
 }
 
+fn stamp_cache_sig(db_path: &str, plain: &str) {
+    let sig = cache_sig(db_path);
+    let _ = std::fs::write(std::path::Path::new(plain).with_extension("sig"), sig.as_bytes());
+}
+
 fn open_db_connection(db_path: &str, hex_key: &str) -> Result<Connection, Box<dyn std::error::Error>> {
     let plain = materialize_plaintext(db_path, hex_key)?;
+    let wal_path = format!("{}-wal", plain);
+    let shm_path = format!("{}-shm", plain);
     match Connection::open(&plain) {
         Ok(conn) => {
+            if std::path::Path::new(&wal_path).is_file() {
+                match conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);") {
+                    Ok(_) => log_info(&format!("WAL checkpointed into {}", plain)),
+                    Err(e) => log_error(&format!("WAL checkpoint failed: {}", e)),
+                }
+            }
+            stamp_cache_sig(db_path, &plain);
             log_info(&format!("Opened local-decrypted sqlite: {}", plain));
             Ok(conn)
         }
         Err(e) => {
             log_error(&format!("sqlite open with WAL failed, retry without WAL: {}", e));
-            let _ = std::fs::remove_file(format!("{}-wal", plain));
-            let _ = std::fs::remove_file(format!("{}-shm", plain));
+            let _ = std::fs::remove_file(&wal_path);
+            let _ = std::fs::remove_file(&shm_path);
+            let _ = std::fs::remove_file(std::path::Path::new(&plain).with_extension("sig"));
             match Connection::open(&plain) {
-                Ok(conn) => Ok(conn),
+                Ok(conn) => {
+                    log_error("opened snapshot without WAL; will retry WAL on next query");
+                    Ok(conn)
+                }
                 Err(e2) => {
                     let _ = std::fs::remove_file(&plain);
                     let path = std::path::Path::new(&plain);
