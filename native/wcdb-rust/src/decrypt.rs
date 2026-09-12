@@ -71,6 +71,31 @@ impl WeChatDecryptor {
         Ok(decrypted_data)
     }
 
+    pub fn decrypt_database_tail<P: AsRef<Path>>(
+        &self,
+        path: P,
+        already_bytes: u64,
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let encrypted_data = fs::read(path)?;
+        if encrypted_data.len() as u64 <= already_bytes {
+            return Ok(Vec::new());
+        }
+        if already_bytes % PAGE_SIZE as u64 != 0 {
+            return Err("缓存长度未按页对齐".into());
+        }
+        let page1 = encrypted_data.get(..PAGE_SIZE).ok_or("文件太小")?;
+        let enc_key = resolve_enc_key(&self.key_bytes, page1)?;
+        let start_page = (already_bytes / PAGE_SIZE as u64) as u32; // 0-based
+        let mut out = Vec::new();
+        let total_pages = encrypted_data.len() / PAGE_SIZE;
+        for i in start_page as usize..total_pages {
+            let start = i * PAGE_SIZE;
+            let page = &encrypted_data[start..start + PAGE_SIZE];
+            out.extend_from_slice(&decrypt_page(&enc_key, page, (i + 1) as u32)?);
+        }
+        Ok(out)
+    }
+
     pub fn decrypt_wal_file<P: AsRef<Path>, Q: AsRef<Path>>(
         &self,
         db_path: P,

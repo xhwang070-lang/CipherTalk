@@ -7,7 +7,7 @@ import { ConfigService } from './config'
 const DEBOUNCE_MS = 120
 // fs.watch 兜底：macOS 的 FSEvents 递归监听在监听其他 App 沙盒容器目录时容易被合并/节流丢事件，
 // 用 stat() 轮询 WAL/shm 的 mtime+size 作为独立信号，检测到变化就走同一 scheduleEmit（会与 fs.watch 去重）。
-const POLL_INTERVAL_MS = 1500
+const POLL_INTERVAL_MS = 400
 const POLL_SUBDIRS = ['session', 'message', 'contact']
 
 export type ChangeTable = 'Session' | 'Message' | 'Contact' | 'Sns' | 'Unknown'

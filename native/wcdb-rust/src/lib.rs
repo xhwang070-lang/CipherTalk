@@ -277,17 +277,6 @@ fn cache_sig(db_path: &str) -> String {
     format!("{}|{}", file_sig(db_path), file_sig(&format!("{}-wal", db_path)))
 }
 
-fn cache_is_fresh(cache: &std::path::Path) -> bool {
-    if let Ok(meta) = cache.metadata() {
-        if let Ok(mtime) = meta.modified() {
-            if let Ok(age) = std::time::SystemTime::now().duration_since(mtime) {
-                return age.as_secs() < 3;
-            }
-        }
-    }
-    false
-}
-
 const CACHE_CAP_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 
 fn prune_cache(dir: &std::path::Path) {
@@ -349,21 +338,31 @@ fn materialize_plaintext(db_path: &str, hex_key: &str) -> Result<String, Box<dyn
                 return Ok(cache.to_string_lossy().to_string());
             }
         }
-        if cache_is_fresh(&cache) && cache_wal.is_file() {
-            return Ok(cache.to_string_lossy().to_string());
-        }
     }
     let decryptor = decrypt::WeChatDecryptor::new(&enc_key)?;
-    let old_db_sig = std::fs::read_to_string(&sig_path)
-        .ok()
-        .and_then(|s| s.trim().split('|').next().map(|v| v.to_string()));
-    let db_sig_now = file_sig(db_path);
-    if old_db_sig.as_deref() != Some(db_sig_now.as_str()) || !cache.is_file() {
+    let enc_len = std::fs::metadata(db_path)?.len();
+    let cache_len = cache.metadata().map(|m| m.len()).unwrap_or(0);
+    if !cache.is_file() || cache_len == 0 || cache_len > enc_len {
         log_info(&format!("Decrypting live db into cache: {}", db_path));
         let bytes = decryptor.decrypt_database_file(db_path)?;
         let tmp = dir.join(format!("{}.tmp", id));
         std::fs::write(&tmp, &bytes)?;
         std::fs::rename(&tmp, &cache)?;
+    } else if enc_len > cache_len {
+        log_info(&format!("Appending new db pages: {} -> {}", cache_len, enc_len));
+        match decryptor.decrypt_database_tail(db_path, cache_len) {
+            Ok(tail) if !tail.is_empty() => {
+                use std::io::Write;
+                let mut f = std::fs::OpenOptions::new().append(true).open(&cache)?;
+                f.write_all(&tail)?;
+            }
+            Ok(_) => {}
+            Err(e) => {
+                log_error(&format!("tail decrypt failed, full decrypt: {}", e));
+                let bytes = decryptor.decrypt_database_file(db_path)?;
+                std::fs::write(&cache, &bytes)?;
+            }
+        }
     }
     let wal_src = format!("{}-wal", db_path);
     if std::path::Path::new(&wal_src).is_file() {
