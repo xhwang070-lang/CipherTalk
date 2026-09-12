@@ -1,3 +1,4 @@
+import { statSync } from 'fs'
 import { dbAdapter } from '../dbAdapter'
 import { findMessageDbPaths } from '../dbStoragePaths'
 import { clearMessageDbScannerCache } from '../messageDbScanner'
@@ -136,13 +137,22 @@ export async function findSessionTables(state: ChatServiceState, sessionId: stri
     return cached.map(item => ({ tableName: item.tableName, dbPath: item.dbPath }))
   }
 
-  // 情况3：没有缓存 -> 全量扫描所有数据库
+  // 情况3：没有缓存 -> 先扫较新的库，命中一张表就停。
+  // 一个会话几乎只在一个 message_*.db 里；继续扫 1GB+ 旧库会让点开对话卡死。
   const dbTablePairs: { tableName: string; dbPath: string }[] = []
+  const orderedDbs = [...allDbs].sort((a, b) => {
+    try {
+      return statSync(b).mtimeMs - statSync(a).mtimeMs
+    } catch {
+      return 0
+    }
+  })
 
-  for (const dbPath of allDbs) {
+  for (const dbPath of orderedDbs) {
     const tableName = await findMessageTable(dbPath, sessionId)
     if (tableName) {
       dbTablePairs.push({ tableName, dbPath })
+      break
     }
   }
 
