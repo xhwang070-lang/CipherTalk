@@ -281,7 +281,11 @@ export class WxKeyService {
    * 该路径不依赖 contact.db，命中即返回；失败/未授权返回 null。
    */
   scanAccount(): WxAccountInfo | null {
-    if (!this.initScanLib()) return null
+    return this.scanAccountDetailed().account
+  }
+
+  scanAccountDetailed(): { account: WxAccountInfo | null; error?: string; raw?: string } {
+    if (!this.initScanLib()) return { account: null, error: 'scan dll not loaded' }
     try {
       const koffi = require('koffi')
       const wktChallenge = this.scanLib.func('int wkt_challenge(uint8_t*, size_t)')
@@ -289,35 +293,34 @@ export class WxKeyService {
       const wktFree = this.scanLib.func('void wkt_free(void*)')
 
       const nonce = Buffer.alloc(32)
-      if (wktChallenge(nonce, 32) !== 32) return null
+      if (wktChallenge(nonce, 32) !== 32) return { account: null, error: 'wkt_challenge failed' }
 
-      const sig = crypto.sign(null, nonce, this.getScanPrivateKey()) // Ed25519，64 字节
+      const sig = crypto.sign(null, nonce, this.getScanPrivateKey())
       const ptr = wktScanAccount(sig, sig.length)
-      if (!ptr) return null
+      if (!ptr) return { account: null, error: 'wkt_scan_account_auth returned null' }
 
       const jsonStr = koffi.decode(ptr, 'char', -1)
       wktFree(ptr)
-
-      const d = JSON.parse(String(jsonStr || '{}').replace(/\0/g, ''))
+      const raw = String(jsonStr || '').replace(/\0/g, '')
+      const d = JSON.parse(raw || '{}')
       const dbKey = typeof d.db_key === 'string' ? d.db_key.trim() : ''
       return {
-        dbKey: dbKey.length === 64 ? dbKey : null,
-        wxid: String(d.wxid || '').trim(),
-        name: String(d.name || '').trim(),
-        number: String(d.number || '').trim(),
-        phone: String(d.phone || '').trim(),
-        seed: Number(d.seed) || 0,
+        raw: raw.slice(0, 500),
+        account: {
+          dbKey: dbKey.length === 64 ? dbKey : null,
+          wxid: String(d.wxid || '').trim(),
+          name: String(d.name || '').trim(),
+          number: String(d.number || '').trim(),
+          phone: String(d.phone || '').trim(),
+          seed: Number(d.seed) || 0,
+        }
       }
     } catch (e) {
       console.error('账号信息扫描失败:', e)
-      return null
+      return { account: null, error: String(e) }
     }
   }
 
-  /**
-   * 内存扫描图片 AES 密钥（Ed25519 鉴权）。传入模板密文(16B)，
-   * 返回 32 字符密钥串（调用方取前 16 字符作 AES-128 密钥），失败返回 null。
-   */
   scanImageAesKey(ciphertext: Buffer): string | null {
     if (!ciphertext || ciphertext.length < 16) return null
     if (!this.initScanLib()) return null
