@@ -1,26 +1,47 @@
 import type { Message } from '../../../types/models'
 
+function pad2(n: number): string {
+  return String(n).padStart(2, '0')
+}
+
+function hm(date: Date): string {
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+}
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+export function formatWechatTimeLabel(timestamp: number): string {
+  if (!timestamp) return ''
+  const date = new Date(timestamp * 1000)
+  const now = new Date()
+  const today = startOfDay(now)
+  const thatDay = startOfDay(date)
+  const dayDiff = Math.round((today.getTime() - thatDay.getTime()) / 86400000)
+  const clock = hm(date)
+
+  if (dayDiff === 0) return clock
+  if (dayDiff === 1) return `昨天 ${clock}`
+  if (date.getFullYear() === now.getFullYear()) {
+    return `${date.getMonth() + 1}月${date.getDate()}日 ${clock}`
+  }
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${clock}`
+}
+
 export function formatSessionTime(timestamp: number): string {
   if (!timestamp) return ''
+  const date = new Date(timestamp * 1000)
+  const now = new Date()
+  const today = startOfDay(now)
+  const thatDay = startOfDay(date)
+  const dayDiff = Math.round((today.getTime() - thatDay.getTime()) / 86400000)
 
-  const now = Date.now()
-  const msgTime = timestamp * 1000
-  const diff = now - msgTime
-
-  const minutes = Math.floor(diff / 60000)
-  const hours = Math.floor(diff / 3600000)
-
-  if (minutes < 1) return '刚刚'
-  if (minutes < 60) return `${minutes}分钟前`
-  if (hours < 24) return `${hours}小时前`
-
-  const date = new Date(msgTime)
-  const nowDate = new Date()
-
-  if (date.getFullYear() === nowDate.getFullYear()) {
+  if (dayDiff === 0) return hm(date)
+  if (dayDiff === 1) return '昨天'
+  if (date.getFullYear() === now.getFullYear()) {
     return `${date.getMonth() + 1}/${date.getDate()}`
   }
-
   return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
 }
 
@@ -32,21 +53,7 @@ export function shouldShowDateDivider(msg: Message, prevMsg?: Message): boolean 
 }
 
 export function formatDateDivider(timestamp: number): string {
-  const date = new Date(timestamp * 1000)
-  const now = new Date()
-  const isToday = date.toDateString() === now.toDateString()
-
-  if (isToday) return '今天'
-
-  const yesterday = new Date(now)
-  yesterday.setDate(yesterday.getDate() - 1)
-  if (date.toDateString() === yesterday.toDateString()) return '昨天'
-
-  return date.toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  })
+  return formatWechatTimeLabel(timestamp)
 }
 
 export function formatBatchDateLabel(dateStr: string): string {

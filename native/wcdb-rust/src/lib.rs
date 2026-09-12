@@ -260,10 +260,8 @@ fn stable_cache_id(db_path: &str, salt: &str, enc_key: &str) -> String {
     hex::encode(&hasher.finalize()[..16])
 }
 
-fn cache_sig(db_path: &str) -> String {
-    // decrypt_database_file only reads the main .db, not WAL/SHM.
-    // Hashing WAL mtime into the filename created a new full copy on every WeChat write.
-    if let Ok(meta) = std::fs::metadata(db_path) {
+fn file_sig(path: &str) -> String {
+    if let Ok(meta) = std::fs::metadata(path) {
         if let Ok(mtime) = meta.modified() {
             if let Ok(d) = mtime.duration_since(std::time::UNIX_EPOCH) {
                 return format!("{}:{}", d.as_millis(), meta.len());
@@ -271,6 +269,23 @@ fn cache_sig(db_path: &str) -> String {
         }
     }
     "x".to_string()
+}
+
+fn cache_sig(db_path: &str) -> String {
+    // Keep one file per database. WAL mtime only goes into the sidecar so
+    // WeChat writes refresh the same cache instead of creating a new copy.
+    format!("{}|{}", file_sig(db_path), file_sig(&format!("{}-wal", db_path)))
+}
+
+fn cache_is_fresh(cache: &std::path::Path) -> bool {
+    if let Ok(meta) = cache.metadata() {
+        if let Ok(mtime) = meta.modified() {
+            if let Ok(age) = std::time::SystemTime::now().duration_since(mtime) {
+                return age.as_secs() < 3;
+            }
+        }
+    }
+    false
 }
 
 const CACHE_CAP_BYTES: u64 = 8 * 1024 * 1024 * 1024;
@@ -331,6 +346,9 @@ fn materialize_plaintext(db_path: &str, hex_key: &str) -> Result<String, Box<dyn
             if old.trim() == sig {
                 return Ok(cache.to_string_lossy().to_string());
             }
+        }
+        if cache_is_fresh(&cache) {
+            return Ok(cache.to_string_lossy().to_string());
         }
     }
     log_info(&format!("Decrypting live db into cache: {}", db_path));

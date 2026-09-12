@@ -10,6 +10,7 @@ import SystemBubble from './SystemBubble'
 import TextBubble from './TextBubble'
 import VideoBubble from './VideoBubble'
 import VoiceBubble from './VoiceBubble'
+import { formatWechatTimeLabel } from '../../utils/time'
 
 interface MessageBubbleProps {
   message: Message;
@@ -92,15 +93,8 @@ function MessageBubble({ message, session, showTime, myAvatarUrl, isGroupChat, h
 
   const bubbleRef = useRef<HTMLDivElement>(null)
 
-  // 格式化时间
-  const formatTime = (timestamp: number): string => {
-    const date = new Date(timestamp * 1000)
-    return date.toLocaleDateString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    }) + ' ' + date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-  }
+  const formatTime = (timestamp: number): string => formatWechatTimeLabel(timestamp)
+
 
   // 获取头像首字母
   const getAvatarLetter = (name: string): string => {
