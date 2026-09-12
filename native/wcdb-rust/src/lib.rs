@@ -345,8 +345,19 @@ fn materialize_plaintext(db_path: &str, hex_key: &str) -> Result<String, Box<dyn
 
 fn open_db_connection(db_path: &str, hex_key: &str) -> Result<Connection, Box<dyn std::error::Error>> {
     let plain = materialize_plaintext(db_path, hex_key)?;
-    log_info(&format!("Opened local-decrypted sqlite: {}", plain));
-    Ok(Connection::open(plain)?)
+    match Connection::open(&plain) {
+        Ok(conn) => {
+            log_info(&format!("Opened local-decrypted sqlite: {}", plain));
+            Ok(conn)
+        }
+        Err(e) => {
+            let path = std::path::Path::new(&plain);
+            let _ = std::fs::remove_file(path);
+            let _ = std::fs::remove_file(path.with_extension("sig"));
+            log_error(&format!("sqlite open failed, dropped cache {}: {}", plain, e));
+            Err(e.into())
+        }
+    }
 }
 
 fn exec_sqlcipher_query(
