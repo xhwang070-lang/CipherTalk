@@ -182,6 +182,10 @@ export class DbPathService {
         paths.push(join(docs, 'WeChat Files'))
       }
     }
+    for (const drive of 'CDEFGHIJ') {
+      paths.push(`${drive}:\\xwechat_files`)
+      paths.push(`${drive}:\\WeChat Files`)
+    }
     return paths
   }
 

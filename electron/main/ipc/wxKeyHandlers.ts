@@ -389,7 +389,8 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
       let lastError = ''
       let sawBytes = false
       let rounds = 0
-      let lastDiag: { pids?: number; opened?: number; bytes?: number } | null = null
+      let lastDiag: { pids?: number; opened?: number; bytes?: number; markers?: number; candidates?: number; key?: string | null } | null = null
+      let mismatchRounds = 0
       const zeroReadResult = () => {
         const elevated = isProcessElevated()
         const detail = lastDiag
@@ -450,6 +451,7 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
           if (!diag) continue
           lastDiag = diag
           if (diag.bytes > 0) sawBytes = true
+          if (diag.bytes > 0 && (diag.candidates || 0) > 0 && !diag.key) mismatchRounds += 1
           if (diag.key) {
             event.sender.send('wxkey:status', { status: `已捕获候选密钥，正在验证账号: ${wxid}`, level: 1 })
             upsertEncKey(diag.key, dbPath, wxid)
@@ -467,6 +469,10 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
           ctx.getLogService()?.warn('WxKey', '内存读取为 0 字节，疑似权限不足', { lastDiag, elevated: isProcessElevated() })
           return zeroReadResult()
         }
+        if (mismatchRounds >= 3) {
+          appendWxKeyScanLog(`mismatch-exit rounds=${rounds} lastDiag=${JSON.stringify(lastDiag)}`)
+          break
+        }
         await new Promise(resolve => setTimeout(resolve, 1500))
       }
 
@@ -474,10 +480,13 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
         ctx.getLogService()?.warn('WxKey', '内存读取始终为 0 字节，疑似权限不足', { lastDiag, elevated: isProcessElevated() })
         return zeroReadResult()
       }
-      ctx.getLogService()?.warn('WxKey', '内存扫描超时未获取到密钥', { lastError })
+      ctx.getLogService()?.warn('WxKey', '内存扫描超时未获取到密钥', { lastError, lastDiag, mismatchRounds })
+      const detail = lastDiag
+        ? `已读内存 ${Math.round((lastDiag.bytes || 0) / 1024 / 1024)}MB，候选 ${lastDiag.candidates || 0} 个，但都打不开数据库。`
+        : '已读到微信内存，但没有得到可用密钥。'
       return {
         success: false,
-        error: lastError || '扫描超时未获取到密钥。请确认微信已完成登录，进入任意聊天触发数据库访问后重试。'
+        error: `${detail}密钥只在刚登录时比较容易扫到。请先完全退出微信（托盘里也退出），再打开并登录，进入任意聊天后立刻点「扫描微信内存获取密钥」。华记不会替你关微信。若数据是从另一台电脑拷来的，请改用「导入 all_keys.json」。`
       }
     } catch (e) {
       ctx.getLogService()?.error('WxKey', '获取密钥异常', { error: String(e) })
