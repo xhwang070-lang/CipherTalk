@@ -7,7 +7,7 @@ import { wxKeyService } from '../../services/wxKeyService'
 import { wxKeyServiceMac } from '../../services/wxKeyServiceMac'
 import { applyKeyPackEnv, importKeyPack, parseKeyPack, pickEncKey, resolveKeyPackPath, upsertEncKey } from '../../services/localKeyPack'
 import type { MainProcessContext } from '../context'
-import { isProcessElevated } from '../elevation'
+import { appendWxKeyScanLog, enableSeDebugPrivilege, getWxKeyScanLogPath, isProcessElevated } from '../elevation'
 
 /**
  * 微信密钥获取 IPC。
@@ -221,6 +221,28 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
     }
 
     try {
+      const scanLogPath = getWxKeyScanLogPath()
+      const debugPriv = enableSeDebugPrivilege()
+      const weixinRunning = wxKeyService.isWeChatRunning()
+      let wechatClassic = false
+      try {
+        const { execSync } = require('child_process') as typeof import('child_process')
+        wechatClassic = execSync('tasklist /FI "IMAGENAME eq WeChat.exe" /NH', { encoding: 'utf8', windowsHide: true }).toLowerCase().includes('wechat.exe')
+      } catch {
+        wechatClassic = false
+      }
+      const dllPath = wxKeyService.getScanDllPath()
+      appendWxKeyScanLog(`start elevated=${isProcessElevated()} seDebug=${JSON.stringify(debugPriv)} weixin=${weixinRunning} wechat=${wechatClassic} dll=${dllPath} dllExists=${existsSync(dllPath)}`)
+      ctx.getLogService()?.info('WxKey', '扫描前诊断', {
+        elevated: isProcessElevated(),
+        seDebug: debugPriv,
+        weixinRunning,
+        wechatClassic,
+        dllPath,
+        dllExists: existsSync(dllPath),
+        scanLogPath
+      })
+
       const safeScanWxids = (root: string): string[] => {
         try {
           return dbPathService.scanWxids(root)
@@ -355,10 +377,14 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
           ? `（进程 ${lastDiag.pids ?? 0}，打开 ${lastDiag.opened ?? 0}，字节 ${lastDiag.bytes ?? 0}）`
           : '（读到 0 字节）'
         if (elevated) {
+          const hint = !wxKeyService.isWeChatRunning()
+            ? '未检测到 Weixin.exe。请先打开并登录微信 PC 版 4.x。'
+            : '请确认微信已登录主界面，不要只开登录窗口。'
+          appendWxKeyScanLog(`zero-read elevated lastDiag=${JSON.stringify(lastDiag)}`)
           return {
             success: false,
             needAdmin: false,
-            error: `已是管理员仍无法读取微信内存${detail}。请先完全退出华记后再打开，并确认微信已登录。不要用属性页「以管理员身份运行」。`
+            error: `已是管理员仍无法读取微信内存${detail}。${hint} 诊断日志：${scanLogPath}`
           }
         }
         return {
@@ -399,6 +425,7 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
           const contactDb = contactDbFor(wxid)
           if (!contactDb) continue
           const diag = wxKeyService.scanDbKeyDiag(contactDb)
+          appendWxKeyScanLog(`diag wxid=${wxid} contact=${contactDb} result=${JSON.stringify(diag)}`)
           if (!diag) continue
           lastDiag = diag
           if (diag.bytes > 0) sawBytes = true
