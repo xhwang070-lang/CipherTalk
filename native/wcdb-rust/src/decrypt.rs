@@ -129,7 +129,7 @@ impl WeChatDecryptor {
         }
         let enc_key = resolve_enc_key(&self.key_bytes, &page1)?;
         let wal = read_shared(wal_path.as_ref())?;
-        apply_wal_pages(&enc_key, &wal, plain_db.as_ref())
+        apply_wal_pages(&enc_key, &page1[..SALT_SIZE], &wal, plain_db.as_ref())
     }
 }
 
@@ -173,6 +173,24 @@ fn hmac_ok(enc_key: &[u8], page1: &[u8]) -> bool {
     };
     mac.update(hmac_data);
     mac.update(&1u32.to_le_bytes());
+    mac.verify_slice(stored).is_ok()
+}
+
+fn page_hmac_ok(enc_key: &[u8], salt: &[u8], page: &[u8], pgno: u32) -> bool {
+    if page.len() < PAGE_SIZE || salt.len() < SALT_SIZE {
+        return false;
+    }
+    let mac_salt: Vec<u8> = salt.iter().map(|b| b ^ 0x3A).collect();
+    let mut mac_key = [0u8; 32];
+    pbkdf2_hmac::<Sha512>(enc_key, &mac_salt, 2, &mut mac_key);
+    let start = if pgno == 1 { SALT_SIZE } else { 0 };
+    let hmac_data = &page[start..PAGE_SIZE - HMAC_SIZE];
+    let stored = &page[PAGE_SIZE - HMAC_SIZE..];
+    let Ok(mut mac) = HmacSha512::new_from_slice(&mac_key) else {
+        return false;
+    };
+    mac.update(hmac_data);
+    mac.update(&pgno.to_le_bytes());
     mac.verify_slice(stored).is_ok()
 }
 
@@ -270,6 +288,7 @@ fn wal_checksum(data: &[u8], mut s0: u32, mut s1: u32) -> (u32, u32) {
 
 fn apply_wal_pages(
     enc_key: &[u8; 32],
+    db_salt: &[u8],
     wal: &[u8],
     plain_db: &Path,
 ) -> Result<u32, Box<dyn std::error::Error>> {
@@ -300,8 +319,12 @@ fn apply_wal_pages(
         if &frame[8..16] != header_salt {
             break;
         }
+        let raw_page = &frame[WAL_FRAME_HDR..WAL_FRAME_HDR + page_size];
+        if !page_hmac_ok(enc_key, db_salt, raw_page, pgno) {
+            break;
+        }
         let dbsize = u32::from_be_bytes(frame[4..8].try_into().unwrap());
-        match decrypt_page(enc_key, &frame[WAL_FRAME_HDR..], pgno) {
+        match decrypt_page(enc_key, raw_page, pgno) {
             Ok(page) => pending.push((pgno, page)),
             Err(_) => break,
         }
