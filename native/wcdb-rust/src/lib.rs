@@ -245,20 +245,65 @@ fn hex_key_for_account(account: &AccountHandle) -> &str {
     &account.hex_key
 }
 
+fn cache_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join("huaji-wcdb-cache")
+}
+
+fn stable_cache_id(db_path: &str, salt: &str, enc_key: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(db_path.as_bytes());
+    hasher.update(b"|");
+    hasher.update(salt.as_bytes());
+    hasher.update(b"|");
+    hasher.update(enc_key.as_bytes());
+    hex::encode(&hasher.finalize()[..16])
+}
+
 fn cache_sig(db_path: &str) -> String {
-    let mut sig = String::new();
-    for p in [db_path, &format!("{}-wal", db_path), &format!("{}-shm", db_path)] {
-        if let Ok(meta) = std::fs::metadata(p) {
-            if let Ok(mtime) = meta.modified() {
-                if let Ok(d) = mtime.duration_since(std::time::UNIX_EPOCH) {
-                    sig.push_str(&format!("{}:{}:;", d.as_millis(), meta.len()));
-                    continue;
-                }
+    // decrypt_database_file only reads the main .db, not WAL/SHM.
+    // Hashing WAL mtime into the filename created a new full copy on every WeChat write.
+    if let Ok(meta) = std::fs::metadata(db_path) {
+        if let Ok(mtime) = meta.modified() {
+            if let Ok(d) = mtime.duration_since(std::time::UNIX_EPOCH) {
+                return format!("{}:{}", d.as_millis(), meta.len());
             }
         }
-        sig.push_str("x;");
     }
-    sig
+    "x".to_string()
+}
+
+const CACHE_CAP_BYTES: u64 = 8 * 1024 * 1024 * 1024;
+
+fn prune_cache(dir: &std::path::Path) {
+    let mut files: Vec<(std::path::PathBuf, u64, std::time::SystemTime)> = std::fs::read_dir(dir)
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            let path = e.path();
+            if path.extension().and_then(|x| x.to_str()) != Some("db") {
+                return None;
+            }
+            let meta = e.metadata().ok()?;
+            Some((path, meta.len(), meta.modified().ok()?))
+        })
+        .collect();
+    let mut total: u64 = files.iter().map(|(_, len, _)| *len).sum();
+    if total <= CACHE_CAP_BYTES {
+        return;
+    }
+    files.sort_by_key(|(_, _, mtime)| *mtime);
+    for (path, len, _) in files {
+        if total <= CACHE_CAP_BYTES {
+            break;
+        }
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sig"));
+        total = total.saturating_sub(len);
+        log_info(&format!("Pruned stale wcdb cache {}", path.display()));
+    }
 }
 
 fn materialize_plaintext(db_path: &str, hex_key: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -275,21 +320,26 @@ fn materialize_plaintext(db_path: &str, hex_key: &str) -> Result<String, Box<dyn
         let salt = keys::file_salt_hex(db_path).unwrap_or_default();
         (k, salt)
     };
+    let dir = cache_dir();
+    std::fs::create_dir_all(&dir)?;
+    let id = stable_cache_id(db_path, &salt, &enc_key);
+    let cache = dir.join(format!("{}.db", id));
+    let sig_path = dir.join(format!("{}.sig", id));
     let sig = cache_sig(db_path);
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    use std::hash::{Hash, Hasher};
-    db_path.hash(&mut hasher);
-    salt.hash(&mut hasher);
-    sig.hash(&mut hasher);
-    let cache_dir = std::env::temp_dir().join("weflow-wcdb-cache");
-    std::fs::create_dir_all(&cache_dir)?;
-    let cache = cache_dir.join(format!("{:x}.db", hasher.finish()));
     if cache.is_file() {
-        return Ok(cache.to_string_lossy().to_string());
+        if let Ok(old) = std::fs::read_to_string(&sig_path) {
+            if old.trim() == sig {
+                return Ok(cache.to_string_lossy().to_string());
+            }
+        }
     }
     log_info(&format!("Decrypting live db into cache: {}", db_path));
     let bytes = decrypt::WeChatDecryptor::new(&enc_key)?.decrypt_database_file(db_path)?;
-    std::fs::write(&cache, bytes)?;
+    let tmp = dir.join(format!("{}.tmp", id));
+    std::fs::write(&tmp, &bytes)?;
+    std::fs::rename(&tmp, &cache)?;
+    let _ = std::fs::write(&sig_path, sig.as_bytes());
+    prune_cache(&dir);
     Ok(cache.to_string_lossy().to_string())
 }
 
