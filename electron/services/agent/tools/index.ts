@@ -121,7 +121,7 @@ export function buildChatTools(
 ): ToolSet {
   return {
     ...buildBaseTools(scope),
-    inspect_media_image: createInspectMediaImage(providerConfig),
+    inspect_media_image: createInspectMediaImage(providerConfig, options.uploadedMediaContext),
     search_similar_media: createSearchSimilarMedia(options.uploadedMediaContext),
     ...createAgentCapabilityTools(),
     ...createCanvasTools(options.canvasContext, options.emitChunk),

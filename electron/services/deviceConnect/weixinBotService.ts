@@ -30,6 +30,7 @@ import {
 } from './weixinIlinkClient'
 import { synthesizeWeixinVoice } from './weixinVoiceService'
 import type { PersonaTtsVoiceBinding } from '../agent/persona/personaTypes'
+import type { AgentUploadedMediaContext } from '../agent/types'
 
 const TOKEN_FILE = 'wechat-bot-token.json'
 const MODE_FILE = 'wechat-bot-modes.json'
@@ -435,6 +436,22 @@ function textFromUiMessage(message: UIMessage): string {
     })
     .filter(Boolean)
     .join('\n')
+}
+
+function extractUploadedMediaFromUiMessages(messages: UIMessage[] = []): AgentUploadedMediaContext | undefined {
+  const lastUser = [...messages].reverse().find((item) => item.role === 'user')
+  const parts = Array.isArray(lastUser?.parts) ? lastUser.parts : []
+  const images = parts
+    .filter((part): part is FileUIPart => Boolean(part && part.type === 'file' && String(part.mediaType || '').startsWith('image/') && typeof part.url === 'string'))
+    .map((part, index) => ({
+      id: `upload-${index + 1}`,
+      mediaType: String(part.mediaType || 'image/jpeg'),
+      filename: part.filename,
+      dataUrl: String(part.url || ''),
+    }))
+    .filter((item) => item.dataUrl.startsWith('data:image/'))
+    .slice(0, 6)
+  return images.length > 0 ? { images } : undefined
 }
 
 function lastUserTextFromUiMessages(messages: UIMessage[] = []): string {
@@ -1973,6 +1990,7 @@ class WeixinBotService {
       toolProfile: 'chat',
       queryText: lastUserTextFromUiMessages(uiMessages),
     })
+    const uploadedMediaContext = extractUploadedMediaFromUiMessages(uiMessages)
     const messages = await convertToModelMessages(uiMessages)
     let reply = ''
     const textBlocks: string[] = []
@@ -1993,6 +2011,7 @@ class WeixinBotService {
         toolMode: 'default',
         outputMode: 'wechat',
         allowWechatReplyMedia: true,
+        uploadedMediaContext,
         planMode: false,
         toolProfile: profile.toolProfile,
         codeWorkspace: profile.codeWorkspace,

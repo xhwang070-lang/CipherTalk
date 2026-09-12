@@ -39,24 +39,50 @@ function errorToLogData(error: unknown): Record<string, unknown> {
   return { message: String(error) }
 }
 
-function fileDataUrl(data: unknown): URL | null {
-  if (data instanceof URL) return data
-  if (!data || typeof data !== 'object') return null
-  const tagged = data as { type?: unknown; url?: unknown }
-  return tagged.type === 'url' && tagged.url instanceof URL ? tagged.url : null
+function fileHref(data: unknown): string {
+  if (typeof data === 'string') return data
+  if (data instanceof URL) return data.href
+  if (!data || typeof data !== 'object') return ''
+  const tagged = data as { type?: unknown; url?: unknown; data?: unknown }
+  if (tagged.type === 'url') {
+    if (tagged.url instanceof URL) return tagged.url.href
+    if (typeof tagged.url === 'string') return tagged.url
+  }
+  if (tagged.type === 'data' && typeof tagged.data === 'string' && tagged.data.startsWith('data:')) {
+    return tagged.data
+  }
+  return ''
 }
 
-/** URL 实例无法可靠穿过 utilityProcess；改用 AI SDK FilePart 支持的 URL 字符串简写。 */
+/** URL 实例无法穿过 utilityProcess。图片必须保持 {type:"data"} / {type:"url"} 标签，裸 data URL 字符串会被 SDK 丢掉。 */
 function serializeModelMessages(messages: ModelMessage[]): ModelMessage[] {
   return messages.map((message) => {
     if (message.role !== 'user' || !Array.isArray(message.content)) return message
     let changed = false
     const content = message.content.map((part) => {
       if (part.type !== 'file') return part
-      const url = fileDataUrl(part.data)
-      if (!url) return part
-      changed = true
-      return { ...part, data: url.href }
+      const href = fileHref(part.data)
+      if (!href) return part
+      if (href.startsWith('data:')) {
+        const comma = href.indexOf(',')
+        const header = comma >= 0 ? href.slice(5, comma) : ''
+        const b64 = comma >= 0 ? href.slice(comma + 1) : href
+        const mediaType = String(part.mediaType || header.split(';')[0] || 'image/jpeg')
+        changed = true
+        return {
+          ...part,
+          mediaType,
+          data: { type: 'data' as const, data: b64 },
+        }
+      }
+      if (href.startsWith('http://') || href.startsWith('https://')) {
+        changed = true
+        return {
+          ...part,
+          data: { type: 'url' as const, url: href },
+        }
+      }
+      return part
     })
     return changed ? { ...message, content } : message
   })

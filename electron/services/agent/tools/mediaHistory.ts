@@ -851,20 +851,35 @@ export function createSearchSimilarMedia(uploadedMediaContext?: AgentUploadedMed
   })
 }
 
-/** 当前模型是否标记支持图像输入（models.dev 模态数据）；目录里查不到返回 undefined（未知，可尝试）。回复建议引擎也复用。 */
+function providerHost(providerConfig: AgentProviderConfig): string {
+  try {
+    return new URL(String(providerConfig.baseURL || '')).host.toLowerCase()
+  } catch {
+    return ''
+  }
+}
+
+/** 当前模型是否支持图像输入。true/false=能确定；undefined=未知，交给接口试。中转站不以官方目录的“不支持”一刀切。 */
 export function currentModelVisionSupport(providerConfig: AgentProviderConfig): boolean | undefined {
+  const model = String(providerConfig.model || '').toLowerCase()
+  const host = providerHost(providerConfig)
+  if (/(\bvl\b|vision|gpt-4o|gpt-4\.1|gpt-5|grok|claude|gemini|qwen.*vl|glm-4v)/.test(model)) return true
+  const officialDeepseek = host === 'api.deepseek.com' || host.endsWith('.deepseek.com')
+  if (officialDeepseek && model.includes('deepseek') && !/vl|vision/.test(model)) return false
   try {
     const def = getProviderDefinition(providerConfig.name)
     const details = def?.modelDetails || []
     if (details.length === 0) return undefined
-    const model = providerConfig.model.toLowerCase()
     const detail = details.find((item) => {
       const id = item.id.toLowerCase()
       const name = item.name.toLowerCase()
       return id === model || name === model
     })
     if (!detail) return undefined
-    return detail.modalities.input.includes('image')
+    if (detail.modalities.input.includes('image')) return true
+    // 自定义中转站经常套着能看图的模型，目录写 false 时仍尝试
+    if (host && !officialDeepseek) return undefined
+    return false
   } catch {
     return undefined
   }
@@ -883,16 +898,90 @@ function buildVisionPrompt(resolved: ResolvedMediaFile, question?: string): stri
   return `${context}\n\n用户问题：${task}\n\n只根据图片画面和上面的来源信息回答；看不清就说看不清，不要脑补。`
 }
 
-export function createInspectMediaImage(providerConfig: AgentProviderConfig) {
+function decodeUploadedDataUrl(dataUrl: string): { buffer: Buffer; mediaType: string } | null {
+  const match = String(dataUrl || '').match(/^data:([^;]+);base64,(.+)$/i)
+  if (!match) return null
+  try {
+    const buffer = Buffer.from(match[2], 'base64')
+    if (!buffer.length) return null
+    return { buffer, mediaType: match[1].trim() || 'image/jpeg' }
+  } catch {
+    return null
+  }
+}
+
+export function createInspectMediaImage(
+  providerConfig: AgentProviderConfig,
+  uploadedMediaContext?: AgentUploadedMediaContext,
+) {
   return tool({
     description:
-      '把 search_media/search_moment_media 返回的 mediaId 自动下载/解密后交给当前 Agent 模型看图，回答图片里是什么。' +
-      '用于“这张图是什么/朋友圈第一张图是什么/聊天记录上一张图里有什么”。只做识别，不把图片作为微信附件发送。',
+      '把当前消息里的上传图片（mediaId=upload-1）或 search_media/search_moment_media 返回的 mediaId 交给当前模型看图。' +
+      '用户刚发来的图片优先用 upload-1，不要先去历史记录里找。只做识别，不把图片作为微信附件发送。',
     inputSchema: z.object({
-      mediaId: z.string().min(8).describe('来自 search_media/search_moment_media 命中的 mediaId'),
+      mediaId: z.string().min(8).describe('upload-1（本轮用户发来的图）或 search_media 命中的 mediaId'),
       question: z.string().optional().describe('希望视觉模型回答的具体问题；不填则概述图片内容'),
     }),
     execute: async ({ mediaId, question }, { abortSignal }) => {
+      if (mediaId.toLowerCase().startsWith('upload-')) {
+        const image = (uploadedMediaContext?.images || []).find((item) => item.id === mediaId)
+          || uploadedMediaContext?.images?.[0]
+        if (!image) {
+          return { error: '当前消息没有可识别的上传图片。如果是聊天记录里的旧图，请先 search_media 拿 mediaId。' }
+        }
+        const decoded = decodeUploadedDataUrl(image.dataUrl)
+        if (!decoded) return { error: '上传图片无法解码' }
+        const fakeResolved = {
+          success: true as const,
+          filePath: '',
+          source: 'chat' as const,
+          mediaKind: 'image' as const,
+          from: '本轮消息',
+          sender: '',
+          time: '',
+          content: image.filename || '',
+        }
+        const support = currentModelVisionSupport(providerConfig)
+        if (support === false) {
+          return {
+            success: false,
+            error: `当前模型 ${providerConfig.name}/${providerConfig.model} 未标记支持图像输入。请切换到 Grok / GPT 等带“图像输入”的模型，或把 Excel 原文件发过来。`,
+          }
+        }
+        try {
+          if (decoded.buffer.length > MAX_VISION_IMAGE_BYTES) {
+            return { success: false, error: '图片过大，暂不喂给模型。' }
+          }
+          const messages: ModelMessage[] = [{
+            role: 'user',
+            content: [
+              { type: 'text', text: buildVisionPrompt(fakeResolved, question) },
+              { type: 'file', mediaType: decoded.mediaType, data: { type: 'data', data: decoded.buffer.toString('base64') } },
+            ],
+          }]
+          const description = (await generateText({
+            model: createLanguageModel(providerConfig),
+            system: '你是Huaji的图片理解工具。用中文回答，只说你从图里能确定的内容；看不清或信息不足时直接说明。表格要读出行列原文，不要编数字。',
+            messages,
+            temperature: 0.2,
+            abortSignal,
+          })).text.trim()
+          return {
+            success: true,
+            description,
+            kind: 'image',
+            source: 'upload',
+            visionModel: `${providerConfig.name}/${providerConfig.model}`,
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          return {
+            success: false,
+            error: `当前模型无法识别图片：${message}。DeepSeek 文本模型通常不能看图，请换成 Grok / GPT，或把表格的 Excel 原文件发来。`,
+            visionModel: `${providerConfig.name}/${providerConfig.model}`,
+          }
+        }
+      }
       const resolved = await resolveSharedMediaIdToFile(mediaId)
       if (!resolved.success) return { error: resolved.error }
 
@@ -943,7 +1032,7 @@ export function createInspectMediaImage(providerConfig: AgentProviderConfig) {
           role: 'user',
           content: [
             { type: 'text', text: buildVisionPrompt(resolved, question) },
-            { type: 'image', image: buffer, mediaType },
+            { type: 'file', mediaType, data: { type: 'data', data: buffer.toString('base64') } },
           ],
         }]
         const instructions = '你是Huaji的图片理解工具。用中文回答，只说你从图里能确定的内容；看不清或信息不足时直接说明。'
