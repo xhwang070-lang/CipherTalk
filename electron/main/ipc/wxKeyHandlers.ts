@@ -5,7 +5,7 @@ import { dbPathService } from '../../services/dbPathService'
 import { wcdbService } from '../../services/wcdbService'
 import { wxKeyService } from '../../services/wxKeyService'
 import { wxKeyServiceMac } from '../../services/wxKeyServiceMac'
-import { applyKeyPackEnv, importKeyPack, parseKeyPack, pickEncKey, resolveKeyPackPath } from '../../services/localKeyPack'
+import { applyKeyPackEnv, importKeyPack, parseKeyPack, pickEncKey, resolveKeyPackPath, upsertEncKey } from '../../services/localKeyPack'
 import type { MainProcessContext } from '../context'
 
 /**
@@ -259,11 +259,13 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
               : safeScanWxids(dbPath)
             for (const wxid of accWxids) {
               event.sender.send('wxkey:status', { status: `已读取账号信息，正在验证: ${account.name || wxid}`, level: 1 })
+              upsertEncKey(account.dbKey, dbPath, wxid)
               const testResult = await wcdbService.testConnection(dbPath, account.dbKey, wxid)
               if (testResult.success) {
                 ctx.getLogService()?.info('WxKey', '直接读取账号信息成功（无需重启微信）', {
                   wxid, hasName: !!account.name, hasNumber: !!account.number, hasPhone: !!account.phone
                 })
+                upsertEncKey(account.dbKey, dbPath, wxid)
                 return { success: true, key: account.dbKey, validatedWxid: wxid, account: { ...account, wxid } }
               }
             }
@@ -271,6 +273,7 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
           // 未做/未通过目录验证：不回填 validatedWxid（前端据此标记为“未验证”），
           // 但仍带回解析后的目录名供前端自动绑定目录。
           ctx.getLogService()?.info('WxKey', '直接读取到账号信息（未通过目录验证），返回密钥与账号', { bindWxid })
+          upsertEncKey(account.dbKey, dbPath, bindWxid)
           return { success: true, key: account.dbKey, account: outAccount }
         }
         ctx.getLogService()?.info('WxKey', '直接读取未命中，回退到重启微信抓取流程')
@@ -371,6 +374,7 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
               ctx.getLogService()?.info('WxKey', '账号信息提取成功', {
                 wxid, hasName: !!account.name, hasNumber: !!account.number, hasPhone: !!account.phone
               })
+              upsertEncKey(account.dbKey, dbPath, wxid)
               return { success: true, key: account.dbKey, validatedWxid: wxid, account: { ...account, wxid } }
             }
             lastError = testResult.error || ''
@@ -384,9 +388,11 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
           if (diag.bytes > 0) sawBytes = true
           if (diag.key) {
             event.sender.send('wxkey:status', { status: `已捕获候选密钥，正在验证账号: ${wxid}`, level: 1 })
+            upsertEncKey(diag.key, dbPath, wxid)
             const testResult = await wcdbService.testConnection(dbPath, diag.key, wxid)
             if (testResult.success) {
               ctx.getLogService()?.info('WxKey', '内存扫描密钥获取成功', { wxid, keyLength: diag.key.length })
+              upsertEncKey(diag.key, dbPath, wxid)
               return { success: true, key: diag.key, validatedWxid: wxid, account: account ?? null }
             }
             lastError = testResult.error || ''

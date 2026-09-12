@@ -186,7 +186,9 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
       }
 
       setIsAccountVerified(false)
-      if (!silent) setError(result.error || '账号目录验证失败，请重新选择')
+      const reason = result.error || '账号目录验证失败，请重新选择'
+      setDbKeyStatus(reason)
+      if (!silent) setError(reason)
       return false
     } catch (e) {
       setIsAccountVerified(false)

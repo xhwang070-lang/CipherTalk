@@ -261,12 +261,20 @@ fn cache_sig(db_path: &str) -> String {
     sig
 }
 
-fn materialize_plaintext(db_path: &str) -> Result<String, Box<dyn std::error::Error>> {
+fn materialize_plaintext(db_path: &str, hex_key: &str) -> Result<String, Box<dyn std::error::Error>> {
     if keys::is_plaintext_sqlite(db_path) {
         return Ok(db_path.to_string());
     }
-    let (enc_key, salt) = keys::enc_key_for_file(db_path)
-        .ok_or("no local enc_key for encrypted database")?;
+    let (enc_key, salt) = if let Some(pair) = keys::enc_key_for_file(db_path) {
+        pair
+    } else {
+        let k = hex_key.strip_prefix("0x").unwrap_or(hex_key).to_lowercase();
+        if k.len() != 64 {
+            return Err("no local enc_key for encrypted database".into());
+        }
+        let salt = keys::file_salt_hex(db_path).unwrap_or_default();
+        (k, salt)
+    };
     let sig = cache_sig(db_path);
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     use std::hash::{Hash, Hasher};
@@ -285,8 +293,8 @@ fn materialize_plaintext(db_path: &str) -> Result<String, Box<dyn std::error::Er
     Ok(cache.to_string_lossy().to_string())
 }
 
-fn open_db_connection(db_path: &str, _hex_key: &str) -> Result<Connection, Box<dyn std::error::Error>> {
-    let plain = materialize_plaintext(db_path)?;
+fn open_db_connection(db_path: &str, hex_key: &str) -> Result<Connection, Box<dyn std::error::Error>> {
+    let plain = materialize_plaintext(db_path, hex_key)?;
     log_info(&format!("Opened local-decrypted sqlite: {}", plain));
     Ok(Connection::open(plain)?)
 }
