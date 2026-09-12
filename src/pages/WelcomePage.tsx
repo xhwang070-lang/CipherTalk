@@ -135,6 +135,13 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
           if (config.imageAesKey) {
             setImageAesKey(config.imageAesKey)
           }
+          if (typeof config.stepIndex === 'number' && config.stepIndex >= 0 && config.stepIndex < steps.length) {
+            setStepIndex(config.stepIndex)
+          }
+          if (config.pendingMemoryScanAfterElevate) {
+            setAllowMemoryScan(true)
+            setNeedAdminRelaunch(true)
+          }
         }
       } catch (e) {
         console.error('加载缓存配置失败:', e)
@@ -208,14 +215,16 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
       wxid,
       decryptKey,
       imageXorKey,
-      imageAesKey
+      imageAesKey,
+      stepIndex,
+      pendingMemoryScanAfterElevate: needAdminRelaunch && allowMemoryScan && !isAccountVerified
     }
     try {
       localStorage.setItem('welcomeConfig', JSON.stringify(config))
     } catch (e) {
       console.error('保存配置到缓存失败:', e)
     }
-  }, [dbPath, cachePath, wxid, decryptKey, imageXorKey, imageAesKey, isAddAccountMode])
+  }, [dbPath, cachePath, wxid, decryptKey, imageXorKey, imageAesKey, stepIndex, needAdminRelaunch, allowMemoryScan, isAccountVerified, isAddAccountMode])
 
   const currentStep = steps[stepIndex]
   const rootClassName = `welcome-page${isClosing ? ' is-closing' : ''}${standalone ? ' is-standalone' : ''}`
@@ -554,8 +563,25 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
         })
       } else if (result.needAdmin) {
         setNeedAdminRelaunch(true)
-        setError(result.error || '华记没有提权，读不到微信内存。请以管理员身份重启。')
-        setDbKeyStatus('')
+        setAllowMemoryScan(true)
+        setError(result.error || '华记没有提权，读不到微信内存。将尝试以管理员身份重启后再扫。')
+        setDbKeyStatus('正在以管理员身份重启华记...')
+        try {
+          const cached = JSON.parse(localStorage.getItem('welcomeConfig') || '{}')
+          cached.pendingMemoryScanAfterElevate = true
+          cached.stepIndex = stepIndex
+          localStorage.setItem('welcomeConfig', JSON.stringify(cached))
+        } catch {
+          /* ignore */
+        }
+        const relaunch = await window.electronAPI.app.relaunchElevated()
+        if (relaunch?.already) {
+          setError('当前已经是管理员仍读不到微信内存。请先打开并登录微信，再点扫描。新机没有密钥包时只能在本机扫内存取密钥。')
+          setDbKeyStatus('')
+        } else if (relaunch && relaunch.success === false) {
+          setError(relaunch.error || '提权重启失败')
+          setDbKeyStatus('')
+        }
       } else {
         setError(result.error || '扫描微信内存失败')
         setDbKeyStatus('')
@@ -567,6 +593,35 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
       setIsFetchingDbKey(false)
     }
   }
+
+  useEffect(() => {
+    let cancelled = false
+    const resumeMemoryScan = async () => {
+      try {
+        const cached = JSON.parse(localStorage.getItem('welcomeConfig') || '{}')
+        if (!cached.pendingMemoryScanAfterElevate) return
+        const elevated = await window.electronAPI.app.isElevated()
+        if (cancelled) return
+        if (!elevated) {
+          setNeedAdminRelaunch(true)
+          setError('还是普通权限。请先在任务管理器结束全部 Huaji.exe，再右键华记「以管理员身份运行」。内置管理员常常不弹 UAC。')
+          return
+        }
+        cached.pendingMemoryScanAfterElevate = false
+        localStorage.setItem('welcomeConfig', JSON.stringify(cached))
+        setAllowMemoryScan(true)
+        setNeedAdminRelaunch(false)
+        setDbKeyStatus('已是管理员，正在继续扫描微信内存...')
+        await handleScanMemoryKey()
+      } catch {
+        /* ignore */
+      }
+    }
+    void resumeMemoryScan()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleSelectWechatPath = async () => {
     try {
@@ -1149,7 +1204,7 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
 
       {dbKeyStatus && renderStatusAlert(dbKeyStatus, isAccountVerified ? 'success' : 'default')}
       {renderStatusAlert(
-        '没有密钥包时，请粘贴密钥或导入 all_keys.json。扫描内存必须先勾选同意，默认不会扫。',
+        '新机没有密钥包时，点「扫描微信内存获取密钥」并同意即可。不要用属性页勾管理员。提权后会回到这一步继续扫。',
         'default'
       )}
     </div>

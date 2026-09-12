@@ -135,6 +135,7 @@ function ChatPage(_props: ChatPageProps) {
   const searchInputRef = useRef<HTMLInputElement>(null)
   const sidebarRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<Message[]>([])
+  const sessionsRef = useRef<ChatSession[]>([])
   const isLoadingMoreRef = useRef(false)
   const scrollToBottomAfterRenderRef = useRef(false)
   // 虚拟列表滚动信号：ChatPage 表达"该置底/置顶"的意图，递增令 MessageListVirtual 用 scrollToIndex 落点
@@ -971,7 +972,7 @@ function ChatPage(_props: ChatPageProps) {
     const flushRealtimeUpdate = async () => {
       wcdbChangeTimerRef.current = null
       const shouldRefreshSessions = pendingSessionRefresh
-      const shouldRefreshMessages = pendingMessageRefresh
+      let shouldRefreshMessages = pendingMessageRefresh
       pendingSessionRefresh = false
       pendingMessageRefresh = false
 
@@ -982,43 +983,70 @@ function ChatPage(_props: ChatPageProps) {
           const sessionLimit = Math.min(1000, Math.max(SESSION_PAGE_SIZE, sessionRawOffsetRef.current))
           const result = await window.electronAPI.chat.getSessions(0, sessionLimit)
           if (result.success && result.sessions) {
+            const currentId = currentSessionIdRef.current
+            const prevSession = currentId
+              ? sessionsRef.current.find((item) => item.username === currentId)
+              : undefined
+            const nextSession = currentId
+              ? result.sessions.find((item) => item.username === currentId)
+              : undefined
+            if (
+              nextSession &&
+              (
+                !prevSession
+                || prevSession.summary !== nextSession.summary
+                || prevSession.lastTimestamp !== nextSession.lastTimestamp
+              )
+            ) {
+              shouldRefreshMessages = true
+            }
             setSessions((prevSessions: ChatSession[]) => mergeRefreshedSessions(prevSessions, result.sessions!))
           }
         }
 
         const currentId = currentSessionIdRef.current
-        // 仅在消息表变更时拉取当前会话增量；纯会话变更只刷新会话列表，避免多余的 getNewMessages
         if (!currentId || !shouldRefreshMessages) return
 
-        const currentMessages = useChatStore.getState().messages || []
-        const lastMsg = currentMessages[currentMessages.length - 1]
-        const minTime = Number(lastMsg?.createTime || 0)
-        const listEl = messageListRef.current
-        let isNearBottom = false
-        if (listEl) {
-          const { scrollTop, scrollHeight, clientHeight } = listEl
-          isNearBottom = scrollHeight - scrollTop - clientHeight < 300
+        const pullOnce = async (): Promise<number> => {
+          if (currentSessionIdRef.current !== currentId) return 0
+          const currentMessages = useChatStore.getState().messages || []
+          const lastMsg = currentMessages[currentMessages.length - 1]
+          const minTime = Number(lastMsg?.createTime || 0)
+          const listEl = messageListRef.current
+          let isNearBottom = false
+          if (listEl) {
+            const { scrollTop, scrollHeight, clientHeight } = listEl
+            isNearBottom = scrollHeight - scrollTop - clientHeight < 300
+          }
+
+          const messagesResult = await window.electronAPI.chat.getNewMessages(currentId, minTime, 1000)
+          if (currentSessionIdRef.current !== currentId) return 0
+          if (!messagesResult.success || !messagesResult.messages || messagesResult.messages.length === 0) return 0
+
+          const latestMessages = useChatStore.getState().messages || []
+          const existingKeys = new Set(latestMessages.map(m => `${m.serverId}-${m.localId}-${m.createTime}-${m.sortSeq}`))
+          const uniqueNewMessages = messagesResult.messages
+            .filter(msg => !existingKeys.has(`${msg.serverId}-${msg.localId}-${msg.createTime}-${msg.sortSeq}`))
+            .sort((a, b) => a.createTime - b.createTime || a.localId - b.localId)
+
+          if (uniqueNewMessages.length === 0) return 0
+          if (isDateJumpModeRef.current) return 0
+          appendMessages(uniqueNewMessages, false)
+          incrementSyncVersion()
+          if (isNearBottom) {
+            requestAnimationFrame(() => scrollToBottom(true))
+          }
+          return uniqueNewMessages.length
         }
 
-        const messagesResult = await window.electronAPI.chat.getNewMessages(currentId, minTime, 1000)
-        if (currentSessionIdRef.current !== currentId) return
-        if (!messagesResult.success || !messagesResult.messages || messagesResult.messages.length === 0) return
-
-        const latestMessages = useChatStore.getState().messages || []
-        const existingKeys = new Set(latestMessages.map(m => `${m.serverId}-${m.localId}-${m.createTime}-${m.sortSeq}`))
-        const uniqueNewMessages = messagesResult.messages
-          .filter(msg => !existingKeys.has(`${msg.serverId}-${msg.localId}-${msg.createTime}-${msg.sortSeq}`))
-          .sort((a, b) => a.createTime - b.createTime || a.localId - b.localId)
-
-        if (uniqueNewMessages.length === 0) return
-        if (isDateJumpModeRef.current) return
-        appendMessages(uniqueNewMessages, false)
-        incrementSyncVersion()
-        if (isNearBottom) {
-          requestAnimationFrame(() => scrollToBottom(true))
-        }
+        // session.db 往往比 message_*.db 先写下一条预览。预览到了就连拉几次消息库，避免左边有字、右边还是空的。
+        if (await pullOnce()) return
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        if (await pullOnce()) return
+        await new Promise((resolve) => setTimeout(resolve, 1200))
+        await pullOnce()
       } catch (e) {
-        console.error('[ChatPage] wcdb 实时刷新失败:', e)
+        console.error('[ChatPage] wcdb realtime refresh failed:', e)
       }
     }
 
@@ -1439,7 +1467,8 @@ function ChatPage(_props: ChatPageProps) {
   // 同步 messages 和 currentSessionId 到 ref，供自动更新使用
   useEffect(() => {
     messagesRef.current = messages
-  }, [messages])
+    sessionsRef.current = sessions
+  }, [messages, sessions])
 
   useEffect(() => {
     currentOffsetRef.current = currentOffset
