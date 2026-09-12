@@ -92,12 +92,12 @@ const ROUTING_PROMPT = `
 - 人名/群名解析 → list_contacts；列群 / 群成员 / 群内发言排行 → list_groups / group_members / group_member_ranking
 - 朋友圈内容查询 → search_moments；朋友圈数量/趋势/占比/点赞评论排行 → moments_stats
 - 朋友圈/聊天记录图片内容识别 → 先 list_contacts（如涉及某人）→ search_moment_media 或 search_media 拿 mediaId → inspect_media_image 看图后回答；不要在未调用 inspect_media_image 时猜图片内容。
-- 聊天里的 Excel/报价表 → list_contacts 限定群 → search_messages 找到文件消息 → inspect_chat_file 读单元格。数字必须来自工具返回的格子，禁止目测或编造。
+- 聊天里的 Excel/报价表 → list_contacts 限定群 → search_messages 找到文件消息 → inspect_chat_file({sessionId, localId}) 读单元格。命中带 fileName/isFile 时优先用这条，不要改去 find_files。多工作表先看 sheetNames，再带 sheetName 分次读。数字必须来自工具返回的格子，禁止目测或编造。找不到 localId 时可以只传 fileName。
 - 文字找历史图片 → list_contacts（如涉及某人）→ search_media({query, sessionId})；只查已有图片向量，命中后需要描述内容再 inspect_media_image。
 - 以图找图/找相似图/这张图以前发过吗 → search_similar_media({uploadedImageId:"upload-1", source:"all"})；只查已有图片向量，如果涉及某人/某朋友圈，先 list_contacts 再填 sessionId 或 usernames。
 - 用户要求"给我看看/发出来/把那张图发出来" → search_moment_media 或 search_media 拿 mediaId → send_media_from_history 展示/回复；这和 inspect_media_image 不同，后者只看图不发送附件。
 - 导出聊天记录 → export_chat；先校验和补齐参数，参数齐全后必须先问最终确认，确认后才传 confirmed=true
-- 找本机文件/不知道路径 → find_files；要搜正文 → search_local_files；索引不足 → index_local_files
+- 找本机文件/不知道路径 → find_files；要搜正文 → search_local_files；索引不足 → index_local_files。微信聊天附件不要靠 find_files 读内容，用 inspect_chat_file。
 - 资料库/文档知识 → add_knowledge_source / search_knowledge
 - 产出文件 → create_artifact；先确认再写
 - 主动/定时任务 → create_task/list_tasks/update_task/cancel_task/run_task_now；任务禁止发送微信消息

@@ -13,7 +13,7 @@ export const searchMessages = tool({
     '按关键词检索聊天记录原文，适合"谁提过 X / 搜含某个词的消息 / 找某件具体的事"。' +
     '每条命中带 anchor 字段（消息锚点），拿到后用 get_context 展开前后原文来核对、引用。' +
     '强烈建议带 sessionId 限定范围（先用 list_contacts 拿 username）——不带则只扫最近活跃的若干会话，且首次会现建索引偏慢。' +
-    '要数量/排名/频率用 chat_stats，不要用检索去数。',
+    '要数量/排名/频率用 chat_stats，不要用检索去数。文件消息命中会带 fileName/isFile，读 Excel 请把 sessionId+localId 交给 inspect_chat_file。',
   inputSchema: z.object({
     query: z.string().describe('关键词/词组'),
     sessionId: z.string().optional().describe('限定某会话/群（username，来自 list_contacts）；不传则扫最近会话'),

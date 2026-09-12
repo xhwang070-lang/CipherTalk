@@ -78,6 +78,8 @@ export interface ChatSearchHit {
   time: string | null
   sender: string
   excerpt: string
+  fileName?: string
+  isFile?: boolean
   anchor: { sessionId: string; localId: number; sortSeq: number; createTime: number }
 }
 
@@ -206,7 +208,9 @@ export async function searchChat(opts: {
       sessionId: h.sessionId,
       time: toLocalTime(m.createTime),
       sender,
-      excerpt: String(h.excerpt || m.parsedContent || '').replace(/\s+/g, ' ').trim().slice(0, 200),
+      excerpt: String(h.excerpt || m.parsedContent || m.fileName || '').replace(/\s+/g, ' ').trim().slice(0, 200),
+      fileName: m.fileName || undefined,
+      isFile: Boolean(m.fileName) || Number(m.localType) === 49,
       anchor: { sessionId: h.sessionId, localId: m.localId, sortSeq: m.sortSeq, createTime: m.createTime },
     }
   })

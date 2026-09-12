@@ -282,6 +282,30 @@ export function registerChatHandlers(ctx: MainProcessContext): void {
     return result
   })
 
+  ipcMain.handle('chat:previewChatFile', async (_, payload: {
+    sessionId?: string
+    localId?: number
+    fileName?: string
+    fileExt?: string
+    createTime?: number
+    sheetName?: string
+    maxRows?: number
+  }) => {
+    const { previewChatFile } = await import('../../services/chat/fileExtract')
+    let message = undefined
+    if (payload?.sessionId && payload?.localId != null) {
+      const got = await chatService.getMessageByLocalId(payload.sessionId, payload.localId)
+      if (got.success) message = got.message
+    }
+    return previewChatFile({
+      ...payload,
+      message,
+      fileName: payload?.fileName || message?.fileName,
+      fileExt: payload?.fileExt || message?.fileExt,
+      createTime: payload?.createTime || message?.createTime,
+    })
+  })
+
   // 朋友圈相关
 
 }

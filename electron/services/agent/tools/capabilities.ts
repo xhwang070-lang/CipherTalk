@@ -13,7 +13,7 @@ export function createLocalFileTools(): ToolSet {
   return {
     find_files: tool({
       description:
-        '按文件名、路径、类型、大小、修改时间搜索电脑本机文件。先使用已有轻量索引；无命中时可调用 index_local_files 刷新索引。',
+        '按文件名、路径、类型、大小、修改时间搜索电脑本机文件。先使用已有轻量索引；无命中时可调用 index_local_files 刷新索引。微信聊天里的 Excel 请用 inspect_chat_file 读单元格，不要靠本工具猜表。微信 4.x 聊天附件在 xwechat_files/<wxid>/msg/file/。',
       inputSchema: z.object({
         query: z.string().optional().describe('文件名或路径关键词'),
         types: z.array(z.string()).optional().describe('限定类型，如 document/image/video/audio/text/code/archive'),

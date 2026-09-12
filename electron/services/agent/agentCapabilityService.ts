@@ -9,6 +9,7 @@ import type { MainProcessContext } from '../../main/context'
 import { ConfigService } from '../config'
 import { memoryDatabase } from '../memory/memoryDatabase'
 import { agentAuditService } from './agentAuditService'
+import { findAccountDir } from '../chat/accountUtils'
 
 type Row = Record<string, any>
 
@@ -135,6 +136,18 @@ function defaultCommonRoots(): string[] {
       for (const item of extra) {
         const root = normalizeText(item)
         if (root && fs.existsSync(root)) roots.add(root)
+      }
+    }
+    const dbPath = normalizeText(config.get('dbPath'))
+    const wxid = normalizeText(config.get('myWxid'))
+    if (dbPath && wxid) {
+      const accountDir = findAccountDir(dbPath, wxid) || wxid
+      for (const candidate of [
+        path.join(dbPath, accountDir, 'msg', 'file'),
+        path.join(dbPath, accountDir, 'FileStorage', 'File'),
+        path.join(dbPath, 'FileStorage', 'File'),
+      ]) {
+        if (fs.existsSync(candidate)) roots.add(candidate)
       }
     }
   } finally {
