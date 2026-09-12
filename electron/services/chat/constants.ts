@@ -44,4 +44,4 @@ export const emojiCache: Map<string, string> = new Map()
 export const emojiDownloading: Map<string, Promise<string | null>> = new Map()
 
 // 缓存过期时间（毫秒）
-export const SESSION_TABLE_CACHE_DURATION = 60 * 1000  // 60秒，与原项目一致
+export const SESSION_TABLE_CACHE_DURATION = 30 * 60 * 1000  // 30分钟。60秒会导致反复扫 1GB 旧消息库

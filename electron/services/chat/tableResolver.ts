@@ -2,7 +2,6 @@ import { statSync } from 'fs'
 import { dbAdapter } from '../dbAdapter'
 import { findMessageDbPaths } from '../dbStoragePaths'
 import { clearMessageDbScannerCache } from '../messageDbScanner'
-import { SESSION_TABLE_CACHE_DURATION } from './constants'
 import type { ChatServiceState } from './state'
 
 /**
@@ -32,6 +31,8 @@ export function refreshMessageDbCache(state: ChatServiceState): void {
   state.knownMessageDbFiles.clear()
   state.sessionTableCache.clear()
   state.sessionTableCacheTime = 0
+  state.indexedMessageDbs.clear()
+  state.msgTableIndex.clear()
   state.myRowIdCache.clear()
   state.hasName2IdCache.clear()
   state.contactColumnsCache = null
@@ -99,47 +100,31 @@ export async function findMessageTable(dbPath: string, sessionId: string): Promi
  * 2. 如果有新数据库文件，在新数据库中查找并追加到缓存
  * 3. 如果会话未缓存，全量扫描所有数据库
  */
+
+async function ensureMessageDbIndexed(state: ChatServiceState, dbPath: string): Promise<void> {
+  if (state.indexedMessageDbs.has(dbPath)) return
+  try {
+    const tables = await dbAdapter.all<any>(
+      "message",
+      dbPath,
+      "SELECT name FROM sqlite_master WHERE type='table' AND lower(name) LIKE 'msg_%'"
+    )
+    for (const table of tables) {
+      const hash = extractTableHash(String(table.name || ""))
+      if (!hash) continue
+      const list = state.msgTableIndex.get(hash) || []
+      list.push({ dbPath, tableName: table.name })
+      state.msgTableIndex.set(hash, list)
+    }
+  } catch {
+    // 单库失败不影响其它库
+  }
+  state.indexedMessageDbs.add(dbPath)
+}
+
 export async function findSessionTables(state: ChatServiceState, sessionId: string): Promise<{ tableName: string; dbPath: string }[]> {
-  const now = Date.now()
-  const { allDbs, newDbs } = findMessageDbs(state)
+  const { allDbs } = findMessageDbs(state)
   if (allDbs.length === 0) return []
-
-  // 检查缓存是否过期
-  const cacheExpired = (now - state.sessionTableCacheTime) > SESSION_TABLE_CACHE_DURATION
-  if (cacheExpired) {
-    state.sessionTableCache.clear()
-    state.sessionTableCacheTime = now
-  }
-
-  // 获取已缓存的结果
-  let cached = state.sessionTableCache.get(sessionId)
-
-  // 情况1：有缓存，且有新数据库 -> 只在新数据库中查找
-  if (cached && cached.length > 0 && newDbs.length > 0) {
-    const newPairs: { dbPath: string; tableName: string }[] = []
-
-    for (const dbPath of newDbs) {
-      const tableName = await findMessageTable(dbPath, sessionId)
-      if (tableName) {
-        newPairs.push({ dbPath, tableName })
-      }
-    }
-
-    // 合并到缓存
-    if (newPairs.length > 0) {
-      cached = [...cached, ...newPairs]
-      state.sessionTableCache.set(sessionId, cached)
-    }
-  }
-
-  // 情况2：有缓存，没有新数据库 -> 直接使用缓存
-  if (cached && cached.length > 0) {
-    return cached.map(item => ({ tableName: item.tableName, dbPath: item.dbPath }))
-  }
-
-  // 情况3：没有缓存 -> 先扫较新的库，命中一张表就停。
-  // 一个会话几乎只在一个 message_*.db 里；继续扫 1GB+ 旧库会让点开对话卡死。
-  const dbTablePairs: { tableName: string; dbPath: string }[] = []
   const orderedDbs = [...allDbs].sort((a, b) => {
     try {
       return statSync(b).mtimeMs - statSync(a).mtimeMs
@@ -147,21 +132,16 @@ export async function findSessionTables(state: ChatServiceState, sessionId: stri
       return 0
     }
   })
-
+  const hash = getTableNameHash(sessionId).toLowerCase()
   for (const dbPath of orderedDbs) {
-    const tableName = await findMessageTable(dbPath, sessionId)
-    if (tableName) {
-      dbTablePairs.push({ tableName, dbPath })
-      break
-    }
+    if ((state.msgTableIndex.get(hash) || []).length > 0) break
+    await ensureMessageDbIndexed(state, dbPath)
   }
-
-  // 存入缓存
-  if (dbTablePairs.length > 0) {
-    state.sessionTableCache.set(sessionId, dbTablePairs.map(p => ({ dbPath: p.dbPath, tableName: p.tableName })))
+  const indexed = state.msgTableIndex.get(hash) || []
+  if (indexed.length > 0) {
+    state.sessionTableCache.set(sessionId, indexed.map(p => ({ dbPath: p.dbPath, tableName: p.tableName })))
   }
-
-  return dbTablePairs
+  return indexed
 }
 
 /**

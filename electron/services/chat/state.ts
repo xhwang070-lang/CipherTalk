@@ -10,6 +10,9 @@ export class ChatServiceState {
   sessionTableCacheTime: number = 0
   // 缓存：已知的消息数据库文件列表
   knownMessageDbFiles: Set<string> = new Set()
+  // 每个 message db 的 msg_* 表索引，进程内只建一次
+  indexedMessageDbs: Set<string> = new Set()
+  msgTableIndex: Map<string, { dbPath: string; tableName: string }[]> = new Map()
   // 缓存：当前用户在 Name2Id 表中的 rowid（按数据库路径）- 这个是稳定的
   myRowIdCache: Map<string, number | null> = new Map()
   // 缓存：数据库是否有 Name2Id 表 - 表结构不会变
