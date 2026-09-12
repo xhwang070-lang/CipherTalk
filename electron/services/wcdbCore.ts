@@ -1,7 +1,7 @@
 import { basename, delimiter, dirname, join } from 'path'
 import { existsSync, readdirSync, statSync } from 'fs'
 import * as https from 'https'
-import { decodeMessageContent, getRowField, coerceRowNumber } from './chat/rowDecoders'
+import { decodeMessageContent, getRowField, coerceRowNumber, unwrapPackedMsgType } from './chat/rowDecoders'
 
 // 消息表 local_type 列在不同微信版本下的可能列名
 const MSG_TYPE_COLUMNS = [
@@ -653,7 +653,7 @@ export class WcdbCore {
       if (value === null || value === undefined || value === '') continue
       const parsed = coerceRowNumber(value, Number.NaN)
       if (!Number.isFinite(parsed)) continue
-      if (parsed > 0) return parsed
+      if (parsed > 0) return unwrapPackedMsgType(parsed)
       if (parsed === 0 && zeroCandidate === undefined) zeroCandidate = parsed
     }
     return zeroCandidate ?? fallback

@@ -9,6 +9,7 @@ import {
   getRowField,
   looksLikeWxid,
   stripSenderPrefix,
+  unwrapPackedMsgType,
 } from './rowDecoders'
 
 export function getMessageTypeLabel(localType: number): string {
@@ -100,6 +101,7 @@ export function parseType49(content: string, rawContent: string = content): stri
 }
 
 export function parseMessageContent(content: string, localType: number): string {
+  localType = unwrapPackedMsgType(localType)
   if (!content) {
     return getMessageTypeLabel(localType)
   }
@@ -158,9 +160,13 @@ export function parseMessageContent(content: string, localType: number): string 
           }
           return '[群公告]'
         }
-        // 如果有 XML type，尝试按 type 49 的逻辑解析
+        // 带 <appmsg> 的未知 packed type（如 ClawBot 的 (1<<32)|49）按 type 49 解析
+        if (content.includes('<appmsg') || rawContent.includes('<appmsg')) {
+          return parseType49(content, rawContent)
+        }
         if (xmlType === '2000' || xmlType === '5' || xmlType === '6' || xmlType === '19' ||
-            xmlType === '33' || xmlType === '36' || xmlType === '49' || xmlType === '57') {
+            xmlType === '33' || xmlType === '36' || xmlType === '49' || xmlType === '57' ||
+            xmlType === '1') {
           return parseType49(content, rawContent)
         }
         // type=57 的引用消息
@@ -168,6 +174,9 @@ export function parseMessageContent(content: string, localType: number): string 
           const title = decodeHtmlEntities(extractXmlValue(rawContent, 'title'))
           return title || '[引用消息]'
         }
+      }
+      if (content.includes('<appmsg') || rawContent.includes('<appmsg')) {
+        return parseType49(content, rawContent)
       }
       // 其他情况
       if (content.length > 200) {

@@ -10,6 +10,14 @@ export function coerceRowNumber(value: any, fallback = 0): number {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+/** WeChat 4 packs appmsg as (innerType << 32) | wxType, e.g. 0x100000031 = type 49 / inner 1. */
+const PACKED_TYPE_BASE = 0x100000000
+
+export function unwrapPackedMsgType(raw: number): number {
+  if (!Number.isFinite(raw) || raw < PACKED_TYPE_BASE) return raw
+  return raw % PACKED_TYPE_BASE
+}
+
 export function coerceRowString(value: any): string | undefined {
   if (value === null || value === undefined) return undefined
   if (Buffer.isBuffer(value)) return value.toString('utf-8')

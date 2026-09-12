@@ -7,6 +7,7 @@ import {
   decodeMessageContent,
   extractXmlValue,
   getRowField,
+  unwrapPackedMsgType,
 } from './rowDecoders'
 import {
   parseChatHistory,
@@ -80,7 +81,7 @@ export function resolveMessageLocalType(row: Record<string, any>, fallback = 1):
     if (value === null || value === undefined || value === '') continue
     const parsed = coerceRowNumber(value, Number.NaN)
     if (!Number.isFinite(parsed)) continue
-    if (parsed > 0) return parsed
+    if (parsed > 0) return unwrapPackedMsgType(parsed)
     if (parsed === 0 && zeroCandidate === undefined) {
       zeroCandidate = parsed
     }
