@@ -222,6 +222,7 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
 
     try {
       const scanLogPath = getWxKeyScanLogPath()
+      appendWxKeyScanLog(`path ${dbPathService.describePathDecision(dbPath)}`)
       const preferredDbPath = dbPathService.preferLiveWeixinPath(dbPath)
       if (preferredDbPath && preferredDbPath !== dbPath) {
         appendWxKeyScanLog(`dbPath rewrite ${dbPath} -> ${preferredDbPath}`)
@@ -373,6 +374,13 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
         return hit
       }
       appendWxKeyScanLog(`dbPath=${dbPath} wxids=${wxids.join(',')}`)
+      if (wxKeyService.isWeChatRunning() && !dbPathService.hasDbStorageAccount(dbPath)) {
+        appendWxKeyScanLog(`reject path without db_storage dbPath=${dbPath}`)
+        return {
+          success: false,
+          error: '当前选中的是旧版微信目录「WeChat Files」，里面没有 4.x 的 contact.db。请点上一步，手动选择「xwechat_files」。常见位置：文档\\xwechat_files（C 盘或 D 盘用户目录下）。不要选 WeChat Files。'
+        }
+      }
 
       // 轮询内存扫描（自适应：默认不提权直接扫；若检测到一字节都读不到，
       // 判定为权限不足，返回 needAdmin 让前端提示用管理员重开）。命中后数据库验证。

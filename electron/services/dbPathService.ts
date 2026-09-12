@@ -32,13 +32,39 @@ export class DbPathService {
     }
   }
 
+  isLegacyWeChatFiles(rootPath: string): boolean {
+    return basename(String(rootPath || '')).toLowerCase() === 'wechat files'
+  }
+
+  describePathDecision(current?: string): string {
+    const cur = String(current || '').trim()
+    const weixin = this.isWeixinRunning()
+    const result = this.preferLiveWeixinPath(cur)
+    const candidates = this.collectCandidates().slice(0, 8).map((item) => {
+      return `${item.path} score=${item.score} dbStorage=${this.hasDbStorageAccount(item.path)} accounts=${item.accountCount}`
+    })
+    return [
+      `weixin=${weixin}`,
+      `current=${cur || '-'}`,
+      `currentDbStorage=${Boolean(cur && this.hasDbStorageAccount(cur))}`,
+      `result=${result || '-'}`,
+      `resultDbStorage=${Boolean(result && this.hasDbStorageAccount(result))}`,
+      `homes=${this.windowsHomeDirs().join(',') || '-'}`,
+      `candidates=${candidates.join(' || ') || 'NONE'}`,
+    ].join(' ')
+  }
+
   /** 微信 4.x（Weixin.exe）在跑时，不要用 3.x 的 WeChat Files。 */
   preferLiveWeixinPath(current?: string): string {
-    const detected = this.collectCandidates()[0]?.path || ''
+    const candidates = this.collectCandidates()
+    const detected = candidates[0]?.path || ''
     const cur = String(current || '').trim()
+    const fourX = candidates.find((item) => this.hasDbStorageAccount(item.path) && !this.isLegacyWeChatFiles(item.path))
     if (this.isWeixinRunning()) {
-      if (cur && this.hasDbStorageAccount(cur)) return cur
-      if (detected && this.hasDbStorageAccount(detected)) return detected
+      if (cur && this.hasDbStorageAccount(cur) && !this.isLegacyWeChatFiles(cur)) return cur
+      if (fourX) return fourX.path
+      const anyDb = candidates.find((item) => this.hasDbStorageAccount(item.path))
+      if (anyDb) return anyDb.path
     }
     return cur || detected
   }
@@ -145,11 +171,42 @@ export class DbPathService {
     }
 
     const paths: string[] = []
+    const knownDocs = this.windowsKnownDocumentDir()
+    if (knownDocs) {
+      paths.push(join(knownDocs, 'xwechat_files'))
+      paths.push(join(knownDocs, 'WeChat Files'))
+    }
     for (const homeDir of this.windowsHomeDirs()) {
-      paths.push(join(homeDir, 'Documents', 'xwechat_files'))
-      paths.push(join(homeDir, 'Documents', 'WeChat Files'))
+      for (const docs of this.windowsDocumentDirs(homeDir)) {
+        paths.push(join(docs, 'xwechat_files'))
+        paths.push(join(docs, 'WeChat Files'))
+      }
     }
     return paths
+  }
+
+  private windowsDocumentDirs(homeDir: string): string[] {
+    return [
+      join(homeDir, 'Documents'),
+      join(homeDir, '文档'),
+      join(homeDir, 'OneDrive', 'Documents'),
+      join(homeDir, 'OneDrive', '文档'),
+    ]
+  }
+
+  private windowsKnownDocumentDir(): string {
+    if (process.platform !== 'win32') return ''
+    try {
+      const { execSync } = require('child_process') as typeof import('child_process')
+      const raw = execSync(
+        'reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Folders" /v Personal',
+        { encoding: 'utf8', windowsHide: true }
+      )
+      const match = raw.match(/Personal\s+REG_\w+\s+(.+)/i)
+      return String(match?.[1] || '').trim()
+    } catch {
+      return ''
+    }
   }
 
   private collectCandidates(): PathCandidate[] {
