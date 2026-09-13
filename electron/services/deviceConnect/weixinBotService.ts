@@ -45,6 +45,58 @@ const PERSONA_PENDING_FLUSH_MAX_MS = 10_000
 const PERSONA_PENDING_AFTER_BUSY_MS = 1_200
 const WECHAT_TEXT_BUBBLE_SEPARATOR = '---wx-next---'
 const WECHAT_REPLY_FALLBACK_TEXT = '不好意思，我有点嘎了，等一会儿哈！'
+const WECHAT_AGENT_DEADLINE_MS = 300_000
+const WECHAT_STILL_WORKING_TEXT = '还在查，可能要一两分钟。有结果或失败我会说原因。'
+const WECHAT_EMPTY_REPLY_TEXT = '这次模型没有返回内容。可能是没查到记录，或接口空响应。'
+
+function wechatToolLabel(name?: string): string {
+  const key = String(name || '').trim()
+  if (!key) return ''
+  const map: Record<string, string> = {
+    list_contacts: '联系人',
+    search_messages: '聊天记录',
+    semantic_search: '聊天记录',
+    get_context: '聊天上下文',
+    get_timeline: '聊天记录',
+    inspect_chat_file: '聊天文件',
+    inspect_media_image: '图片',
+    chat_stats: '统计',
+    transcribe_voice_message: '语音转写',
+    search_media: '图片检索',
+    search_moment_media: '朋友圈',
+    desktop_screenshot: '桌面截图',
+  }
+  return map[key] || key
+}
+
+function wechatProgressText(tool?: string): string {
+  const label = wechatToolLabel(tool)
+  if (label) return \u8fd8在查「\u300d，可能要一两分钟。有结果或失败我会说原因。  return WECHAT_STILL_WORKING_TEXT
+}
+
+function wechatBotFailText(error: unknown, lastTool?: string): string {
+  const raw = error instanceof Error ? \ \ : String(error || '')
+  const msg = raw.replace(/\s+/g, ' ').trim()
+  const stuck = wechatToolLabel(lastTool)
+  const stuckText = stuck ? \u5361在「\u300d。\ : ''
+  if (/timeout|aborted|AbortError|超时/i.test(msg)) {
+    return \u8fd9次没跑完，我先停了。原因：\u67e5聊天记录或模型接口超时。请把问题缩短再问。  }
+  if (/401|unauthorized|invalid.*key|api.?key/i.test(msg)) {
+    return '没回成。原因：AI 接口密钥无效或没配好。'
+  }
+  if (/429|rate.?limit/i.test(msg)) {
+    return '没回成。原因：接口限流，稍后再试。'
+  }
+  if (/ECONN|ENOTFOUND|fetch failed|network|proxy|ECONNRESET/i.test(msg)) {
+    return '没回成。原因：连不上 AI 接口（网络或代理）。'
+  }
+  if (/未配置|no provider|providerConfig|未设置/i.test(msg)) {
+    return '没回成。原因：还没配置 AI 服务商。'
+  }
+  const short = msg.slice(0, 80)
+  if (short) return stuckText ? \u6ca1回成。原因：\\ : \u6ca1回成。原因：\
+  return stuckText ? \u6ca1回成。原因：\ : WECHAT_REPLY_FALLBACK_TEXT
+}
 
 function isPreambleOnlyWechatReply(text: string): boolean {
   const compact = String(text || '').replace(/\s+/g, '')
@@ -1206,6 +1258,7 @@ class WeixinBotService {
     })
     console.log(`[WechatBot] 收到消息 from=${from} text="${incoming.logText}" attachments=${incoming.attachmentCount} files=${incoming.attachedFileCount} 开始调用 Agent...`)
     let typing: TypingIndicator | null = null
+    let lastTool = ""
     try {
       if (await this.handleWechatCommand(from, commandText, contextToken)) return
       void import('../agent/agentCapabilityService')
@@ -1233,11 +1286,17 @@ class WeixinBotService {
       agentConversationStore.append(conv.id, [userMsg])
 
       const history = agentConversationStore.load(conv.id)?.messages ?? [userMsg]
-      typing = await this.startTypingIndicator(from, contextToken)
+      typing = await this.startTypingIndicator(from, contextToken, () => lastTool)
       const forceVoice = wantsVoiceReply(commandText)
       const allowDesktopScreenshotReply = wantsDesktopScreenshotReply(commandText)
       console.log(`[WechatBot] 开始调用普通 Agent history=${history.length} forceVoice=${forceVoice}`)
-      let rawReply = await this.runAgent(history, { allowDesktopScreenshotReply })
+      this.logger?.warn('WechatBot', '开始调用普通 Agent', { from, history: history.length, forceVoice })
+      let rawReply = await Promise.race([
+        this.runAgent(history, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name } }),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('处理超时（5分钟）。查聊天记录或模型接口太慢')), WECHAT_AGENT_DEADLINE_MS)
+        }),
+      ])
       if (isPreambleOnlyWechatReply(rawReply.text) && rawReply.media.length === 0) {
         console.warn('[WechatBot] 检测到只有过渡句，自动续写完整正文')
         const followHistory = [
@@ -1245,7 +1304,7 @@ class WeixinBotService {
           { id: `wx-a-preamble-${Date.now()}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: rawReply.text }] },
           { id: `wx-u-continue-${Date.now()}`, role: 'user' as const, parts: [{ type: 'text' as const, text: '不要过渡句。立刻从上次停下的地方写出完整正文，按日期分段。' }] },
         ]
-        const continued = await this.runAgent(followHistory, { allowDesktopScreenshotReply })
+        const continued = await this.runAgent(followHistory, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name } })
         if (continued.text.trim() && continued.text.replace(/\s+/g, '').length > rawReply.text.replace(/\s+/g, '').length) {
           rawReply = continued
         }
@@ -1274,9 +1333,11 @@ class WeixinBotService {
         this.logger?.warn('WechatBot', '已回复微信消息', { from, replyLength: reply.text.length, mediaCount: reply.media.length })
         console.log('[WechatBot] 已调用 sendmessage 发送回复')
       } else {
-        console.warn('[WechatBot] Agent 回复为空，发送兜底回复')
+        console.warn('[WechatBot] Agent 回复为空，发送空响应说明')
+        await typing?.stop()
+        typing = null
         const session = this.session
-        if (session) await sendText(session, from, WECHAT_REPLY_FALLBACK_TEXT, contextToken)
+        if (session) await sendText(session, from, WECHAT_EMPTY_REPLY_TEXT, contextToken)
       }
     } catch (e) {
       const errorData = errorToLogData(e)
@@ -1286,7 +1347,8 @@ class WeixinBotService {
         attachmentCount: incoming.attachmentCount,
         attachedFileCount: incoming.attachedFileCount,
         mode: this.getConversationMode(from)?.mode || 'agent',
-        fallbackText: WECHAT_REPLY_FALLBACK_TEXT,
+        lastTool,
+        fallbackText: wechatBotFailText(e, lastTool),
         ...errorData,
       })
       console.error('[WechatBot] 生成或发送回复失败，准备发送兜底回复：', JSON.stringify({ from, textLength: text.length, attachmentCount: incoming.attachmentCount, attachedFileCount: incoming.attachedFileCount, ...errorData }))
@@ -1295,11 +1357,11 @@ class WeixinBotService {
         await typing?.stop()
         typing = null
         const session = this.session
-        if (session) await sendText(session, from, WECHAT_REPLY_FALLBACK_TEXT, contextToken)
+        if (session) await sendText(session, from, wechatBotFailText(e, lastTool), contextToken)
       } catch (e2) {
         this.logger?.error('WechatBot', '兜底回复发送失败', {
           from,
-          fallbackText: WECHAT_REPLY_FALLBACK_TEXT,
+          fallbackText: wechatBotFailText(e, lastTool),
           ...errorToLogData(e2),
         })
         console.error('[WechatBot] 兜底回复也发送失败：', e2)
@@ -1745,7 +1807,7 @@ class WeixinBotService {
       const session = this.session
       if (session) {
         try {
-          await sendText(session, queue.from, WECHAT_REPLY_FALLBACK_TEXT, contextToken)
+          await sendText(session, queue.from, wechatBotFailText(e), contextToken)
         } catch (fallbackError) {
           this.logger?.error('WechatBot', '微信数字分身兜底回复发送失败', {
             from: queue.from,
@@ -1803,7 +1865,10 @@ class WeixinBotService {
   }
 
   private async sendTextBubbles(toUserId: string, bubbles: string[], contextToken?: string): Promise<void> {
-    const normalized = normalizeWechatTextBubbles(bubbles)
+    let normalized = normalizeWechatTextBubbles(bubbles)
+    if (normalized.length > 3) {
+      normalized = [...normalized.slice(0, 2), normalized.slice(2).join('\n\n')]
+    }
     for (let i = 0; i < normalized.length; i += 1) {
       const pauseMs = personaBubbleSendPauseMs(i)
       if (pauseMs > 0) await this.sleep(pauseMs)
@@ -1931,7 +1996,7 @@ class WeixinBotService {
     }
   }
 
-  private async startTypingIndicator(toUserId: string, contextToken?: string): Promise<{ stop: () => Promise<void> } | null> {
+  private async startTypingIndicator(toUserId: string, contextToken?: string, getTool?: () => string): Promise<{ stop: () => Promise<void> } | null> {
     if (!this.session) return null
     const session = this.session
     let ticket = ''
@@ -1959,11 +2024,7 @@ class WeixinBotService {
     }, TYPING_KEEPALIVE_MS)
     const ackTimer = setTimeout(() => {
       if (stopped || !this.session) return
-      void sendText(this.session, toUserId, '收到，正在处理，请稍等。', contextToken).catch(() => {})
-    }, 12_000)
-    const beatTimer = setInterval(() => {
-      if (stopped || !this.session) return
-      void sendText(this.session, toUserId, '还在处理，没挂。', contextToken).catch(() => {})
+      void sendText(this.session, toUserId, wechatProgressText(getTool?.()), contextToken).catch(() => {})
     }, 25_000)
 
     return {
@@ -1972,7 +2033,6 @@ class WeixinBotService {
         stopped = true
         clearInterval(timer)
         clearTimeout(ackTimer)
-        clearInterval(beatTimer)
         try {
           await sendTyping(session, toUserId, ticket, 2)
           this.logger?.warn('WechatBot', '已取消微信正在输入状态', { to: toUserId })
@@ -1986,7 +2046,7 @@ class WeixinBotService {
   /** 把对话（历史 + 本轮）交给项目内 Agent，收集流式文本作为当前微信机器人会话的回复。 */
   private async runAgent(
     uiMessages: UIMessage[],
-    options: { allowDesktopScreenshotReply?: boolean } = {},
+    options: { allowDesktopScreenshotReply?: boolean; onTool?: (name: string) => void } = {},
   ): Promise<WechatBotReply> {
     const { convertToModelMessages } = await import('ai')
     const { agentProcessService } = await import('../agent/agentProcessService')
@@ -2028,6 +2088,11 @@ class WeixinBotService {
       },
       (chunk) => {
         rememberToolNameFromChunk(chunk, toolNames)
+        const toolChunk = chunk as { toolName?: unknown; toolCallId?: unknown }
+        const toolName = typeof toolChunk.toolName === 'string'
+          ? toolChunk.toolName
+          : (typeof toolChunk.toolCallId === 'string' ? toolNames.get(toolChunk.toolCallId) : undefined)
+        if (toolName) options.onTool?.(toolName)
         const c = chunk as { type?: string; id?: string; delta?: string; text?: string }
         if (c?.type === 'text-start') {
           const id = c.id || `text-${textBlocks.length}`
