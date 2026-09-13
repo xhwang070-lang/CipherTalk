@@ -53,49 +53,51 @@ function wechatToolLabel(name?: string): string {
   const key = String(name || '').trim()
   if (!key) return ''
   const map: Record<string, string> = {
-    list_contacts: '联系人',
-    search_messages: '聊天记录',
-    semantic_search: '聊天记录',
-    get_context: '聊天上下文',
-    get_timeline: '聊天记录',
-    inspect_chat_file: '聊天文件',
-    inspect_media_image: '图片',
-    chat_stats: '统计',
-    transcribe_voice_message: '语音转写',
-    search_media: '图片检索',
-    search_moment_media: '朋友圈',
-    desktop_screenshot: '桌面截图',
+    list_contacts: '\u8054\u7cfb\u4eba',
+    search_messages: '\u804a\u5929\u8bb0\u5f55',
+    semantic_search: '\u804a\u5929\u8bb0\u5f55',
+    get_context: '\u804a\u5929\u4e0a\u4e0b\u6587',
+    get_timeline: '\u804a\u5929\u8bb0\u5f55',
+    inspect_chat_file: '\u804a\u5929\u6587\u4ef6',
+    inspect_media_image: '\u56fe\u7247',
+    chat_stats: '\u7edf\u8ba1',
+    transcribe_voice_message: '\u8bed\u97f3\u8f6c\u5199',
+    search_media: '\u56fe\u7247\u68c0\u7d22',
+    search_moment_media: '\u670b\u53cb\u5708',
+    desktop_screenshot: '\u684c\u9762\u622a\u56fe',
   }
   return map[key] || key
 }
 
 function wechatProgressText(tool?: string): string {
   const label = wechatToolLabel(tool)
-  if (label) return \u8fd8在查「\u300d，可能要一两分钟。有结果或失败我会说原因。  return WECHAT_STILL_WORKING_TEXT
+  if (label) return '\u8fd8\u5728\u67e5\u300c' + label + '\u300d\uff0c\u53ef\u80fd\u8981\u4e00\u4e24\u5206\u949f\u3002\u6709\u7ed3\u679c\u6216\u5931\u8d25\u6211\u4f1a\u8bf4\u539f\u56e0\u3002'
+  return WECHAT_STILL_WORKING_TEXT
 }
 
 function wechatBotFailText(error: unknown, lastTool?: string): string {
-  const raw = error instanceof Error ? \ \ : String(error || '')
+  const raw = error instanceof Error ? (error.name + ' ' + error.message) : String(error || '')
   const msg = raw.replace(/\s+/g, ' ').trim()
   const stuck = wechatToolLabel(lastTool)
-  const stuckText = stuck ? \u5361在「\u300d。\ : ''
-  if (/timeout|aborted|AbortError|超时/i.test(msg)) {
-    return \u8fd9次没跑完，我先停了。原因：\u67e5聊天记录或模型接口超时。请把问题缩短再问。  }
+  const stuckText = stuck ? ('\u5361\u5728\u300c' + stuck + '\u300d\u3002') : ''
+  if (/timeout|aborted|AbortError|\u8d85\u65f6/i.test(msg)) {
+    return '\u8fd9\u6b21\u6ca1\u8dd1\u5b8c\uff0c\u6211\u5148\u505c\u4e86\u3002\u539f\u56e0\uff1a' + stuckText + '\u67e5\u804a\u5929\u8bb0\u5f55\u6216\u6a21\u578b\u63a5\u53e3\u8d85\u65f6\u3002\u8bf7\u628a\u95ee\u9898\u7f29\u77ed\u518d\u95ee\u3002'
+  }
   if (/401|unauthorized|invalid.*key|api.?key/i.test(msg)) {
-    return '没回成。原因：AI 接口密钥无效或没配好。'
+    return '\u6ca1\u56de\u6210\u3002\u539f\u56e0\uff1aAI \u63a5\u53e3\u5bc6\u94a5\u65e0\u6548\u6216\u6ca1\u914d\u597d\u3002'
   }
   if (/429|rate.?limit/i.test(msg)) {
-    return '没回成。原因：接口限流，稍后再试。'
+    return '\u6ca1\u56de\u6210\u3002\u539f\u56e0\uff1a\u63a5\u53e3\u9650\u6d41\uff0c\u7a0d\u540e\u518d\u8bd5\u3002'
   }
   if (/ECONN|ENOTFOUND|fetch failed|network|proxy|ECONNRESET/i.test(msg)) {
-    return '没回成。原因：连不上 AI 接口（网络或代理）。'
+    return '\u6ca1\u56de\u6210\u3002\u539f\u56e0\uff1a\u8fde\u4e0d\u4e0a AI \u63a5\u53e3\uff08\u7f51\u7edc\u6216\u4ee3\u7406\uff09\u3002'
   }
-  if (/未配置|no provider|providerConfig|未设置/i.test(msg)) {
-    return '没回成。原因：还没配置 AI 服务商。'
+  if (/\u672a\u914d\u7f6e|no provider|providerConfig|\u672a\u8bbe\u7f6e/i.test(msg)) {
+    return '\u6ca1\u56de\u6210\u3002\u539f\u56e0\uff1a\u8fd8\u6ca1\u914d\u7f6e AI \u670d\u52a1\u5546\u3002'
   }
   const short = msg.slice(0, 80)
-  if (short) return stuckText ? \u6ca1回成。原因：\\ : \u6ca1回成。原因：\
-  return stuckText ? \u6ca1回成。原因：\ : WECHAT_REPLY_FALLBACK_TEXT
+  if (short) return '\u6ca1\u56de\u6210\u3002\u539f\u56e0\uff1a' + stuckText + short
+  return stuckText ? ('\u6ca1\u56de\u6210\u3002\u539f\u56e0\uff1a' + stuckText) : WECHAT_REPLY_FALLBACK_TEXT
 }
 
 function isPreambleOnlyWechatReply(text: string): boolean {
