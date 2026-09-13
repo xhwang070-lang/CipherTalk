@@ -115,9 +115,9 @@ export async function searchChat(opts: {
 }): Promise<{ hits: ChatSearchHit[]; sessionsScanned: number; coverage: string }> {
   const RECENT_SESSION_CAP = 20
   const GLOBAL_INDEX_MESSAGE_CAP = 800
-  const SESSION_INDEX_MESSAGE_CAP = 5000
+  const SESSION_INDEX_MESSAGE_CAP = 1200
   // 单会话命中不足时逐步向更早历史加深（每轮目标×4：5000→2万→8万→32万），扫完或够用即停
-  const SESSION_DEEPEN_MAX_ROUNDS = 3
+  const SESSION_DEEPEN_MAX_ROUNDS = 0
   const { chatSearchIndexService } = await import('../../search/chatSearchIndexService')
 
   const perSession = Math.max(opts.limit, 10)

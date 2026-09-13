@@ -10,6 +10,7 @@ export const getTimeline = tool({
   description:
     '按时间顺序读取某个会话在指定时间窗内的连续消息原文，适合"某天/某段时间聊了什么""把这段对话讲清楚"。' +
     '必须指定 sessionId（先用 list_contacts 拿 username）。不给时间范围则取最近的一段。' +
+    '时间跨度大时只返回该窗口内最新的若干条，不要一次扫整群历史。总结优先缩到某一天。' +
     '只读单个会话的连续时间线；跨会话找内容用 search_messages / semantic_search。',
   inputSchema: z.object({
     sessionId: z.string().describe('会话 username（来自 list_contacts）'),

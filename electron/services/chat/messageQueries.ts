@@ -290,7 +290,9 @@ export async function getNewMessages(state: ChatServiceState,
 }
 
 /**
- * 摘要专用：按精确时间范围读取消息，并优先保留范围内最新消息。
+ * Summary/timeline reads: page newest-first via sort_seq (indexed),
+ * then keep messages inside the time window. Do not filter create_time
+ * in SQL — that full-scans large message tables and hangs WeChat AI.
  */
 export async function getMessagesByTimeRangeForSummary(state: ChatServiceState, 
   sessionId: string,
@@ -313,122 +315,69 @@ export async function getMessagesByTimeRangeForSummary(state: ChatServiceState,
       return { success: true, messages: [], hasMore: false }
     }
 
-    const myWxid = state.configService.get('myWxid')
-    const cleanedMyWxid = myWxid ? cleanAccountDirName(myWxid) : ''
-    const dbTablePairs = await findSessionTables(state, sessionId)
+    const pageSize = Math.min(200, Math.max(normalizedLimit, 80))
+    const maxScan = Math.min(1200, Math.max(normalizedLimit * 8, 240))
+    const inRange: Message[] = []
+    let scanned = 0
+    let oldest: Message | null = null
+    let hasMoreOlder = true
+    let first = true
 
-    if (dbTablePairs.length === 0) {
-      return { success: false, error: '未找到该会话的消息表' }
-    }
+    while (inRange.length < normalizedLimit && scanned < maxScan && hasMoreOlder) {
+      const result = first
+        ? await getMessages(state, sessionId, 0, pageSize)
+        : await getMessagesBefore(
+          state,
+          sessionId,
+          oldest!.sortSeq,
+          pageSize,
+          oldest!.createTime,
+          oldest!.localId,
+        )
+      first = false
+      if (!result.success) {
+        if (inRange.length > 0) break
+        return { success: false, error: result.error || '读取时间线失败' }
+      }
+      const page = result.messages || []
+      if (page.length === 0) {
+        hasMoreOlder = false
+        break
+      }
+      hasMoreOlder = Boolean(result.hasMore)
+      scanned += page.length
+      oldest = page[0]
 
-    let allMessages: Message[] = []
-    const fetchLimitPerDb = normalizedLimit + 1
-
-    for (const { tableName, dbPath } of dbTablePairs) {
-      try {
-        const hasName2IdTable = await checkTableExists(state, dbPath, 'Name2Id')
-        const myRowId = await resolveMyRowId(state, dbPath, myWxid, cleanedMyWxid, hasName2IdTable)
-
-        const whereParts: string[] = []
-        const params: Array<number> = []
-
-        if (startTime !== undefined) {
-          whereParts.push(hasName2IdTable ? 'm.create_time >= ?' : 'create_time >= ?')
-          params.push(startTime)
+      let hitOlderThanStart = false
+      for (let i = page.length - 1; i >= 0; i -= 1) {
+        const msg = page[i]
+        const t = Number(msg.createTime || 0)
+        if (t > endTime) continue
+        if (startTime !== undefined && t < startTime) {
+          hitOlderThanStart = true
+          break
         }
-
-        whereParts.push(hasName2IdTable ? 'm.create_time <= ?' : 'create_time <= ?')
-        params.push(endTime)
-
-        const whereClause = `WHERE ${whereParts.join(' AND ')}`
-
-        let sql: string
-        let rows: any[]
-
-        if (hasName2IdTable && myRowId !== null) {
-          sql = `SELECT m.*,
-                 CASE WHEN m.real_sender_id = ? THEN 1 ELSE 0 END AS computed_is_send,
-                 n.user_name AS sender_username
-                 FROM ${tableName} m
-                 LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid
-                 ${whereClause}
-                 ORDER BY m.sort_seq DESC, m.local_id DESC
-                 LIMIT ?`
-          rows = await dbAdapter.all<any>('message', dbPath, sql, [myRowId, ...params, fetchLimitPerDb])
-        } else if (hasName2IdTable) {
-          sql = `SELECT m.*, n.user_name AS sender_username
-                 FROM ${tableName} m
-                 LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid
-                 ${whereClause}
-                 ORDER BY m.sort_seq DESC, m.local_id DESC
-                 LIMIT ?`
-          rows = await dbAdapter.all<any>('message', dbPath, sql, [...params, fetchLimitPerDb])
-        } else {
-          sql = `SELECT *
-                 FROM ${tableName}
-                 ${whereClause}
-                 ORDER BY sort_seq DESC, local_id DESC
-                 LIMIT ?`
-          rows = await dbAdapter.all<any>('message', dbPath, sql, [...params, fetchLimitPerDb])
-        }
-
-        for (const row of rows) {
-          const content = decodeMessageContent(row.message_content, row.compress_content)
-          const localType = resolveMessageLocalType(row, 1)
-          const isSend = resolveRowIsSend(state, row, row.sender_username || null)
-          const parsedContent = parseMessageContent(content, localType)
-          const xmlType = content ? extractXmlValue(content, 'type') : undefined
-          const chatRecordList = content && (xmlType === '19' || localType === 49)
-            ? parseChatHistory(content)
-            : undefined
-
-          allMessages.push({
-            localId: row.local_id || 0,
-            serverId: row.server_id || 0,
-            localType,
-            createTime: row.create_time || 0,
-            sortSeq: row.sort_seq || 0,
-            isSend,
-            senderUsername: row.sender_username || null,
-            parsedContent: parsedContent || '',
-            rawContent: content,
-            chatRecordList
-          })
-        }
-      } catch (e: any) {
-        if (e?.code === 'SQLITE_CORRUPT' || e?.message?.includes('malformed')) {
-          console.error(`[ChatService] 摘要查询遇到损坏数据库: ${dbPath}`, e)
-          refreshMessageDbCache(state)
-        } else {
-          console.error('ChatService: 摘要时间范围查询失败:', e)
-        }
+        inRange.push(msg)
+        if (inRange.length >= normalizedLimit) break
+      }
+      if (hitOlderThanStart) {
+        hasMoreOlder = false
+        break
       }
     }
 
-    allMessages.sort(compareMessageCursorDesc)
-
-    const seen = new Set<string>()
-    const uniqueMessages = allMessages.filter((msg) => {
-      const key = `${msg.serverId}-${msg.localId}-${msg.createTime}-${msg.sortSeq}`
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-
-    const hasMore = uniqueMessages.length > normalizedLimit
-    const messages = uniqueMessages.slice(0, normalizedLimit)
-    messages.reverse()
-
-    return { success: true, messages, hasMore }
+    inRange.sort((a, b) => a.sortSeq - b.sortSeq || a.createTime - b.createTime || a.localId - b.localId)
+    return {
+      success: true,
+      messages: inRange.slice(0, normalizedLimit),
+      hasMore: hasMoreOlder || inRange.length >= normalizedLimit,
+    }
   } catch (e) {
     console.error('ChatService: 摘要时间范围查询失败:', e)
     return { success: false, error: String(e) }
   }
 }
 
-/**
- * 基于 sortSeq 游标，获取更早的消息（严格小于 cursorSortSeq）
- */
 export async function getMessagesBefore(state: ChatServiceState, 
   sessionId: string,
   cursorSortSeq: number,

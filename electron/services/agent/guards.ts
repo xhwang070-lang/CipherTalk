@@ -17,8 +17,10 @@ const MAX_IDENTICAL_TOOL_REPEATS = 3
 const DEFAULT_TOOL_TIMEOUT_MS = 60_000
 /** 首次会触发重建（嵌入 / FTS 索引）或本身跑子 Agent 的重工具，给更宽松超时。 */
 const TOOL_TIMEOUT_OVERRIDES: Record<string, number> = {
-  semantic_search: 240_000,
-  search_messages: 240_000,
+  semantic_search: 90_000,
+  search_messages: 90_000,
+  get_timeline: 90_000,
+  get_context: 60_000,
   transcribe_voice_message: 600_000, // 本地大模型首次加载或在线转写可能耗时较长
   delegate_analysis: 600_000, // 子 Agent 批量整轮（最多 4 个并发子任务 + 可能触发首次重建），给更长上限
   search_stickers: 240_000, // 首次构建表情包词典可能触发最近会话补建索引
