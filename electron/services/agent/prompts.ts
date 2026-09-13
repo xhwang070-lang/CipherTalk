@@ -44,7 +44,7 @@ const TOOL_PROMPT = `
 - search_messages：关键词检索聊天原文，找"谁提过 X / 含某个词的消息 / 某件具体的事"。命中带 anchor 锚点。尽量带 sessionId 限定范围（不带只扫最近会话且偏慢）。
 - semantic_search：找"某主题/相关内容"。带 sessionId 且已配置嵌入模型时走语义向量 + 关键词混合检索；否则回退关键词检索。命中带 anchor，主题类问题优先用它。
 - get_context：用命中里的 anchor 展开该消息前后的原文，用来核对事实、拿到可引用的出处。
-- get_timeline：读某个会话在某段时间内的连续消息，适合"某天/某段时间聊了什么""把这段讲清楚"。
+- get_timeline：读某个会话在某段时间内的连续消息，适合"某天/某段时间聊了什么""把这段讲清楚"。查昨天/某号/某天必须传 onDate（yesterday 或 2026-09-13），禁止自己换算毫秒时间戳，禁止把 20260913 当 epoch。
 - transcribe_voice_message：转写 get_context / get_timeline 返回的语音消息。只转写会影响当前结论的相关语音，参数使用消息里的 sessionId、localId、createTime；默认用缓存，只有用户明确要求重新识别时才传 force=true。
 - chat_stats：纯 SQL 统计，回答"数量/排名/频率"——总数与各类型(overview)、互动最多的人(ranking)、消息量按小时/星期/月分布与高峰(time_distribution)。数数/排名一律用它，别拿检索去数。
 - list_groups：列出群聊（含成员数，按活跃排序）。
@@ -87,7 +87,7 @@ const ROUTING_PROMPT = `
 - 用户自然语言里说"@我 / @了我 / 有没有人@我"时，@ 是聊天内容里的提醒语义，不是联系人选择；不要把"我/了我"解析成人名，按关键词/语义检索聊天内容。
 - "某主题 / 相关内容" → semantic_search
 - 要核对事实、拿可引用的原文出处 → 先 search_messages / semantic_search 拿 anchor，再 get_context
-- "某人某天 / 某段时间聊了啥 / 把总结写完 / 从某天下午继续" → list_contacts 拿 username，再 get_timeline；本轮必须写出完整正文
+- "某人某天 / 某段时间聊了啥 / 把总结写完 / 从某天下午继续" → list_contacts 拿 username（同名多个号选 lastTime 最近的），再 get_timeline({sessionId, onDate:"yesterday" 或 "2026-09-13"})；本轮必须写出完整正文
 - get_context / get_timeline 返回 [语音消息]，且该语音会影响结论 → 用返回的 sessionId、localId、createTime 调 transcribe_voice_message
 - 人名/群名解析 → list_contacts；列群 / 群成员 / 群内发言排行 → list_groups / group_members / group_member_ranking
 - 朋友圈内容查询 → search_moments；朋友圈数量/趋势/占比/点赞评论排行 → moments_stats
@@ -107,7 +107,7 @@ const ROUTING_PROMPT = `
 
 # 典型链路
 解析人名(list_contacts) → 缩小范围检索(search_messages / semantic_search) → 命中后用 anchor 扩上下文(get_context) → 带时间+发送者作答。
-"某人某天聊了啥"则：list_contacts 拿 username → get_timeline 读那段时间。
+"某人某天聊了啥"则：list_contacts 拿 lastTime 最近的 username → get_timeline({sessionId, onDate}) 读那天。不要用 search_messages 去搜"13号"这种日期词。
 上下文里有影响结论的 [语音消息]：get_context / get_timeline → transcribe_voice_message → 结合转写文本回答。
 `
 

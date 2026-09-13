@@ -18,9 +18,8 @@ export function toMs(value?: number | null): number | null {
 
 /** 毫秒 → 秒（喂 chatService 时间范围接口）。容错：误传秒级也按秒。 */
 export function msToSeconds(value?: number | null): number | undefined {
-  const n = Number(value)
-  if (!Number.isFinite(n) || n <= 0) return undefined
-  return Math.floor(n > 1e12 ? n / 1000 : n)
+  const ms = coerceToolTimeMs(value)
+  return ms == null ? undefined : Math.floor(ms / 1000)
 }
 
 /** 本地时区可读时间 `YYYY-MM-DD HH:mm`（用于标注出处）。 */
@@ -30,6 +29,97 @@ export function toLocalTime(value?: number | null): string | null {
   const d = new Date(ms)
   const p = (x: number) => String(x).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, '0')
+}
+
+function localDayBounds(year: number, monthIndex: number, day: number): { startTimeMs: number; endTimeMs: number } {
+  const start = new Date(year, monthIndex, day, 0, 0, 0, 0)
+  const end = new Date(year, monthIndex, day, 23, 59, 59, 999)
+  return { startTimeMs: start.getTime(), endTimeMs: end.getTime() }
+}
+
+/** 把模型乱填的时间戳纠成毫秒。兼容秒、毫秒、YYYYMMDD。 */
+export function coerceToolTimeMs(value?: number | null): number | undefined {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return undefined
+  if (Number.isInteger(n) && n >= 19700101 && n <= 20991231) {
+    const s = String(n)
+    if (s.length === 8) {
+      const year = Number(s.slice(0, 4))
+      const month = Number(s.slice(4, 6))
+      const day = Number(s.slice(6, 8))
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return new Date(year, month - 1, day).getTime()
+      }
+    }
+  }
+  if (n > 1e12) return Math.floor(n)
+  if (n > 1e9) return Math.floor(n * 1000)
+  return undefined
+}
+
+/**
+ * 解析 yesterday/today/2026-09-13/9月13日/13号 为本地当天 00:00–23:59:59.999。
+ * 查聊天某天时用这个，避免模型自己换 epoch。
+ */
+export function parseOnDate(input?: string | null, now = new Date()): { startTimeMs: number; endTimeMs: number; label: string } | null {
+  const raw = String(input || '').trim()
+  if (!raw) return null
+  const text = raw.replace(/\s+/g, '').toLowerCase()
+  const today = localDayBounds(now.getFullYear(), now.getMonth(), now.getDate())
+  if (text === 'today' || text === '今天' || text === '今日') {
+    return { ...today, label: 'today' }
+  }
+  if (text === 'yesterday' || text === '昨天' || text === '昨日') {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+    return { ...localDayBounds(d.getFullYear(), d.getMonth(), d.getDate()), label: 'yesterday' }
+  }
+  if (text === '前天') {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2)
+    return { ...localDayBounds(d.getFullYear(), d.getMonth(), d.getDate()), label: 'day-before' }
+  }
+  const iso = text.match(/^(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})日?$/)
+  if (iso) {
+    const year = Number(iso[1])
+    const month = Number(iso[2])
+    const day = Number(iso[3])
+    return { ...localDayBounds(year, month - 1, day), label: `${year}-${pad2(month)}-${pad2(day)}` }
+  }
+  const md = text.match(/^(\d{1,2})月(\d{1,2})[日号]?$/)
+  if (md) {
+    const month = Number(md[1])
+    const day = Number(md[2])
+    let year = now.getFullYear()
+    const candidate = new Date(year, month - 1, day)
+    if (candidate.getTime() > today.endTimeMs) year -= 1
+    return { ...localDayBounds(year, month - 1, day), label: `${year}-${pad2(month)}-${pad2(day)}` }
+  }
+  const dayOnly = text.match(/^(\d{1,2})[日号]$/)
+  if (dayOnly) {
+    const day = Number(dayOnly[1])
+    let year = now.getFullYear()
+    let month = now.getMonth()
+    if (day > now.getDate()) {
+      month -= 1
+      if (month < 0) {
+        month = 11
+        year -= 1
+      }
+    }
+    return { ...localDayBounds(year, month, day), label: `${year}-${pad2(month + 1)}-${pad2(day)}` }
+  }
+  const ymd = Number(text)
+  if (String(text).length === 8) {
+    const coerced = coerceToolTimeMs(ymd)
+    if (coerced) {
+      const d = new Date(coerced)
+      return { ...localDayBounds(d.getFullYear(), d.getMonth(), d.getDate()), label: text }
+    }
+  }
+  return null
 }
 
 /** 批量把 username 解析成显示名（备注/昵称）。失败不致命，返回空映射。 */
@@ -113,6 +203,8 @@ export async function searchChat(opts: {
   endTimeMs?: number
   limit: number
 }): Promise<{ hits: ChatSearchHit[]; sessionsScanned: number; coverage: string }> {
+  const startTimeMs = coerceToolTimeMs(opts.startTimeMs)
+  const endTimeMs = coerceToolTimeMs(opts.endTimeMs)
   const RECENT_SESSION_CAP = 20
   const GLOBAL_INDEX_MESSAGE_CAP = 800
   const SESSION_INDEX_MESSAGE_CAP = 1200
@@ -139,8 +231,8 @@ export async function searchChat(opts: {
       sessionId: sid,
       query: opts.query,
       limit: perSession,
-      startTimeMs: opts.startTimeMs,
-      endTimeMs: opts.endTimeMs,
+      startTimeMs,
+      endTimeMs,
       maxIndexMessages,
       reusePartialIndex: true,
       onProgress: indexProgress,

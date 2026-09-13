@@ -135,7 +135,6 @@ export async function findSessionTables(state: ChatServiceState, sessionId: stri
   })
   const hash = getTableNameHash(sessionId).toLowerCase()
   for (const dbPath of orderedDbs) {
-    if ((state.msgTableIndex.get(hash) || []).length > 0) break
     await ensureMessageDbIndexed(state, dbPath)
   }
   const indexed = state.msgTableIndex.get(hash) || []
