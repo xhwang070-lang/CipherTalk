@@ -58,6 +58,7 @@ function DataManagementTab({ showMessage, reloadConfig }: DataManagementTabProps
   const [isLoadingLogContent, setIsLoadingLogContent] = useState(false)
   const [logSize, setLogSize] = useState(0)
   const [currentLogLevel, setCurrentLogLevel] = useState('WARN')
+  const [logDirectory, setLogDirectory] = useState('')
 
   useEffect(() => {
     loadDefaultExportPath()
@@ -96,6 +97,8 @@ function DataManagementTab({ showMessage, reloadConfig }: DataManagementTabProps
       }
       const levelResult = await window.electronAPI.log.getLogLevel()
       if (levelResult.success && levelResult.level) setCurrentLogLevel(levelResult.level)
+      const dirResult = await window.electronAPI.log.getLogDirectory()
+      if (dirResult.success && dirResult.directory) setLogDirectory(dirResult.directory)
     } catch (e) {
       console.error('加载日志文件失败:', e)
     } finally {
@@ -123,14 +126,28 @@ function DataManagementTab({ showMessage, reloadConfig }: DataManagementTabProps
 
   const handleOpenLogDirectory = async () => {
     try {
-      const result = await window.electronAPI.log.getLogDirectory()
-      if (result.success && result.directory) {
-        await window.electronAPI.shell.openPath(result.directory)
+      const result = await window.electronAPI.log.openLogDirectory()
+      if (result.directory) setLogDirectory(result.directory)
+      if (result.success) {
+        showMessage('已打开日志目录', true)
       } else {
         showMessage(result.error || '打开日志目录失败', false)
       }
     } catch (e) {
       showMessage('打开日志目录失败', false)
+    }
+  }
+
+  const handleCopyLogDirectory = async () => {
+    if (!logDirectory) {
+      showMessage('还没有日志目录', false)
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(logDirectory)
+      showMessage('已复制日志路径', true)
+    } catch {
+      showMessage('复制失败：' + logDirectory, false)
     }
   }
 
@@ -450,10 +467,18 @@ function DataManagementTab({ showMessage, reloadConfig }: DataManagementTabProps
               <Typography.Paragraph size="sm" color="muted">当前级别</Typography.Paragraph>
               <Chip size="sm" variant="soft" color="warning"><Chip.Label>{currentLogLevel}</Chip.Label></Chip>
             </div>
+            {logDirectory ? (
+              <Typography.Paragraph size="xs" color="muted" className="break-all">
+                {logDirectory}
+              </Typography.Paragraph>
+            ) : null}
           </Card.Content>
           <Card.Footer className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" size="sm" onPress={handleOpenLogDirectory}>
-              <FolderOpen width={16} height={16} /> 打开目录
+            <Button type="button" variant="outline" size="sm" onPress={() => void handleOpenLogDirectory()}>
+              <FolderOpen width={16} height={16} /> 打开日志目录
+            </Button>
+            <Button type="button" variant="outline" size="sm" onPress={() => void handleCopyLogDirectory()} isDisabled={!logDirectory}>
+              复制路径
             </Button>
             <Button type="button" variant="outline" size="sm" onPress={() => void loadLogFiles()} isDisabled={isLoadingLogs}>
               <ArrowsRotateLeft width={16} height={16} className={isLoadingLogs ? 'spin' : undefined} /> 刷新

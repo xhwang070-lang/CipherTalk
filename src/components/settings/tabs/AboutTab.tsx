@@ -1,6 +1,6 @@
 import { APP_NAME, APP_ORG, APP_TAGLINE, APP_ATTRIBUTION } from '../../../brand'
 import { Alert, Button, Chip, Label, ProgressBar, Separator, Typography } from '@heroui/react'
-import { ArrowDownToLine, ArrowUpRightFromSquare, ArrowsRotateLeft, LogoGithub, ShieldCheck } from '@gravity-ui/icons'
+import { ArrowDownToLine, ArrowUpRightFromSquare, ArrowsRotateLeft, FolderOpen, LogoGithub, ShieldCheck } from '@gravity-ui/icons'
 import type { UpdateDownloadProgressPayload } from '../../../types/electron'
 import type { UpdateInfo } from '../types'
 import { formatFileSize, formatSpeed } from '../utils'
@@ -225,6 +225,15 @@ function AboutTab({
             <Button type="button" variant="outline" className="w-full justify-start" onPress={openAgreement}>
               <ShieldCheck width={16} height={16} />
               用户协议
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full justify-start"
+              onPress={() => { void window.electronAPI.log.openLogDirectory() }}
+            >
+              <FolderOpen width={16} height={16} />
+              打开日志目录
             </Button>
           </div>
         </div>

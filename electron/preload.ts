@@ -846,6 +846,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clearLogs: () => ipcRenderer.invoke('log:clearLogs'),
     getLogSize: () => ipcRenderer.invoke('log:getLogSize'),
     getLogDirectory: () => ipcRenderer.invoke('log:getLogDirectory'),
+    openLogDirectory: () => ipcRenderer.invoke('log:openLogDirectory'),
     setLogLevel: (level: string) => ipcRenderer.invoke('log:setLogLevel', level),
     getLogLevel: () => ipcRenderer.invoke('log:getLogLevel')
   },

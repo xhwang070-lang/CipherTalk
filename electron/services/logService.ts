@@ -1,6 +1,7 @@
 import { join } from 'path'
 import { existsSync, mkdirSync, appendFileSync, writeFileSync, readdirSync, statSync, unlinkSync } from 'fs'
 import { ConfigService } from './config'
+import { getUserDataPath } from './runtimePaths'
 
 export enum LogLevel {
   DEBUG = 0,
@@ -75,17 +76,8 @@ export class LogService {
   }
   private initLogDirectory(): void {
     try {
-      const cachePath = this.configService.get('cachePath')
-      if (cachePath) {
-        this.logDir = join(cachePath, 'logs')
-      } else {
-        // 使用默认缓存目录
-        const { app } = require('electron')
-        const defaultCachePath = join(app.getPath('userData'), 'cache')
-        this.logDir = join(defaultCachePath, 'logs')
-      }
-
-      // 确保日志目录存在
+      // Keep app logs in userData/logs. Never use Electron Cache or WeChat cachePath.
+      this.logDir = join(getUserDataPath(), 'logs')
       if (!existsSync(this.logDir)) {
         mkdirSync(this.logDir, { recursive: true })
       }

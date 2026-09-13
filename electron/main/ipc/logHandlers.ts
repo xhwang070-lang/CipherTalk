@@ -1,4 +1,5 @@
-import { ipcMain } from 'electron'
+import { mkdirSync, existsSync } from 'fs'
+import { ipcMain, shell } from 'electron'
 import type { MainProcessContext } from '../context'
 
 /**
@@ -43,6 +44,20 @@ export function registerLogHandlers(ctx: MainProcessContext): void {
   ipcMain.handle('log:getLogDirectory', async () => {
     try {
       const directory = ctx.getLogService()?.getLogDirectory() || ''
+      if (directory && !existsSync(directory)) mkdirSync(directory, { recursive: true })
+      return { success: true, directory }
+    } catch (e) {
+      return { success: false, error: String(e) }
+    }
+  })
+
+  ipcMain.handle('log:openLogDirectory', async () => {
+    try {
+      const directory = ctx.getLogService()?.getLogDirectory() || ''
+      if (!directory) return { success: false, error: '日志目录尚未初始化' }
+      if (!existsSync(directory)) mkdirSync(directory, { recursive: true })
+      const openError = await shell.openPath(directory)
+      if (openError) return { success: false, error: openError, directory }
       return { success: true, directory }
     } catch (e) {
       return { success: false, error: String(e) }

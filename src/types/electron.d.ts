@@ -1455,6 +1455,11 @@ export interface ElectronAPI {
       error?: string;
       directory?: string
     }>
+    openLogDirectory: () => Promise<{
+      success: boolean;
+      error?: string;
+      directory?: string
+    }>
     setLogLevel: (level: string) => Promise<{ success: boolean; error?: string }>
     getLogLevel: () => Promise<{
       success: boolean;

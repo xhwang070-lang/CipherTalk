@@ -3,7 +3,7 @@ import os from 'os'
 import path from 'path'
 import type { App, BrowserWindow } from 'electron'
 
-const LOG_DIR_NAME = 'ciphertalk'
+const LOG_DIR_NAME = 'huaji'
 const LOG_FILE_NAME = 'startup.log'
 const MAX_LOG_BYTES = 2 * 1024 * 1024
 
@@ -13,7 +13,7 @@ let sequence = 0
 
 function getLogDir(): string {
   const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming')
-  return path.join(appData, LOG_DIR_NAME)
+  return path.join(appData, LOG_DIR_NAME, 'logs')
 }
 
 export function getStartupDiagnosticsLogPath(): string {
