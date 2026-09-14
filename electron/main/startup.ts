@@ -184,8 +184,22 @@ export function warmupAgentProcess(ctx: MainProcessContext): void {
  * 只在生产环境触发，结果沿用 app:updateAvailable 推送给主窗口。
  */
 export function checkForUpdatesOnStartup(ctx: MainProcessContext): void {
-  // 更新检查已禁用
-  console.log('[AppUpdate] 启动时更新检查已禁用')
+  if (process.env.VITE_DEV_SERVER_URL) return
+  setTimeout(() => {
+    void appUpdateService.checkForUpdates().then((result) => {
+      ctx.getLogService()?.info('AppUpdate', '启动时检查更新完成', {
+        hasUpdate: result.hasUpdate,
+        currentVersion: result.currentVersion,
+        version: result.version,
+      })
+      const mainWindow = ctx.getMainWindow()
+      if (result.hasUpdate && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('app:updateAvailable', result)
+      }
+    }).catch((error) => {
+      ctx.getLogService()?.warn('AppUpdate', '启动时检查更新失败', { error: String(error) })
+    })
+  }, 8000)
   return
 
   // if (process.env.VITE_DEV_SERVER_URL) {

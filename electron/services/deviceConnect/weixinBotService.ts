@@ -1457,14 +1457,14 @@ class WeixinBotService {
       }
       this.pendingPersonaSelections.delete(from)
       if (pending.purpose === 'todos') {
-        const { extractChatTodos, formatExtractChatTodos } = await import('../agent/huajiChatTodos')
+        const { extractChatTodos, formatExtractChatTodoBubbles } = await import('../agent/huajiChatTodos')
         const result = await extractChatTodos({
           person: candidate.displayName,
           sessionId: candidate.username,
           range: pending.range || (pending.when === 'tomorrow' ? 'tomorrow' : 'today'),
           onProgress: (text) => { void sendText(session, from, text, contextToken) },
         })
-        await sendText(session, from, formatExtractChatTodos(result), contextToken)
+        await this.sendTextBubbles(from, formatExtractChatTodoBubbles(result), contextToken)
         return true
       }
       await this.activatePersonaMode(from, candidate, contextToken)
@@ -1544,7 +1544,7 @@ class WeixinBotService {
 
     const todoExtract = (await import('../agent/huajiChatTodos')).parseTodoExtractCommand(trimmed)
     if (todoExtract) {
-      const { extractChatTodos, formatExtractChatTodos, searchTodoChatCandidates } = await import('../agent/huajiChatTodos')
+      const { extractChatTodos, formatExtractChatTodoBubbles, searchTodoChatCandidates } = await import('../agent/huajiChatTodos')
       const candidates = await searchTodoChatCandidates(todoExtract.person)
       if (candidates.length === 0) {
         await sendText(session, from, '没有找到「' + todoExtract.person + '」对应的好友或群。', contextToken)
@@ -1568,7 +1568,7 @@ class WeixinBotService {
         range: todoExtract.range,
         onProgress: (text) => { void sendText(session, from, text, contextToken) },
       })
-      await sendText(session, from, formatExtractChatTodos(result), contextToken)
+      await this.sendTextBubbles(from, formatExtractChatTodoBubbles(result), contextToken)
       return true
     }
 

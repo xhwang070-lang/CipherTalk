@@ -22,6 +22,7 @@ run(process.execPath, ['scripts/clean-dist-electron.cjs'])
 run(process.execPath, [require.resolve('typescript/bin/tsc')])
 run(path.join(root, 'node_modules', '.bin', 'vite'), ['build'])
 run(process.execPath, ['scripts/run-electron-builder.cjs', 'win'])
+run(process.execPath, ['scripts/generate-update-manifest.js', 'win'])
 
 const setupName = `Huaji-${pkg.version}-Setup.exe`
 const setupPath = path.join(root, 'release', setupName)
@@ -31,6 +32,8 @@ if (!fs.existsSync(setupPath)) {
 }
 const desktop = path.join(os.homedir(), 'Desktop', setupName)
 fs.copyFileSync(setupPath, desktop)
+const ymlPath = path.join(root, 'release', 'latest.yml')
+if (fs.existsSync(ymlPath)) fs.copyFileSync(ymlPath, path.join(os.homedir(), 'Desktop', 'latest.yml'))
 const mb = (fs.statSync(setupPath).size / 1024 / 1024).toFixed(1)
 console.log(`\nFast pack done: ${setupPath}`)
 console.log(`Copied to desktop: ${desktop}`)

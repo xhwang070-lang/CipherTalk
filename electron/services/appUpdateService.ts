@@ -5,6 +5,7 @@ const GITHUB_OWNER = 'huabo'
 const GITHUB_REPO = 'huaji'
 const GITHUB_FORCE_UPDATE_URL = ''
 const R2_UPDATE_BASE_URL = ''
+const GENERIC_UPDATE_URL = 'https://gitee.com/suiyingxiao/huaji/releases/download/latest'
 
 export type ForceUpdateReason = 'minimum-version' | 'blocked-version'
 export type AppUpdateSource = 'r2' | 'github' | 'custom' | 'none'
@@ -56,7 +57,7 @@ type ManifestLookupResult = {
   source: AppUpdateSource
 }
 
-type UpdateFeedSource = 'r2' | 'github'
+type UpdateFeedSource = 'r2' | 'github' | 'generic'
 
 type UpdateLookupResult = {
   latestVersion?: string
@@ -137,19 +138,18 @@ async function resolveForceUpdateManifest(): Promise<ManifestLookupResult> {
   return { manifest: null, source: 'none' }
 }
 
-function configureUpdaterFeed(source: UpdateFeedSource): void {
-  if (source === 'r2') {
+function configureUpdaterFeed(source: UpdateFeedSource = 'generic'): void {
+  if (source === 'github') {
     autoUpdater.setFeedURL({
-      provider: 'generic',
-      url: R2_UPDATE_BASE_URL
+      provider: 'github',
+      owner: GITHUB_OWNER,
+      repo: GITHUB_REPO
     })
     return
   }
-
   autoUpdater.setFeedURL({
-    provider: 'github',
-    owner: GITHUB_OWNER,
-    repo: GITHUB_REPO
+    provider: 'generic',
+    url: source === 'r2' && R2_UPDATE_BASE_URL ? R2_UPDATE_BASE_URL : GENERIC_UPDATE_URL
   })
 }
 
@@ -163,10 +163,11 @@ class AppUpdateService {
   }
 
   getCachedUpdateInfo(): AppUpdateInfo | null {
-    // 更新检查已禁用 - 不返回缓存的更新信息
-    console.log('[AppUpdate Debug] getCachedUpdateInfo 被调用，lastInfo:', this.lastInfo)
-    console.trace('[AppUpdate Debug] 调用堆栈:')
-    return null
+    return this.lastInfo
+  }
+
+  getGenericUpdateUrl(): string {
+    return GENERIC_UPDATE_URL
   }
 
   getR2UpdateBaseUrl(): string {
@@ -270,30 +271,43 @@ class AppUpdateService {
 
   async checkForUpdates(): Promise<AppUpdateInfo> {
     const currentVersion = app.getVersion()
-
-    // Huaji: skip network update checks until a private feed is configured
-    console.log('[AppUpdate Debug] checkForUpdates 被调用')
-    console.trace('[AppUpdate Debug] 调用堆栈:')
-
     this.resetDiagnostics()
-    this.updateDiagnostics({
-      phase: 'idle',
-      lastEvent: '当前已是最新版本（更新检查已禁用）'
-    })
-
-    const info = this.buildInfo({
-      hasUpdate: false,
-      forceUpdate: false,
-      currentVersion,
-      version: currentVersion,
-      releaseNotes: '',
-      updateSource: 'none',
-      policySource: 'none'
-    })
-
-    // 不保存到 lastInfo，确保 getCachedUpdateInfo 始终返回 null
-    // this.lastInfo = info
-    return info
+    this.updateDiagnostics({ phase: 'checking', lastEvent: '正在检查更新' })
+    try {
+      const lookup = await this.checkUpdaterSource('generic', currentVersion)
+      const latestVersion = lookup?.latestVersion || currentVersion
+      const hasUpdate = Boolean(lookup?.hasUpdate)
+      this.updateDiagnostics({
+        phase: hasUpdate ? 'available' : 'idle',
+        lastEvent: hasUpdate ? ('发现新版本 ' + latestVersion) : '当前已是最新版本',
+        targetVersion: latestVersion,
+      })
+      const info = this.buildInfo({
+        hasUpdate,
+        forceUpdate: false,
+        currentVersion,
+        version: latestVersion,
+        releaseNotes: lookup?.releaseNotes || '',
+        updateSource: hasUpdate ? 'custom' : 'none',
+        policySource: 'custom',
+      })
+      this.lastInfo = info
+      return info
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.updateDiagnostics({ phase: 'failed', lastEvent: '检查更新失败', lastError: message })
+      const info = this.buildInfo({
+        hasUpdate: false,
+        forceUpdate: false,
+        currentVersion,
+        version: currentVersion,
+        releaseNotes: '',
+        updateSource: 'none',
+        policySource: 'custom',
+      })
+      this.lastInfo = info
+      return info
+    }
   }
 
   /**

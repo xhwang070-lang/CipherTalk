@@ -171,14 +171,47 @@ function messageKind(message: Message): 'image' | 'voice' | 'other' {
   return 'other'
 }
 
+function displayContactName(name: string): string {
+  const trimmed = String(name || '').trim()
+  const stripped = trimmed.replace(/\d{6,}$/g, '').replace(/[-_\s]+$/g, '').trim()
+  return stripped || trimmed
+}
+
+function cleanTodoTitle(raw: string, person: string): string {
+  let text = String(raw || '').replace(/\s+/g, ' ').trim()
+  const who = displayContactName(person)
+  if (text.startsWith(person + '：')) text = text.slice(person.length + 1).trim()
+  if (text.startsWith(who + '：')) text = text.slice(who.length + 1).trim()
+  text = text.replace(/^\[(?:文件|语音|图片)\]\s*/i, '')
+  const tokens = text.split(' ').filter(Boolean)
+  const seen = new Set<string>()
+  const unique: string[] = []
+  for (const token of tokens) {
+    if (seen.has(token)) continue
+    seen.add(token)
+    unique.push(token)
+  }
+  text = unique.join(' ')
+  if (/\.(docx?|pdf|xlsx|xls)$/i.test(text) && !/^看/.test(text)) {
+    text = '看文件：' + text.replace(/\.(docx?|pdf|xlsx|xls)$/i, '')
+  }
+  return text.slice(0, 60)
+}
+
+function friendlyMediaNote(note?: string): string {
+  const raw = String(note || '').trim()
+  if (!raw) return ''
+  return raw
+    .replace('语音还没转写模型或转写为空', '语音没转写，去设置里下载模型后会补上')
+    .replace('当前模型可能看不了图，换 Grok/GPT 再试', '图片没识别，换能看图的模型后再试')
+}
+
 function messageText(message: Message): string {
   const compact = compactMessage(message)
-  const pieces = [
-    compact.text,
-    message.fileName || '',
-    message.quotedContent || '',
-  ].map((item) => String(item || '').replace(/\s+/g, ' ').trim())
-  return pieces.filter(Boolean).join(' ').trim()
+  const fileName = String(message.fileName || '').trim()
+  const pieces = [compact.text, message.quotedContent || '']
+  if (fileName && compact.text.indexOf(fileName) < 0) pieces.push('[文件] ' + fileName)
+  return pieces.map((item) => String(item || '').replace(/\s+/g, ' ').trim()).filter(Boolean).join(' ').trim()
 }
 
 const MAX_VOICE = 15
@@ -291,12 +324,12 @@ function extractFromMessages(person: string, messages: Array<{ fromMe: boolean; 
     const text = String(message.text || '').replace(/\s+/g, ' ').trim()
     if (text.length < 2 || text.length > 180) continue
     if (!isTodoText(text)) continue
-    const title = (message.fromMe ? '' : person + '：') + text
+    const title = cleanTodoTitle((message.fromMe ? '' : person + '：') + text, person)
     const key = title.replace(/\s+/g, '')
-    if (seen.has(key)) continue
+    if (!title || seen.has(key)) continue
     seen.add(key)
     found.push({
-      title: title.slice(0, 80),
+      title: title,
       when: guessWhen(text, fallback),
       evidence: text.slice(0, 120),
       unverified: looksLikeOtherPerson(text, person),
@@ -442,17 +475,37 @@ export async function extractChatTodos(input: {
 }
 
 export function formatExtractChatTodos(result: ExtractChatTodosResult): string {
+  return formatExtractChatTodoBubbles(result).join('\n\n')
+}
+
+export function formatExtractChatTodoBubbles(result: ExtractChatTodosResult): string[] {
+  const person = displayContactName(result.person)
   if (!result.ok && result.candidates && result.candidates.length > 1) {
-    return result.message + '\n' + result.candidates.map((item, index) => (index + 1) + '. ' + item.displayName).join('\n')
+    return [result.message + '\n' + result.candidates.map((item, index) => (index + 1) + '. ' + displayContactName(item.displayName)).join('\n')]
   }
-  if (!result.ok) return result.message || '提取失败'
-  if (result.added.length === 0) return result.message || '没有新的待办'
-  const label = result.range === 'days7' ? '近7天' : '最近'
-  const lines = ['已从「' + result.person + '」' + label + '记下 ' + result.added.length + ' 条：']
+  if (!result.ok) return [result.message || '提取失败']
+  if (result.added.length === 0) return [result.message || '没有新的待办']
+
+  const today: string[] = []
+  const tomorrow: string[] = []
   for (const item of result.added) {
-    lines.push((item.due === tomorrowDateKey() ? '明天 ' : '今天 ') + (item.unverified ? '待核 ' : '') + item.title)
+    const title = cleanTodoTitle(item.title, person)
+    const line = (item.unverified ? '待核 · ' : '') + title
+    if (item.due === tomorrowDateKey()) tomorrow.push(line)
+    else today.push(line)
   }
-  if (result.skipped) lines.push('另有 ' + result.skipped + ' 条已经在本子里。')
-  if (result.mediaNote) lines.push(result.mediaNote)
-  return lines.join('\n')
+
+  const bubbles: string[] = []
+  const rangeLabel = result.range === 'days7' ? '近7天' : '最近'
+  bubbles.push(person + ' · ' + rangeLabel + '待办')
+  if (today.length) {
+    bubbles.push('今天\n' + today.map((line, index) => (index + 1) + '. ' + line).join('\n'))
+  }
+  if (tomorrow.length) {
+    bubbles.push('明天\n' + tomorrow.map((line, index) => (index + 1) + '. ' + line).join('\n'))
+  }
+  if (result.skipped) bubbles.push('另有 ' + result.skipped + ' 条已经在本子里。')
+  const note = friendlyMediaNote(result.mediaNote)
+  if (note) bubbles.push(note)
+  return bubbles.filter(Boolean)
 }
