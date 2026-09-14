@@ -61,6 +61,16 @@ export function storeActiveAgentConversation(id: number | null): void {
   }
 }
 
+export function conversationSourceLabel(source?: string | null): string {
+  if (source === 'wechat') return '微信机器人'
+  if (source === 'wechat-persona') return '微信分身'
+  return '软件内'
+}
+
+export function isWechatConversationSource(source?: string | null): boolean {
+  return source === 'wechat' || source === 'wechat-persona'
+}
+
 export function normalizeConversationRecord(value: any): AgentConversationRecord | null {
   const id = Number(value?.id)
   if (!Number.isFinite(id) || id <= 0) return null

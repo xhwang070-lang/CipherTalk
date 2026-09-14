@@ -83,6 +83,8 @@ import {
   modelConfigProvider,
   normalizeConversationRecord,
   normalizeLoadedConversation,
+  conversationSourceLabel,
+  isWechatConversationSource,
   NEW_AGENT_CONVERSATION_MARKER,
   parseAgentMessageMetadata,
   prepareAgentMessagesForPersist,
@@ -939,6 +941,7 @@ export default function AgentPage() {
     return { input, output, total: input + output, hasAny }
   }, [messages])
   const [conversationTitle, setConversationTitle] = useState('新对话')
+  const [conversationSource, setConversationSource] = useState('app')
   const [titleLoading, setTitleLoading] = useState(false)
   const [titleEditing, setTitleEditing] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
@@ -1377,6 +1380,7 @@ export default function AgentPage() {
     conversationUpdatedAtRef.current = Number(loaded.updatedAt || Date.now())
     pendingConversationReloadRef.current = null
     setConversationTitle(loaded.title)
+    setConversationSource(loaded.source || 'app')
     setTitleEditing(false)
     setTitleDraft('')
     activeScopeRef.current = loaded.scope || { kind: 'global' }
@@ -1421,6 +1425,7 @@ export default function AgentPage() {
         messagesRef.current = []
         applyConversationId(null)
         setConversationTitle('新对话')
+        setConversationSource('app')
         setTitleEditing(false)
         setTitleDraft('')
         activeScopeRef.current = { kind: 'global' }
@@ -1665,6 +1670,7 @@ export default function AgentPage() {
     messagesRef.current = []
     setMentions([])
     setConversationTitle('新对话')
+    setConversationSource('app')
     setTitleEditing(false)
     setTitleDraft('')
     setTitleLoading(false)
@@ -1769,6 +1775,21 @@ export default function AgentPage() {
     if (deleted) setRecordPendingDelete(null)
   }, [handleDeleteRecord, recordPendingDelete])
 
+  const handleSummarizeThisConversation = useCallback(() => {
+    if (effectiveBusy) {
+      setAgentNotice('等这轮回答结束后再总结。')
+      return
+    }
+    if (messagesRef.current.length === 0) {
+      setAgentNotice('当前没有对话可总结。请先聊几句，或从对话记录里打开一轮。')
+      return
+    }
+    void handleSubmit({
+      text: '请总结我们这次对话。只根据当前对话，不要去翻别人的微信聊天。按主题归纳我让你做了什么、关键结论和未完成事项。如果没有实质内容，直接说没有。',
+      files: [],
+    })
+  }, [effectiveBusy])
+
   const slashCommands = useMemo<SlashCommandItem[]>(() => [
     {
       id: 'status',
@@ -1801,6 +1822,15 @@ export default function AgentPage() {
       description: '切换下一轮是否先生成执行计划',
       icon: ListCheck,
       action: () => setPlanMode((value) => !value),
+    },
+    {
+      id: 'summarize',
+      commands: ['/summarize', '/总结'],
+      aliases: ['zongjie', '总结这次'],
+      label: '总结这次对话',
+      description: '根据当前我和华记的对话做总结，不翻别人的微信聊天',
+      icon: MagicWand,
+      action: handleSummarizeThisConversation,
     },
     {
       id: 'clear',
@@ -1857,6 +1887,7 @@ export default function AgentPage() {
     codeWorkspaceState,
     conversationUsage,
     handleNewConversation,
+    handleSummarizeThisConversation,
     planMode,
     selectedModelData,
   ])
@@ -2475,6 +2506,11 @@ export default function AgentPage() {
                 <span className="truncate font-medium text-sm text-foreground">
                   {titleSaving ? '保存中...' : titleLoading ? '生成标题中...' : conversationTitle}
                 </span>
+                {isWechatConversationSource(conversationSource) ? (
+                  <span className="shrink-0 rounded-md bg-accent/50 px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                    {conversationSourceLabel(conversationSource)}
+                  </span>
+                ) : null}
                 <PencilToLine className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
               </button>
               <Tooltip.Content placement="bottom">
@@ -2565,6 +2601,20 @@ export default function AgentPage() {
                   </Dropdown>
                 </Tooltip.Trigger>
                 <Tooltip.Content placement="bottom">{conversationId ? '画布' : '发送消息后可使用画布'}</Tooltip.Content>
+              </Tooltip>
+              <Tooltip delay={0}>
+                <HeroButton
+                  aria-label="总结这次对话"
+                  className="size-9 p-0"
+                  isDisabled={effectiveBusy}
+                  isIconOnly
+                  onPress={handleSummarizeThisConversation}
+                  size="md"
+                  variant="tertiary"
+                >
+                  <MagicWand className="size-4.5" />
+                </HeroButton>
+                <Tooltip.Content placement="bottom">总结这次对话（我和华记）</Tooltip.Content>
               </Tooltip>
               <AgentRecordsMenu
                 isOpen={recordsOpen}

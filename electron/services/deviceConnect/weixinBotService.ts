@@ -31,6 +31,7 @@ import {
 import { synthesizeWeixinVoice } from './weixinVoiceService'
 import type { PersonaTtsVoiceBinding } from '../agent/persona/personaTypes'
 import type { AgentUploadedMediaContext } from '../agent/types'
+import { resolveWechatPeerName, wechatBotConversationTitle, writeWechatBotRunLog } from '../agent/wechatBotArchive'
 
 const TOKEN_FILE = 'wechat-bot-token.json'
 const MODE_FILE = 'wechat-bot-modes.json'
@@ -1264,6 +1265,10 @@ class WeixinBotService {
     console.log(`[WechatBot] 收到消息 from=${from} text="${incoming.logText}" attachments=${incoming.attachmentCount} files=${incoming.attachedFileCount} 开始调用 Agent...`)
     let typing: TypingIndicator | null = null
     let lastTool = ""
+    const usedTools: string[] = []
+    const startedAt = Date.now()
+    let archiveConvId: number | null = null
+    let peerName = ""
     try {
       if (await this.handleWechatCommand(from, commandText, contextToken)) return
       void import('../agent/agentCapabilityService')
@@ -1279,11 +1284,17 @@ class WeixinBotService {
 
       // 这条微信消息也记入 AI 助手历史（source='wechat'，按联系人 from_user_id 归档）
       const { agentConversationStore } = await import('../agent/conversationStore')
+      peerName = await resolveWechatPeerName(from)
       const conv = agentConversationStore.getOrCreateExternal({
         source: 'wechat',
         externalId: from,
-        title: `微信 · ${text.slice(0, 16)}`,
+        title: wechatBotConversationTitle(peerName, commandText),
       })
+      archiveConvId = conv.id
+      const wantedTitle = wechatBotConversationTitle(peerName, commandText)
+      if (peerName && conv.title !== wantedTitle && (conv.title === '微信机器人' || conv.title.startsWith('微信 · ') || conv.title.startsWith('微信机器人 · '))) {
+        agentConversationStore.rename(conv.id, wantedTitle)
+      }
       const parts: UIMessage['parts'] = []
       if (text) parts.push({ type: 'text', text })
       parts.push(...incoming.fileParts)
@@ -1297,7 +1308,7 @@ class WeixinBotService {
       console.log(`[WechatBot] 开始调用普通 Agent history=${history.length} forceVoice=${forceVoice}`)
       this.logger?.warn('WechatBot', '开始调用普通 Agent', { from, history: history.length, forceVoice })
       let rawReply = await Promise.race([
-        this.runAgent(history, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name } }),
+        this.runAgent(history, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name) } }),
         new Promise<never>((_, reject) => {
           setTimeout(() => reject(new Error('处理超时（5分钟）。查聊天记录或模型接口太慢')), WECHAT_AGENT_DEADLINE_MS)
         }),
@@ -1309,7 +1320,7 @@ class WeixinBotService {
           { id: `wx-a-preamble-${Date.now()}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: rawReply.text }] },
           { id: `wx-u-continue-${Date.now()}`, role: 'user' as const, parts: [{ type: 'text' as const, text: '不要过渡句。立刻从上次停下的地方写出完整正文，按日期分段。' }] },
         ]
-        const continued = await this.runAgent(followHistory, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name } })
+        const continued = await this.runAgent(followHistory, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name) } })
         if (continued.text.trim() && continued.text.replace(/\s+/g, '').length > rawReply.text.replace(/\s+/g, '').length) {
           rawReply = continued
         }
@@ -1335,12 +1346,35 @@ class WeixinBotService {
         }
         await this.sendReplyMedia(from, reply.media, contextToken)
         await this.executePersonaActions(from, reply.personaActions, contextToken)
+        writeWechatBotRunLog({
+          from,
+          peerName,
+          question: commandText,
+          tools: usedTools,
+          ok: true,
+          result: '已回复',
+          durationMs: Date.now() - startedAt,
+        })
         this.logger?.warn('WechatBot', '已回复微信消息', { from, replyLength: reply.text.length, mediaCount: reply.media.length })
         console.log('[WechatBot] 已调用 sendmessage 发送回复')
       } else {
         console.warn('[WechatBot] Agent 回复为空，发送空响应说明')
         await typing?.stop()
         typing = null
+        agentConversationStore.append(conv.id, [{
+          id: `wx-a-empty-${Date.now()}`,
+          role: 'assistant',
+          parts: [{ type: 'text', text: WECHAT_EMPTY_REPLY_TEXT }],
+        }])
+        writeWechatBotRunLog({
+          from,
+          peerName,
+          question: commandText,
+          tools: usedTools,
+          ok: false,
+          result: WECHAT_EMPTY_REPLY_TEXT,
+          durationMs: Date.now() - startedAt,
+        })
         const session = this.session
         if (session) await sendText(session, from, WECHAT_EMPTY_REPLY_TEXT, contextToken)
       }
@@ -1361,6 +1395,23 @@ class WeixinBotService {
       try {
         await typing?.stop()
         typing = null
+        if (archiveConvId) {
+          const { agentConversationStore } = await import('../agent/conversationStore')
+          agentConversationStore.append(archiveConvId, [{
+            id: `wx-a-fail-${Date.now()}`,
+            role: 'assistant',
+            parts: [{ type: 'text', text: wechatBotFailText(e, lastTool) }],
+          }])
+        }
+        writeWechatBotRunLog({
+          from,
+          peerName,
+          question: commandText,
+          tools: usedTools,
+          ok: false,
+          result: wechatBotFailText(e, lastTool),
+          durationMs: Date.now() - startedAt,
+        })
         const session = this.session
         if (session) await sendText(session, from, wechatBotFailText(e, lastTool), contextToken)
       } catch (e2) {

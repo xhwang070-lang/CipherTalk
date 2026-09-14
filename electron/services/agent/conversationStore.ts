@@ -303,7 +303,7 @@ export class AgentConversationStore {
     const identity = this.getAccountIdentity()
     this.claimCompatibleAccountRows(db, identity)
     const accountId = identity.primary
-    const limit = Math.max(1, Math.min(100, Number(options.limit || 50)))
+    const limit = Math.max(1, Math.min(100, Number(options.limit || 100)))
     const filters = ['account_id = @accountId']
     const params: Record<string, unknown> = { accountId, limit }
 

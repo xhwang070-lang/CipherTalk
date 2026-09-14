@@ -16,7 +16,7 @@
 import { memo, useEffect, useMemo, useState } from 'react'
 import { Button as HeroButton, Dropdown, Label, SearchField } from '@heroui/react'
 import { Clock, ClockArrowRotateLeft, TrashBin } from '@gravity-ui/icons'
-import type { AgentConversationRecord } from './agentConversationHelpers'
+import { conversationSourceLabel, isWechatConversationSource, type AgentConversationRecord } from './agentConversationHelpers'
 
 /** 打开时最多渲染多少条 Item——再多就靠搜索框收窄，而不是全量挂 DOM。 */
 const RECORDS_VISIBLE_LIMIT = 30
@@ -49,23 +49,31 @@ function AgentRecordsMenuImpl({
 }: AgentRecordsMenuProps) {
   // 搜索词放在组件本地：打开时清空，避免上次的关键词残留影响这次查看。
   const [search, setSearch] = useState('')
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'app' | 'wechat'>('all')
   useEffect(() => {
-    if (isOpen) setSearch('')
+    if (isOpen) {
+      setSearch('')
+      setSourceFilter('all')
+    }
   }, [isOpen])
 
   // 有关键词 → 按标题过滤；无关键词 → 取全部。最后统一 slice 到可见上限。
   const { visibleRecords, totalCount, isFiltered, hasMore } = useMemo(() => {
     const keyword = search.trim().toLowerCase()
-    const filtered = keyword
-      ? records.filter((record) => record.title.toLowerCase().includes(keyword))
-      : records
+    const filtered = records.filter((record) => {
+      if (sourceFilter === 'wechat' && !isWechatConversationSource(record.source)) return false
+      if (sourceFilter === 'app' && isWechatConversationSource(record.source)) return false
+      if (!keyword) return true
+      const sourceLabel = conversationSourceLabel(record.source)
+      return record.title.toLowerCase().includes(keyword) || sourceLabel.toLowerCase().includes(keyword)
+    })
     return {
       visibleRecords: filtered.slice(0, RECORDS_VISIBLE_LIMIT),
       totalCount: filtered.length,
-      isFiltered: keyword.length > 0,
+      isFiltered: keyword.length > 0 || sourceFilter !== 'all',
       hasMore: filtered.length > RECORDS_VISIBLE_LIMIT,
     }
-  }, [records, search])
+  }, [records, search, sourceFilter])
 
   const isEmpty = records.length === 0
   const noMatch = !isEmpty && visibleRecords.length === 0
@@ -91,10 +99,26 @@ function AgentRecordsMenuImpl({
       <Dropdown.Popover className="w-[min(28rem,calc(100vw-2rem))]" placement="bottom end">
         {/* 搜索框：粘性置顶，滚动列表时保持可见。空状态/无匹配时也保留，方便重新输入。 */}
         <div className="sticky top-0 z-10 border-border border-b bg-popover/95 px-2 py-2 backdrop-blur">
+          <div className="mb-2 flex gap-1" onMouseDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
+            {([
+              ['all', '全部'],
+              ['app', '软件内'],
+              ['wechat', '微信'],
+            ] as const).map(([id, label]) => (
+              <button
+                key={id}
+                className={`rounded-md px-2 py-1 text-xs ${sourceFilter === id ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent/40'}`}
+                type="button"
+                onClick={() => setSourceFilter(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <SearchField aria-label="搜索对话记录" value={search} onChange={setSearch}>
             <SearchField.Group>
               <SearchField.SearchIcon />
-              <SearchField.Input placeholder="搜索对话标题" />
+              <SearchField.Input placeholder="搜索对话或来源" />
               <SearchField.ClearButton />
             </SearchField.Group>
           </SearchField>
@@ -141,7 +165,7 @@ function AgentRecordsMenuImpl({
                   <span className="min-w-0 flex-1">
                     <Label className="block truncate font-medium text-sm">{record.title}</Label>
                     <span className="block truncate text-muted-foreground text-xs">
-                      {formatRecordTime(record.updatedAt)}
+                      {conversationSourceLabel(record.source)} · {formatRecordTime(record.updatedAt)}
                     </span>
                   </span>
                   <span
