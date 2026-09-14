@@ -120,9 +120,9 @@ export default function HuajiTodoBoard() {
           onChange={setDraft}
         >
           <InputGroup>
-            <TextField.Input
+            <InputGroup.Input
               placeholder={when === 'today' ? '今天要办…' : '明天要办…'}
-              onKeyDown={(event) => {
+              onKeyDown={(event: { key: string; preventDefault: () => void }) => {
                 if (event.key === 'Enter') {
                   event.preventDefault()
                   void add(when, draft)
