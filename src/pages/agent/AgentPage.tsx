@@ -820,18 +820,34 @@ export default function AgentPage() {
   busyRef.current = effectiveBusy
   const [memoryIntroStatus, setMemoryIntroStatus] = useState<AgentMemoryIntroStatus>('checking')
   const markMemoryIntroSatisfied = useCallback(() => {
+    try { localStorage.setItem('huaji:agentMemoryIntroDone', '1') } catch { /* ignore */ }
     setMemoryIntroStatus('hidden')
   }, [])
   useEffect(() => {
     let cancelled = false
-    void window.electronAPI.memory.list({
-      sourceTypes: ['profile', 'fact', 'relationship'],
-      limit: 1,
-    })
-      .then((res) => {
+    const skipIntro = () => {
+      try { localStorage.setItem('huaji:agentMemoryIntroDone', '1') } catch { /* ignore */ }
+      if (!cancelled) setMemoryIntroStatus('hidden')
+    }
+    try {
+      if (localStorage.getItem('huaji:agentMemoryIntroDone') === '1' || localStorage.getItem('agent:pendingAutoRun')) {
+        skipIntro()
+        return () => { cancelled = true }
+      }
+    } catch { /* ignore */ }
+    void Promise.all([
+      window.electronAPI.memory.list({
+        sourceTypes: ['profile', 'fact', 'relationship'],
+        limit: 1,
+      }),
+      window.electronAPI.agent.listConversations(),
+    ])
+      .then(([memRes, convRes]) => {
         if (cancelled) return
-        const hasUserMemory = res.success && Array.isArray(res.items) && res.items.length > 0
-        setMemoryIntroStatus(hasUserMemory ? 'hidden' : 'needed')
+        const hasUserMemory = memRes.success && Array.isArray(memRes.items) && memRes.items.length > 0
+        const hasConversations = convRes.success && Array.isArray(convRes.conversations) && convRes.conversations.length > 0
+        if (hasUserMemory || hasConversations) skipIntro()
+        else setMemoryIntroStatus('needed')
       })
       .catch(() => {
         if (!cancelled) setMemoryIntroStatus('hidden')
@@ -2072,13 +2088,14 @@ export default function AgentPage() {
 
   // 跨窗口自动运行的实际发送：等 @提及状态落地、且没有进行中的运行后走正常提交管线
   useEffect(() => {
+    if (memoryIntroStatus !== 'hidden') return
     if (!pendingAutoRun) return
     if (busy || localAgentRunning || agentRunPending) return
     if (mentions.length === 0) return
     setPendingAutoRun(null)
     void handleSubmit({ text: pendingAutoRun, files: [] })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handleSubmit 每次渲染都重建，纳入依赖会让 effect 每帧空跑
-  }, [pendingAutoRun, mentions, busy, localAgentRunning, agentRunPending])
+  }, [pendingAutoRun, mentions, busy, localAgentRunning, agentRunPending, memoryIntroStatus])
 
   const handleEditUserMessage = useCallback((messageIndex: number, text: string) => {
     if (effectiveBusy) return

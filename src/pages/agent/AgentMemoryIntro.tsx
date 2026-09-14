@@ -12,7 +12,7 @@ export type AgentMemoryIntroStatus = 'checking' | 'hidden' | 'needed'
 const MEMORY_INTRO_FALLBACK_SRTS = {
   name: `1
 00:00:00,000 --> 00:00:06,123
-Hi. I'm Huaji.
+你好呀！我是华记。
 
 2
 00:00:06,264 --> 00:00:11,145
@@ -580,7 +580,14 @@ export function AgentMemoryIntro({ onMemoryCreated }: { onMemoryCreated: () => v
         }}
       />
 
-      <div className="absolute right-5 top-5 z-20">
+      <div className="absolute right-5 top-5 z-20 flex items-center gap-2">
+        <button
+          className="rounded-(--agent-radius,12px) border border-border bg-surface/80 px-2 py-1 text-xs text-muted-foreground shadow-xs backdrop-blur hover:bg-surface hover:text-foreground"
+          type="button"
+          onClick={() => onMemoryCreated()}
+        >
+          跳过
+        </button>
         <Switch
           aria-label="记忆引导声音"
           isDisabled={!audioPreferenceLoaded}
