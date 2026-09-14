@@ -118,15 +118,17 @@ export default function HuajiTodoBoard() {
           fullWidth
           value={draft}
           onChange={setDraft}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              void add(when, draft)
-            }
-          }}
         >
           <InputGroup>
-            <TextField.Input placeholder={when === 'today' ? '今天要办…' : '明天要办…'} />
+            <TextField.Input
+              placeholder={when === 'today' ? '今天要办…' : '明天要办…'}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  void add(when, draft)
+                }
+              }}
+            />
             <Button isIconOnly aria-label="添加待办" size="sm" variant="secondary" onPress={() => void add(when, draft)}>
               <Plus className="size-4" />
             </Button>
