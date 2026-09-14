@@ -383,6 +383,7 @@ export function ChatHeader({
         avatarUrl: currentSession.avatarUrl,
       },
     }))
+    window.dispatchEvent(new Event('huaji:pending-autorun'))
     void window.electronAPI.window.focusMainWindow('/agent')
   }
   // 仅私聊可开消息提醒（排除群聊/公众号）
@@ -605,7 +606,7 @@ export function ChatHeader({
                 {notifyEnabled ? <Bell width={18} height={18} className="text-primary" /> : <BellSlash width={18} height={18} />}
               </Button>
             </Tooltip.Trigger>
-            <Tooltip.Content placement="bottom">{notifyEnabled ? '新消息提醒已开启 · 点击关闭' : '开启新消息提醒（桌宠气泡）'}</Tooltip.Content>
+            <Tooltip.Content placement="bottom">{notifyEnabled ? '新消息提醒已开启 · 点击关闭' : '开启新消息提醒（系统通知）'}</Tooltip.Content>
           </Tooltip>
         )}
 

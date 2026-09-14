@@ -454,6 +454,7 @@ export default function AgentPage() {
   }, [])
   // 跨窗口自动运行（聊天窗口「AI 摘要」）：待发送的提示词，等 @提及状态落地后由下方 effect 自动提交
   const [pendingAutoRun, setPendingAutoRun] = useState<string | null>(null)
+  const autoRunInFlightRef = useRef(false)
   const selectedPreset = useMemo(
     () => presets.find((preset) => preset.id === selectedPresetId) || null,
     [presets, selectedPresetId]
@@ -1691,22 +1692,36 @@ export default function AgentPage() {
       const raw = localStorage.getItem('agent:pendingAutoRun')
       if (!raw) return
       localStorage.removeItem('agent:pendingAutoRun')
+      autoRunInFlightRef.current = true
+      // 助手页已经打开时，首次引导不会再跑 mount 检查；摘要进来必须立刻关掉 Cip 遮罩。
+      markMemoryIntroSatisfied()
       try {
         const payload = JSON.parse(raw) as { text?: string; mention?: { username?: string; displayName?: string; avatarUrl?: string } }
-        if (!payload.text || !payload.mention?.username) return
+        if (!payload.text || !payload.mention?.username) {
+          autoRunInFlightRef.current = false
+          return
+        }
         void handleNewConversation().then((created) => {
-          if (!created) return
+          if (!created) {
+            autoRunInFlightRef.current = false
+            setAgentNotice('无法开始 AI 摘要，请关闭当前画布未保存内容后重试。')
+            return
+          }
           setMentions([toMentionTarget(payload.mention!.username!, payload.mention!.displayName, payload.mention!.avatarUrl)])
           setPendingAutoRun(payload.text!)
         })
       } catch {
-        // 载荷损坏时静默丢弃
+        autoRunInFlightRef.current = false
       }
     }
     consumeAutoRun()
     window.addEventListener('storage', consumeAutoRun)
-    return () => window.removeEventListener('storage', consumeAutoRun)
-  }, [handleNewConversation])
+    window.addEventListener('huaji:pending-autorun', consumeAutoRun)
+    return () => {
+      window.removeEventListener('storage', consumeAutoRun)
+      window.removeEventListener('huaji:pending-autorun', consumeAutoRun)
+    }
+  }, [handleNewConversation, markMemoryIntroSatisfied])
 
   const handleOpenRecord = useCallback((record: AgentConversationRecord) => {
     if (busy) void stop()
@@ -1966,8 +1981,14 @@ export default function AgentPage() {
 
     const loadIfStillEmpty = async (id: number): Promise<boolean> => {
       if (cancelled || conversationIdRef.current || messagesRef.current.length > 0) return false
+      if (autoRunInFlightRef.current) return false
+      if (readStoredActiveAgentConversation() === NEW_AGENT_CONVERSATION_MARKER) return false
+      if (localStorage.getItem('agent:pendingAutoRun')) return false
       const result = await window.electronAPI.agent.loadConversation(id)
       if (cancelled || conversationIdRef.current || messagesRef.current.length > 0) return false
+      if (autoRunInFlightRef.current) return false
+      if (readStoredActiveAgentConversation() === NEW_AGENT_CONVERSATION_MARKER) return false
+      if (localStorage.getItem('agent:pendingAutoRun')) return false
       const loaded = result.success ? normalizeLoadedConversation(result.conversation) : null
       if (!loaded) return false
       restoreLoadedConversation(loaded, { closeRecords: false })
@@ -2086,6 +2107,11 @@ export default function AgentPage() {
     }
   }
 
+  useEffect(() => {
+    if (!pendingAutoRun) return
+    markMemoryIntroSatisfied()
+  }, [pendingAutoRun, markMemoryIntroSatisfied])
+
   // 跨窗口自动运行的实际发送：等 @提及状态落地、且没有进行中的运行后走正常提交管线
   useEffect(() => {
     if (memoryIntroStatus !== 'hidden') return
@@ -2093,6 +2119,7 @@ export default function AgentPage() {
     if (busy || localAgentRunning || agentRunPending) return
     if (mentions.length === 0) return
     setPendingAutoRun(null)
+    autoRunInFlightRef.current = false
     void handleSubmit({ text: pendingAutoRun, files: [] })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handleSubmit 每次渲染都重建，纳入依赖会让 effect 每帧空跑
   }, [pendingAutoRun, mentions, busy, localAgentRunning, agentRunPending, memoryIntroStatus])
