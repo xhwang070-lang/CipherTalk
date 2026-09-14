@@ -7,7 +7,7 @@ import {
   removeHuajiTodo,
   type HuajiTodoWhen,
 } from '../huajiTodos'
-import { extractChatTodos, formatExtractChatTodos } from '../huajiChatTodos'
+import { extractChatTodos, formatExtractChatTodos, type ExtractTodoRange } from '../huajiChatTodos'
 
 export function createAddTodo() {
   return tool({
@@ -93,11 +93,11 @@ export function createExtractChatTodos() {
     inputSchema: z.object({
       person: z.string().min(1).describe('人名或群名，例如 张俊博'),
       sessionId: z.string().optional().describe('该场聊天 username。能确定时必填，避免同名串人'),
-      when: z.enum(['today', 'tomorrow']).default('today'),
+      range: z.enum(['today', 'tomorrow', 'days7']).default('today').describe('today=近3天，days7=近7天，tomorrow=记到明天'),
     }),
-    execute: async ({ person, sessionId, when }) => {
+    execute: async ({ person, sessionId, range }) => {
       try {
-        const result = await extractChatTodos({ person, sessionId, when: when as HuajiTodoWhen })
+        const result = await extractChatTodos({ person, sessionId, range: range as ExtractTodoRange })
         return {
           ...result,
           text: formatExtractChatTodos(result),

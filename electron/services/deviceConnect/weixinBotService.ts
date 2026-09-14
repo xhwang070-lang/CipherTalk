@@ -212,6 +212,7 @@ type PendingPersonaSelection = {
   createdAt: number
   purpose?: 'persona' | 'todos'
   when?: 'today' | 'tomorrow'
+  range?: 'today' | 'tomorrow' | 'days7'
 }
 
 type TodoPushRecipient = {
@@ -1460,7 +1461,7 @@ class WeixinBotService {
         const result = await extractChatTodos({
           person: candidate.displayName,
           sessionId: candidate.username,
-          when: pending.when === 'tomorrow' ? 'tomorrow' : 'today',
+          range: pending.range || (pending.when === 'tomorrow' ? 'tomorrow' : 'today'),
         })
         await sendText(session, from, formatExtractChatTodos(result), contextToken)
         return true
@@ -1514,7 +1515,7 @@ class WeixinBotService {
 
     if (isHelpCommand(trimmed)) {
       await sendText(session, from,
-        '可用命令：\n今天待办\n明天待办\n记一下，明天给张俊博发报价\n把我和张俊博今天的待办记下来\n完成待办 报价已发\n/new\n打开XXX的数字分身\n退出数字分身',
+        '可用命令：\n今天待办\n明天待办\n记一下，明天给张俊博发报价\n把我和张俊博今天的待办记下来\n把我和张俊博这7天的待办记下来\n完成待办 报价已发\n/new\n打开XXX的数字分身\n退出数字分身',
         contextToken)
       return true
     }
@@ -1554,7 +1555,7 @@ class WeixinBotService {
           candidates: candidates.map((item) => ({ username: item.username, displayName: item.displayName, kind: item.kind })),
           createdAt: Date.now(),
           purpose: 'todos',
-          when: todoExtract.when,
+          range: todoExtract.range,
         })
         const list = candidates.map((c, i) => (i + 1) + '. ' + c.displayName).join('\n')
         await sendText(session, from, '找到多个「' + todoExtract.person + '」：\n' + list + '\n回复编号选择一场聊天。', contextToken)
@@ -1563,7 +1564,7 @@ class WeixinBotService {
       const result = await extractChatTodos({
         person: candidates[0].displayName,
         sessionId: candidates[0].username,
-        when: todoExtract.when,
+        range: todoExtract.range,
       })
       await sendText(session, from, formatExtractChatTodos(result), contextToken)
       return true
