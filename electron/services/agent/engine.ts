@@ -455,12 +455,16 @@ export async function runAgent(
             canvasContext: input.canvasContext,
             emitChunk: onChunk,
           })
-    const baseTools = toolsDisabled
+    const mergedTools: ToolSet = toolsDisabled
       ? {}
-      : withToolTimeouts({
+      : {
         ...applicationTools,
         ...webSearch.nativeTools,
-      })
+      }
+    if (input.outputMode === 'wechat' && 'update_plan' in mergedTools) {
+      delete (mergedTools as Record<string, unknown>).update_plan
+    }
+    const baseTools = toolsDisabled ? {} : withToolTimeouts(mergedTools)
     perf('构建工具集', `${Object.keys(baseTools).length} 个 / 联网 ${webSearch.backend}`)
     const prepared = buildAgentInstructions(input, memoryContext, relevantMemoryContext, baseTools, webSearchOn, imageGenOn)
     const providerCache = buildProviderCacheStatus(input, prepared.promptCacheKey)
