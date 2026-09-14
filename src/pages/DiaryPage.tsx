@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Card, Description, InputGroup, Label, ListBox, Modal, Popover, ScrollShadow, Spinner, TextField, TimeField, Toolbar } from '@heroui/react'
 import { Time } from '@internationalized/date'
-import { ArrowDownToLine, ArrowRotateLeft, ArrowsRotateLeft, BookOpen, Check, Clock, Copy, FloppyDisk, Gear, PencilToLine, Text, TrashBin } from '@gravity-ui/icons'
+import { ArrowDownToLine, ArrowRotateLeft, ArrowsRotateLeft, ArrowUpRightFromSquare, BookOpen, Check, Clock, Copy, FloppyDisk, Gear, PencilToLine, Text, TrashBin } from '@gravity-ui/icons'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import type { MemoryDiaryEntryInfo } from '../types/electron'
@@ -273,6 +273,8 @@ export default function DiaryPage() {
   const [selectedDate, setSelectedDate] = useState('')
   const [workLog, setWorkLog] = useState<{ date: string; content: string } | null>(null)
   const [workLogBusy, setWorkLogBusy] = useState(false)
+  const [workLogHtml, setWorkLogHtml] = useState('')
+  const [workLogOpen, setWorkLogOpen] = useState(false)
   const selectedDateRef = useRef('')
   const [selectedDiary, setSelectedDiary] = useState<MemoryDiaryEntryInfo | null>(null)
   const [loading, setLoading] = useState(true)
@@ -367,14 +369,23 @@ export default function DiaryPage() {
     void loadDiaries()
   }, [loadDiaries])
 
+  const renderWorkLogHtml = useCallback(async (content?: string) => {
+    const markdown = displayWorkLog(content)
+    const rendered = await marked.parse(markdown)
+    setWorkLogHtml(DOMPurify.sanitize(rendered))
+  }, [])
+
   const loadWorkLog = useCallback(async () => {
     try {
       const res = await window.electronAPI.memory.readHuajiWorkLog()
-      if (res.success) setWorkLog(res.log || null)
+      const log = res.success ? (res.log || null) : null
+      setWorkLog(log)
+      await renderWorkLogHtml(log?.content)
     } catch {
       setWorkLog(null)
+      setWorkLogHtml('')
     }
-  }, [])
+  }, [renderWorkLogHtml])
 
   useEffect(() => {
     void loadWorkLog()
@@ -388,12 +399,13 @@ export default function DiaryPage() {
       const res = await window.electronAPI.memory.rebuildHuajiWorkLog()
       if (!res.success || !res.log) throw new Error(res.error || '整理工作日志失败')
       setWorkLog(res.log)
+      await renderWorkLogHtml(res.log.content)
     } catch (err) {
       setError(err instanceof Error ? err.message : '整理工作日志失败')
     } finally {
       setWorkLogBusy(false)
     }
-  }, [workLogBusy])
+  }, [renderWorkLogHtml, workLogBusy])
 
   useEffect(() => {
     if (settingsOpen) void loadDiarySettings()
@@ -566,18 +578,31 @@ export default function DiaryPage() {
             <div className="min-w-0">
               <Card.Title className="text-base">今日华记工作日志</Card.Title>
               <Card.Description className="text-sm leading-7">
-                这是你和华记之间办过的事，不是微信好友日记。微信里也可以问「我今天让你办过什么」。
+                你今天让华记办过的事。不是待办，也不是微信好友日记。点展开看全文。
               </Card.Description>
             </div>
-            <Button isDisabled={workLogBusy} size="sm" variant="secondary" onPress={() => void rebuildWorkLog()}>
-              {workLogBusy ? '整理中...' : '整理今日'}
-            </Button>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button size="sm" variant="tertiary" onPress={() => setWorkLogOpen(true)}>
+                <ArrowUpRightFromSquare className="size-4" />
+                展开
+              </Button>
+              <Button isDisabled={workLogBusy} size="sm" variant="secondary" onPress={() => void rebuildWorkLog()}>
+                {workLogBusy ? '整理中...' : '整理今日'}
+              </Button>
+            </div>
           </div>
         </Card.Header>
         <Card.Content>
-          <pre className="m-0 max-h-56 overflow-auto whitespace-pre-wrap text-sm leading-7 text-foreground">
-            {displayWorkLog(workLog?.content)}
-          </pre>
+          <button
+            className="m-0 block max-h-44 w-full overflow-hidden text-left"
+            type="button"
+            onClick={() => setWorkLogOpen(true)}
+          >
+            <div
+              className="diary-markdown work-log-preview text-sm leading-7 text-foreground"
+              dangerouslySetInnerHTML={{ __html: workLogHtml || '<p>今天还没有和华记办过事。</p>' }}
+            />
+          </button>
         </Card.Content>
       </Card>
 
@@ -690,6 +715,30 @@ export default function DiaryPage() {
           </div>
         </ScrollShadow>
       )}
+
+      <Modal.Backdrop isOpen={workLogOpen} onOpenChange={setWorkLogOpen} variant="blur">
+        <Modal.Container placement="center" size="lg">
+          <Modal.Dialog className="bg-transparent p-0 shadow-none">
+            <Card className="w-full gap-0 p-0">
+              <Modal.CloseTrigger />
+              <Card.Header className="flex-row items-start gap-3 border-b border-border p-5">
+                <div className="min-w-0">
+                  <Card.Title>今日华记工作日志</Card.Title>
+                  <Card.Description>你今天让华记办过的事，不是待办清单。</Card.Description>
+                </div>
+              </Card.Header>
+              <Card.Content className="p-0">
+                <ScrollShadow hideScrollBar className="max-h-[calc(100vh-8rem)] px-6 py-5" size={48}>
+                  <article
+                    className="diary-markdown text-sm leading-8 text-foreground"
+                    dangerouslySetInnerHTML={{ __html: workLogHtml || '<p>今天还没有和华记办过事。</p>' }}
+                  />
+                </ScrollShadow>
+              </Card.Content>
+            </Card>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
 
       <Modal.Backdrop isOpen={settingsOpen} onOpenChange={(open) => {
         if (!settingsSaving) setSettingsOpen(open)
