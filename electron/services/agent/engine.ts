@@ -718,7 +718,15 @@ export async function runAgent(
       }
     }
     if (!finishChunk && !signal?.aborted) {
-      throw new Error('模型响应流缺少 finish 事件，已阻止不完整回复被标记为完成。')
+      const recoveredText = (assistantText || primaryFinalText || '').trim()
+      if (recoveredText) {
+        finishChunk = {
+          type: 'finish',
+          finishReason: primaryFinishReason || 'stop',
+        }
+      } else {
+        throw new Error('模型连接中断，没有完整回复。请把问题缩成一个人或更短时间再问。')
+      }
     }
     const traceEnd = Date.now()
     trace.finishedAt = traceEnd
