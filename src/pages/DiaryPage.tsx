@@ -28,6 +28,14 @@ function toDiarySummaryTime(hour: number): Time {
   return new Time(normalizeDiarySummaryHour(hour), 0)
 }
 
+function displayWorkLog(content?: string): string {
+  const text = String(content || '')
+    .replace(/^# .+\n+/, '')
+    .replace(/^只记你让华记办的事。\n+/, '')
+    .trim()
+  return text || '今天还没有和华记办过事。微信里问一句，或在助手里聊一轮，再点整理。'
+}
+
 function formatDiaryDate(date: string): string {
   const [year, month, day] = date.split('-')
   return year && month && day ? `${year}/${month}/${day}` : date
@@ -568,7 +576,7 @@ export default function DiaryPage() {
         </Card.Header>
         <Card.Content>
           <pre className="m-0 max-h-56 overflow-auto whitespace-pre-wrap text-sm leading-7 text-foreground">
-            {workLog?.content || '今天还没有和华记办过事。微信里问一句，或在助手里聊一轮，再点整理。'}
+            {displayWorkLog(workLog?.content)}
           </pre>
         </Card.Content>
       </Card>

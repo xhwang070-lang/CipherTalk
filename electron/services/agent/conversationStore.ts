@@ -110,14 +110,14 @@ function safeJsonParseMessage(value: string): UIMessage | null {
 
 function textFromAgentMessageJson(raw: string): string {
   try {
-    const message = JSON.parse(raw) as { parts?: Array<{ text?: unknown }> }
+    const message = JSON.parse(raw) as { parts?: Array<{ type?: unknown; text?: unknown }> }
     const parts = Array.isArray(message.parts) ? message.parts : []
     return parts
+      .filter((part) => String(part?.type || 'text') === 'text')
       .map((part) => typeof part?.text === 'string' ? part.text : '')
-      .join(' ')
-      .replace(/\s+/g, ' ')
+      .join('\n')
       .trim()
-      .slice(0, 120)
+      .slice(0, 500)
   } catch {
     return ''
   }
