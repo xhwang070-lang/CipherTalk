@@ -28,6 +28,7 @@ const MAX_PROGRESS_DETAIL_LENGTH = 180
 type DelegateTask = {
   id: string
   task: string
+  sessionId?: string
 }
 
 type DelegateTaskResult = {
@@ -89,11 +90,12 @@ function assignUniqueTaskIds(tasks: DelegateTask[]): DelegateTask[] {
   })
 }
 
-function normalizeTasks(input: { task?: string; tasks?: Array<{ id?: string; task?: string }>; maxConcurrency?: number }) {
+function normalizeTasks(input: { task?: string; tasks?: Array<{ id?: string; task?: string; sessionId?: string }>; maxConcurrency?: number }) {
   const rawTasks = Array.isArray(input.tasks) && input.tasks.length > 0
     ? input.tasks.map((item, index) => ({
       id: normalizeTaskId(item?.id, index),
       task: String(item?.task || '').trim(),
+      sessionId: String(item?.sessionId || '').trim() || undefined,
     }))
     : [{
       id: 'task-1',
@@ -153,7 +155,9 @@ function buildAggregateConclusion(results: DelegateTaskResult[], truncated: bool
 
 const DELEGATE_SUFFIX =
   '\n\n你现在是被主助手委托的【子助手】：只专注完成下面这一个子任务，' +
-  '用工具查到的真实数据得出结论，简洁作答并在结论里标注关键出处（时间 + 发送者）。' +
+  '用工具查到的真实数据得出结论，简洁作答并在结论里标注关键出处（sessionId + 时间 + 发送者）。' +
+  '一个子任务只允许覆盖一个会话。search_messages / get_timeline / get_context 必须带这个人的 sessionId，禁止全局扫描、禁止把其他人的聊天安到当前对象头上。' +
+  '结论里出现的人名、金额、承诺，必须能在本会话原文里对上；对不上就写「待核」，不要借用别的会话。' +
   '不要寒暄、不要复述任务，直接给结论。' +
   '你自己没有 delegate_analysis、update_plan、记忆工具或 MCP 工具，请直接用读/查/统计工具完成，不要尝试再委托或规划。'
 
@@ -167,13 +171,14 @@ export function createDelegateAnalysis(opts: {
     description:
       '把需要读大量消息的一个或多个独立子任务委托给子助手并发分析，只回结论（原始消息不进你的上下文）。' +
       `适合「总结某人某段时间都聊了啥 / 梳理某话题的来龙去脉」这类要翻很多条的重活；最多 ${MAX_DELEGATE_TASKS} 个子任务，默认 ${DEFAULT_DELEGATE_CONCURRENCY} 并发。` +
-      '单任务用 task；多任务用 tasks，每个 task 写清范围（会话 username / 时间段）和期望结论形式。' +
-      '简单精确查询直接用 search_messages / chat_stats，别委托。',
+      '单任务用 task；多任务用 tasks。每人/每群必须单独一个子任务，并填写 sessionId（list_contacts 里 lastTime 最近的那个 username）。' +
+      '禁止把多个联系人塞进同一个子任务，否则会串会话。简单精确查询直接用 search_messages / chat_stats，别委托。',
     inputSchema: z.object({
       task: z.string().optional().describe('兼容旧调用的单个委托任务。批量分析时优先使用 tasks。'),
       tasks: z.array(z.object({
         id: z.string().optional().describe('子任务短 ID，例如 Q1、topic-1、person-a；用于进度分组。'),
-        task: z.string().describe('子任务：分析什么、范围（会话 username / 时间段）、期望结论形式。'),
+        sessionId: z.string().optional().describe('该子任务锁定的会话 username。总结某人时必填，工具会强制子助手只查这个会话。'),
+        task: z.string().describe('子任务：分析什么、时间段、期望结论形式。不要在一个任务里写多个人。'),
       })).optional().describe(`批量委托任务；超过 ${MAX_DELEGATE_TASKS} 个时只执行前 ${MAX_DELEGATE_TASKS} 个并在结果中说明。`),
       maxConcurrency: z.number().int().min(1).max(DEFAULT_DELEGATE_CONCURRENCY).optional().describe(`最大并发子助手数，默认 ${DEFAULT_DELEGATE_CONCURRENCY}。`),
     }),
@@ -198,9 +203,16 @@ export function createDelegateAnalysis(opts: {
         })
         try {
           const tools = opts.buildSubTools()
+          const lockedSessionId = taskItem.sessionId || (opts.scope.kind === 'session' || opts.scope.kind === 'persona' ? opts.scope.sessionId : '')
+          const subScope = lockedSessionId
+            ? { kind: 'session' as const, sessionId: lockedSessionId }
+            : opts.scope
+          const lockLine = lockedSessionId
+            ? `\n\n# 本子任务锁定会话\nsessionId=${lockedSessionId}\n所有检索/时间线/上下文必须使用这个 sessionId。结论里的每个人名都必须出现在这个会话的原文中，否则写待核。`
+            : '\n\n# 本子任务未锁定会话\n先 list_contacts 确定唯一 username，再全程带 sessionId。禁止把 A 的聊天写进 B 的待办。'
           const subAgent = new ToolLoopAgent({
             model: createLanguageModel(opts.providerConfig),
-            instructions: buildSystemPrompt(opts.scope) + DELEGATE_SUFFIX,
+            instructions: buildSystemPrompt(subScope) + DELEGATE_SUFFIX + lockLine,
             tools,
             temperature: DEFAULT_SUB_AGENT_TEMPERATURE,
             reasoning: buildReasoningOption(opts.providerConfig),
@@ -214,7 +226,10 @@ export function createDelegateAnalysis(opts: {
               }
             },
           })
-          const result = await subAgent.generate({ prompt: taskItem.task, abortSignal })
+          const prompt = lockedSessionId
+            ? `只分析会话 ${lockedSessionId}。任务：${taskItem.task}`
+            : taskItem.task
+          const result = await subAgent.generate({ prompt, abortSignal })
           const conclusion = result.text.trim()
           reportAgentProgress({
             stage: 'run_finished',

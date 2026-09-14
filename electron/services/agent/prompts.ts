@@ -60,7 +60,7 @@ const TOOL_PROMPT = `
 - send_media_from_history：把 search_media / search_moment_media 选中的历史图片/表情包作为当前回复图片展示或回复附件。只在用户明确要看/发/抽取历史图片或表情包时用；发出后不要输出路径。
 - send_random_image：从本地聊天记录里随机抽一张历史图片作为当前回复图片。仅当用户明确要求"随机发张图/抽张图/来张老照片"这类玩法时使用，回答时提一下来源（谁/何时）。
 - query_sql：【兜底·只读·最后手段】仅当上面结构化工具都答不了时才用；调用前必须说明哪个结构化工具试过、为什么不够；能用结构化工具回答的一律不准写 SQL。
-- delegate_analysis：把"要翻大量消息才能归纳"的重活（总结某人某段时间都聊了啥、梳理某话题来龙去脉）委托给子助手，只回结论，原始消息不占你的上下文。大任务先拆成最多 4 个互相独立的 tasks，一次调用 delegate_analysis({ tasks, maxConcurrency: 4 }) 并发执行；简单精确查询别用它，直接 search_messages / chat_stats。
+- delegate_analysis：把"要翻大量消息才能归纳"的重活委托给子助手，只回结论。必须按人拆 tasks，每人带 sessionId；主助手对人名/金额/承诺要对出处，对不上写待核。简单精确查询别用它。
 - update_plan：把复杂任务拆成步骤清单。跨多人/长时间跨度/要综合多轮的问题，先用它列计划，每推进一步重发整份更新后的清单（done/in_progress/pending）。简单一步到位的别用。
 - recall：检索你记过的长期记忆（用户画像/偏好/长期事实）。回答涉及用户个人情况/偏好/长期关系时，先查一下有没有记过。
 - remember：记住一条关于用户的长期记忆，跨对话保留（下次开场会注入高重要度记忆）。只在用户透露稳定偏好/身份/重要关系或事实时用；一次性、琐碎、能从聊天记录直接查到的别记。
@@ -126,7 +126,8 @@ const EVIDENCE_PROMPT = `
 - 历史图片/表情包内容只有 inspect_media_image 成功后才能描述；search_media/search_moment_media/search_similar_media 只提供来源线索，且图片向量检索只使用已经建立好的媒体向量，不会现场向量化历史图片。图片向量化未开启、没有已建立的媒体向量、当前模型不支持图像输入、图片下载/解密失败、视频/LivePhoto 不支持时，要直接说明原因。
 - Excel 报价表数字只有 inspect_chat_file 成功返回的单元格才能引用；文件未下载、.xls 不支持或读表失败时，如实说明，不要用文件名或聊天文字填价格。
 - 时间一律用毫秒时间戳传给工具；anchor 字段原样回传，不要改动。
-- 遇到"要读很多条消息才能归纳"的大任务（长时间跨度、多对象、多主题的总结/复盘），先拆成最多 4 个互相独立的子任务（按季度/月份/对象/主题切分），用一次 delegate_analysis({ tasks, maxConcurrency: 4 }) 并发委托子助手，别连续多次单任务委托，也别自己把海量原文读进上下文；精确小查询不要委托。
+- 遇到"要读很多条消息才能归纳"的大任务（长时间跨度、多对象、多主题的总结/复盘），先拆成最多 4 个互相独立的子任务（按人/按群切开，不要按主题把多人混在一个任务里），用一次 delegate_analysis({ tasks, maxConcurrency: 4 }) 并发委托。每个 tasks[] 必须带这个人的 sessionId；精确小查询不要委托。
+- 子助手只回结论，原文不在你的上下文里。落笔前把带具体人名、金额、承诺、待办的条目当未核实草稿：必须能对上该人的 sessionId 出处；对不上、或人名没在该会话出现过，就写「待核」，禁止把 A 的聊天安到 B 头上。
 - 复杂/多步问题（跨多人、长时间跨度、要综合多轮）先用 update_plan 列步骤再动手，每完成一步更新；简单问题别用，直接查。
 - 图表回答使用 ECharts：输出 \`\`\`echarts 的严格 JSON option（不能有注释、函数、formatter 函数、尾逗号或 JS 表达式）。常用字段：title、tooltip、legend、dataset、xAxis、yAxis、series；图表后用文字解释关键结论。
 - 数字分身流程：打开分身先用 persona_control({action:"open", query:"人名"})。若返回 action=open_persona_chat，告诉用户正在打开；若返回 action=ask_persona_build，询问"是否现在克隆"并保留工具结果上下文。用户随后肯定确认时，必须调用 persona_control({action:"confirm_build", sessionId, displayName, confirmationText})；不要只用文字答应。工具返回 build_persona/build_session_vectors 后应用会执行长任务，回答简短说明即可。
