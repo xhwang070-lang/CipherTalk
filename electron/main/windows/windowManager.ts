@@ -20,6 +20,7 @@ import { mcpProxyService } from '../../services/mcp/proxyService'
 import { voiceTranscribeServiceWhisper } from '../../services/voiceTranscribeServiceWhisper'
 import { attachWindowStartupDiagnostics, markStartupMilestone, logStartupError } from '../startupDiagnostics'
 import { APP_NAME } from '../../brand'
+import { getCustomAppIconPath, hasCustomAppIcon } from '../../services/appIconService'
 import type { ImageViewerOpenOptions, MainProcessContext, ReplyTileEntry, WindowManager } from '../context'
 import { placeNativeWindowBehindForeground, probeWeChatWindow, watchWeChatWindowEvents } from '../../services/wechatWindowTracker'
 
@@ -128,6 +129,7 @@ function getThemeQuery(ctx: MainProcessContext): Record<string, string> {
 }
 
 function getAppIconPath(ctx: MainProcessContext): string {
+  if (hasCustomAppIcon()) return getCustomAppIconPath()
   const isDev = !!process.env.VITE_DEV_SERVER_URL
 
   if (process.platform === 'darwin') {
@@ -696,6 +698,23 @@ export function createWindowManager(ctx: MainProcessContext): WindowManager {
     },
 
     createTray,
+
+    applyAppIcon() {
+      const image = loadNativeImageIfValid(getAppIconPath(ctx), 'app icon')
+      if (image) {
+        for (const win of BrowserWindow.getAllWindows()) {
+          if (!win.isDestroyed()) win.setIcon(image)
+        }
+      }
+      const tray = ctx.getTray()
+      if (tray) {
+        try {
+          tray.setImage(getTrayImage(ctx))
+        } catch (error) {
+          console.warn('[Icon] tray update failed:', error)
+        }
+      }
+    },
 
     destroyTray() {
       const tray = ctx.getTray()

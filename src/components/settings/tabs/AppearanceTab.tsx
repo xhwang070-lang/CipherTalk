@@ -87,8 +87,14 @@ function AppearanceTab() {
   useEffect(() => {
     if (SUPPORTS_REPLY_TILE) void window.electronAPI.window.getReplyTileEnabled().then(setReplyTileEnabled)
   }, [])
+  useEffect(() => {
+    void window.electronAPI.app.getAppIcon().then(setAppIcon).catch(() => undefined)
+  }, [])
   const [backgroundImporting, setBackgroundImporting] = useState(false)
   const [backgroundError, setBackgroundError] = useState('')
+  const [appIcon, setAppIcon] = useState<{ custom: boolean; previewUrl: string | null }>({ custom: false, previewUrl: null })
+  const [appIconBusy, setAppIconBusy] = useState(false)
+  const [appIconError, setAppIconError] = useState('')
   const avatarUrl = normalizeImageSrc(userInfo?.avatarUrl)
   const avatarFallback = getAvatarFallback(userInfo?.nickName, userInfo?.wxid)
 
@@ -99,6 +105,34 @@ function AppearanceTab() {
   const backgroundPreviewStyle = {
     '--home-background-preview-blur': `${homeBackground.blur}px`
   } as CSSProperties
+
+  const handleChooseAppIcon = async () => {
+    setAppIconError('')
+    setAppIconBusy(true)
+    try {
+      const result = await window.electronAPI.app.chooseAppIcon()
+      if (result.canceled) return
+      if (result.error) setAppIconError(result.error)
+      setAppIcon({ custom: result.custom, previewUrl: result.previewUrl })
+    } catch (error) {
+      setAppIconError(error instanceof Error ? error.message : '更换图标失败')
+    } finally {
+      setAppIconBusy(false)
+    }
+  }
+
+  const handleResetAppIcon = async () => {
+    setAppIconError('')
+    setAppIconBusy(true)
+    try {
+      const result = await window.electronAPI.app.resetAppIcon()
+      setAppIcon(result)
+    } catch (error) {
+      setAppIconError(error instanceof Error ? error.message : '恢复默认失败')
+    } finally {
+      setAppIconBusy(false)
+    }
+  }
 
   const handlePickBackground = async () => {
     setBackgroundError('')
@@ -145,6 +179,44 @@ function AppearanceTab() {
           </Tabs.List>
         </Tabs.ListContainer>
       </Tabs>
+
+      <h3 className="section-title" style={{ marginTop: '2rem' }}>应用图标</h3>
+      <div className="home-background-controls" style={{ alignItems: 'center', gap: '12px' }}>
+        <div
+          aria-hidden
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 12,
+            overflow: 'hidden',
+            background: 'var(--heroui-default-100)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          {appIcon.previewUrl ? (
+            <img src={appIcon.previewUrl} alt="" width={48} height={48} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            <Picture width={22} height={22} />
+          )}
+        </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <Label>{appIcon.custom ? '自定义图标' : '默认图标'}</Label>
+          <Description>自己选 png / ico。马上改窗口、任务栏和托盘。桌面上的安装包图标要重新打包才会变。</Description>
+          {appIconError ? <div className="home-background-error">{appIconError}</div> : null}
+        </div>
+        <button type="button" className="btn btn-secondary home-background-import-btn" disabled={appIconBusy} onClick={() => void handleChooseAppIcon()}>
+          <ArrowUpToLine width={16} height={16} aria-hidden />
+          {appIconBusy ? '处理中...' : '选择图标'}
+        </button>
+        {appIcon.custom ? (
+          <button type="button" className="btn btn-secondary home-background-import-btn" disabled={appIconBusy} onClick={() => void handleResetAppIcon()}>
+            恢复默认
+          </button>
+        ) : null}
+      </div>
 
       {SUPPORTS_REPLY_TILE && (
         <>

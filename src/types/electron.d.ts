@@ -902,6 +902,9 @@ export interface ElectronAPI {
     }>
     downloadAndInstall: () => Promise<void>
     getStartupDbConnected?: () => Promise<boolean>
+    getAppIcon: () => Promise<{ custom: boolean; previewUrl: string | null }>
+    chooseAppIcon: () => Promise<{ canceled?: boolean; custom: boolean; previewUrl: string | null; error?: string }>
+    resetAppIcon: () => Promise<{ custom: boolean; previewUrl: string | null }>
     onDownloadProgress: (callback: (progress: UpdateDownloadProgressPayload) => void) => () => void
     onUpdateAvailable: (callback: (info: {
       hasUpdate: boolean

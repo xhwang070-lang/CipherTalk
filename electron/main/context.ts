@@ -42,6 +42,7 @@ export interface WindowManager {
   createSplashWindow(): BrowserWindow
   closeSplashWindow(): Promise<void>
   createTray(): Tray | null
+  applyAppIcon(): void
   destroyTray(): void
   focusMainWindow(route?: string): BrowserWindow
   setDockIcon(): void

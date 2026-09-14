@@ -1,4 +1,4 @@
-import { app, ipcMain } from 'electron'
+import { app, dialog, ipcMain } from 'electron'
 import { isProcessElevated, relaunchProcessElevated } from '../elevation'
 import { appUpdateService } from '../../services/appUpdateService'
 import { getMcpLaunchConfig as getMcpLaunchConfigForUi } from '../../services/mcp/runtime'
@@ -65,5 +65,37 @@ export function registerAppHandlers(ctx: MainProcessContext): void {
     const connected = ctx.getStartupDbConnected()
     ctx.setStartupDbConnected(false)
     return connected
+  })
+
+  ipcMain.handle('app:getAppIcon', async () => {
+    const { getAppIconState } = await import('../../services/appIconService')
+    return getAppIconState()
+  })
+
+  ipcMain.handle('app:chooseAppIcon', async () => {
+    const win = ctx.getMainWindow()
+    const options = {
+      title: '选择应用图标',
+      properties: ['openFile'] as Array<'openFile'>,
+      filters: [
+        { name: '图标', extensions: ['ico', 'png', 'jpg', 'jpeg', 'webp'] },
+      ],
+    }
+    const picked = win && !win.isDestroyed()
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options)
+    if (picked.canceled || !picked.filePaths[0]) return { canceled: true, custom: false, previewUrl: null }
+    const { saveCustomAppIcon, getAppIconState } = await import('../../services/appIconService')
+    const saved = saveCustomAppIcon(picked.filePaths[0])
+    if (!saved.success) return { canceled: false, error: saved.error, ...getAppIconState() }
+    ctx.getWindowManager().applyAppIcon()
+    return { canceled: false, ...getAppIconState() }
+  })
+
+  ipcMain.handle('app:resetAppIcon', async () => {
+    const { clearCustomAppIcon, getAppIconState } = await import('../../services/appIconService')
+    clearCustomAppIcon()
+    ctx.getWindowManager().applyAppIcon()
+    return getAppIconState()
   })
 }
