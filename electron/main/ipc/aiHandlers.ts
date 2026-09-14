@@ -1569,6 +1569,26 @@ export function registerAiHandlers(ctx: MainProcessContext): void {
     }
   })
 
+  ipcMain.handle('todo:notifyGet', async () => {
+    const { publicTodoWechatNotifyConfig } = await import('../../services/agent/huajiTodoWechatNotify')
+    return { success: true, config: publicTodoWechatNotifyConfig() }
+  })
+
+  ipcMain.handle('todo:notifySave', async (_event, payload: { enabled?: boolean; endpoint?: string; token?: string }) => {
+    const { saveTodoWechatNotifyConfig, publicTodoWechatNotifyConfig } = await import('../../services/agent/huajiTodoWechatNotify')
+    saveTodoWechatNotifyConfig(payload || {})
+    return { success: true, config: publicTodoWechatNotifyConfig() }
+  })
+
+  ipcMain.handle('todo:notifyTest', async () => {
+    try {
+      const { sendTodoWechatNotify } = await import('../../services/agent/huajiTodoWechatNotify')
+      return await sendTodoWechatNotify({ test: true })
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
   ipcMain.handle('memory:create', async (_event, payload: {
     memoryUid?: string
     sourceType?: string

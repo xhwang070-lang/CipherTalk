@@ -1715,6 +1715,9 @@ export interface ElectronAPI {
     uncomplete: (id: string) => Promise<{ success: boolean; item?: { id: string; title: string }; error?: string }>
     remove: (id: string) => Promise<{ success: boolean; error?: string }>
     openFile: (id: string) => Promise<{ success: boolean; error?: string; path?: string }>
+    notifyGet: () => Promise<{ success: boolean; config?: { enabled: boolean; endpoint: string; hasToken: boolean }; error?: string }>
+    notifySave: (payload: { enabled?: boolean; endpoint?: string; token?: string }) => Promise<{ success: boolean; config?: { enabled: boolean; endpoint: string; hasToken: boolean }; error?: string }>
+    notifyTest: () => Promise<{ success: boolean; skipped?: boolean; sent?: number; error?: string }>
   }
   memory: {
 
