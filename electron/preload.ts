@@ -317,6 +317,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('todo:uncomplete', id) as Promise<{ success: boolean; item?: { id: string; title: string }; error?: string }>,
     remove: (id: string) =>
       ipcRenderer.invoke('todo:remove', id) as Promise<{ success: boolean; error?: string }>,
+    openFile: (id: string) =>
+      ipcRenderer.invoke('todo:openFile', id) as Promise<{ success: boolean; error?: string; path?: string }>,
   },
   // AI 长期记忆管理（cachePath/memory-bank）
   memory: {

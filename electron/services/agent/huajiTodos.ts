@@ -18,6 +18,8 @@ export type HuajiTodoItem = {
   source: HuajiTodoSource
   person?: string
   sessionId?: string
+  localId?: number
+  fileName?: string
   unverified?: boolean
   evidence?: string
   createdAt: number
@@ -87,11 +89,12 @@ export function listHuajiTodos(when?: HuajiTodoWhen | 'all'): HuajiTodoItem[] {
   rolloverHuajiTodos()
   const today = localDateKey()
   const tomorrow = tomorrowDateKey(today)
-  return readFile().items.filter((item) => {
-    if (when === 'today') return !item.done && item.due === today
-    if (when === 'tomorrow') return !item.done && item.due === tomorrow
+  const items = readFile().items.filter((item) => {
+    if (when === 'today') return item.due === today
+    if (when === 'tomorrow') return item.due === tomorrow
     return true
   })
+  return items.sort((a, b) => Number(a.done) - Number(b.done) || b.createdAt - a.createdAt)
 }
 
 export function addHuajiTodo(input: {
@@ -100,6 +103,8 @@ export function addHuajiTodo(input: {
   source?: HuajiTodoSource
   person?: string
   sessionId?: string
+  localId?: number
+  fileName?: string
   unverified?: boolean
   evidence?: string
 }): HuajiTodoItem {
@@ -114,6 +119,8 @@ export function addHuajiTodo(input: {
     source: input.source || 'user',
     person: input.person ? String(input.person).trim().slice(0, 40) : undefined,
     sessionId: input.sessionId ? String(input.sessionId).trim() : undefined,
+    localId: Number(input.localId || 0) > 0 ? Number(input.localId) : undefined,
+    fileName: input.fileName ? String(input.fileName).trim().slice(0, 180) : undefined,
     unverified: input.unverified ? true : undefined,
     evidence: input.evidence ? String(input.evidence).replace(/\s+/g, ' ').trim().slice(0, 120) : undefined,
     createdAt: Date.now(),
@@ -156,10 +163,10 @@ export function removeHuajiTodo(id: string): boolean {
 }
 
 export function formatHuajiTodos(when: HuajiTodoWhen): string {
-  const items = listHuajiTodos(when)
+  const items = listHuajiTodos(when).filter((item) => !item.done)
   const label = when === 'tomorrow' ? '明日待办' : '今日待办'
   if (items.length === 0) {
-    return label + '是空的。可以说「记一下，明天给张俊博发报价」，或「把我和张俊博今天的待办记下来」。'
+    return label + '是空的。可以说「记一下，明天给xxx发报价」，或「把我和xxx今天的待办记下来」。'
   }
   return [label + '：'].concat(items.map((item, index) => {
     const mark = item.unverified ? '待核 ' : ''
@@ -206,4 +213,45 @@ export function parseTodoDoneCommand(text: string): string | null {
   const matched = value.match(/^(?:完成待办|待办完成|搞定了|做完了)[，,：:\s]*(.+)$/i)
   if (!matched || !matched[1]) return null
   return matched[1].trim()
+}
+
+
+export function displayTodoPerson(person?: string): string {
+  const trimmed = String(person || '').trim()
+  const stripped = trimmed.replace(/\d{6,}$/g, '').replace(/[-_\s]+$/g, '').trim()
+  return stripped || trimmed
+}
+
+export function inferTodoFileName(item: HuajiTodoItem): string {
+  if (item.fileName) return item.fileName
+  const matches = String(item.title || '').match(/[^\s\\/:*?"<>|]{2,}\.(?:docx?|pdf|xlsx|xls)/gi)
+  return matches && matches.length ? matches[matches.length - 1] : ''
+}
+
+export async function openHuajiTodoFile(id: string): Promise<{ success: boolean; error?: string; path?: string }> {
+  const item = listHuajiTodos('all').find((row) => row.id === id)
+  if (!item) return { success: false, error: '没有这条待办' }
+  const fileName = inferTodoFileName(item)
+  if (!fileName) return { success: false, error: '这条待办没有文件' }
+  const { ConfigService } = await import('../config')
+  const { resolveChatFilePath } = await import('../chat/fileExtract')
+  const { shell } = await import('electron')
+  const config = new ConfigService()
+  try {
+    const dbPath = String(config.get('dbPath') || '').trim()
+    const wxid = String(config.get('myWxid') || '').trim()
+    if (!dbPath || !wxid) return { success: false, error: '还没有配置微信数据目录' }
+    const filePath = resolveChatFilePath({
+      dbPath,
+      wxid,
+      fileName,
+      createTime: item.createdAt > 10_000_000_000 ? Math.floor(item.createdAt / 1000) : item.createdAt,
+    })
+    if (!filePath) return { success: false, error: '本地还没找到这个文件，可能微信没下载完' }
+    const openError = await shell.openPath(filePath)
+    if (openError) return { success: false, error: openError, path: filePath }
+    return { success: true, path: filePath }
+  } finally {
+    config.close()
+  }
 }

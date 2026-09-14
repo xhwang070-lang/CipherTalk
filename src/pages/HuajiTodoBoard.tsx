@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button, Card, InputGroup, TextField } from '@heroui/react'
-import { Check, Plus, TrashBin } from '@gravity-ui/icons'
+import { Check, FolderOpen, Plus, TrashBin } from '@gravity-ui/icons'
 
 type TodoItem = {
   id: string
@@ -9,6 +9,7 @@ type TodoItem = {
   done: boolean
   person?: string
   unverified?: boolean
+  fileName?: string
 }
 
 type TodoWhen = 'today' | 'tomorrow'
@@ -70,6 +71,27 @@ export default function HuajiTodoBoard() {
     }
   }
 
+  const openFile = async (item: TodoItem) => {
+    if (busy) return
+    setBusy(true)
+    setError('')
+    try {
+      const res = await window.electronAPI.todo.openFile(item.id)
+      if (!res.success) throw new Error(res.error || '打不开这个文件')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '打不开这个文件')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const looksLikeFile = (item: TodoItem) => Boolean(item.fileName) || /\.(docx?|pdf|xlsx|xls)(\b|$)/i.test(item.title)
+
+  const displayPerson = (person?: string) => {
+    const trimmed = String(person || '').trim()
+    return trimmed.replace(/\d{6,}$/g, '').replace(/[-_\s]+$/g, '').trim() || trimmed
+  }
+
   const remove = async (id: string) => {
     setBusy(true)
     setError('')
@@ -94,7 +116,7 @@ export default function HuajiTodoBoard() {
       </Card.Header>
       <Card.Content className="space-y-3">
         {items.length === 0 ? (
-          <p className="m-0 text-sm text-muted-foreground">还没有。下面记一条，或微信说「把我和张俊博今天的待办记下来」。</p>
+          <p className="m-0 text-sm text-muted-foreground">还没有。下面记一条，或微信说「把我和xxx今天的待办记下来」。</p>
         ) : (
           <ul className="m-0 list-none space-y-2 p-0">
             {items.map((item) => (
@@ -109,9 +131,22 @@ export default function HuajiTodoBoard() {
                 </button>
                 <span className={'min-w-0 flex-1 text-sm leading-6 ' + (item.done ? 'text-muted-foreground line-through' : 'text-foreground')}>
                   {item.unverified ? <span className="mr-1 text-xs text-muted-foreground">待核</span> : null}
-                  {item.title}
-                  {item.person ? <span className="ml-1 text-xs text-muted-foreground">（{item.person}）</span> : null}
+                  {looksLikeFile(item) ? (
+                    <button
+                      className="m-0 inline p-0 text-left text-sm text-accent underline-offset-2 hover:underline"
+                      type="button"
+                      onClick={() => void openFile(item)}
+                    >
+                      {item.title}
+                    </button>
+                  ) : item.title}
+                  {item.person ? <span className="ml-1 text-xs text-muted-foreground">（{displayPerson(item.person)}）</span> : null}
                 </span>
+                {looksLikeFile(item) ? (
+                  <Button isIconOnly aria-label="打开文件" size="sm" variant="ghost" onPress={() => void openFile(item)}>
+                    <FolderOpen className="size-4" />
+                  </Button>
+                ) : null}
                 <Button isIconOnly aria-label="删除待办" size="sm" variant="ghost" onPress={() => void remove(item.id)}>
                   <TrashBin className="size-4" />
                 </Button>

@@ -28,6 +28,8 @@ export type ExtractedChatTodo = {
   when: HuajiTodoWhen
   evidence: string
   unverified: boolean
+  fileName?: string
+  localId?: number
 }
 
 export type ExtractChatTodosResult = {
@@ -317,7 +319,7 @@ function isTodoText(text: string): boolean {
   return TIME_RE.test(text) && /发|改|看|回|确认|安排|到/.test(text)
 }
 
-function extractFromMessages(person: string, messages: Array<{ fromMe: boolean; text: string }>, fallback: HuajiTodoWhen): ExtractedChatTodo[] {
+function extractFromMessages(person: string, messages: Array<{ fromMe: boolean; text: string; fileName?: string; localId?: number }>, fallback: HuajiTodoWhen): ExtractedChatTodo[] {
   const found: ExtractedChatTodo[] = []
   const seen = new Set<string>()
   for (const message of messages) {
@@ -333,6 +335,8 @@ function extractFromMessages(person: string, messages: Array<{ fromMe: boolean; 
       when: guessWhen(text, fallback),
       evidence: text.slice(0, 120),
       unverified: looksLikeOtherPerson(text, person),
+      fileName: message.fileName,
+      localId: message.localId,
     })
   }
   return found.slice(-12)
@@ -410,6 +414,8 @@ export async function extractChatTodos(input: {
   const messages = ordered.map((m) => ({
     fromMe: compactMessage(m, senderMap.get(m.senderUsername || '')).fromMe,
     text: media.texts.get(m.localId) || messageText(m),
+    fileName: m.fileName,
+    localId: m.localId,
   }))
   if (messages.length === 0) {
     const latestRes = await chatService.getMessages(sessionId, 0, 1)
@@ -434,6 +440,8 @@ export async function extractChatTodos(input: {
     extracted = extractFromMessages(displayName, ordered.map((m) => ({
       fromMe: compactMessage(m, nextSenders.get(m.senderUsername || '')).fromMe,
       text: moreMedia.texts.get(m.localId) || messageText(m),
+      fileName: m.fileName,
+      localId: m.localId,
     })), fallbackWhen)
     if (moreMedia.note) media.note = moreMedia.note
   }
@@ -451,6 +459,8 @@ export async function extractChatTodos(input: {
       source: 'chat',
       person: displayName,
       sessionId,
+      localId: item.localId,
+      fileName: item.fileName,
       unverified: item.unverified,
       evidence: item.evidence,
     }))

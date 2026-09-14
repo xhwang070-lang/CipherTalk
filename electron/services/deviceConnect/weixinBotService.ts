@@ -1516,7 +1516,7 @@ class WeixinBotService {
 
     if (isHelpCommand(trimmed)) {
       await sendText(session, from,
-        '可用命令：\n今天待办\n明天待办\n记一下，明天给张俊博发报价\n把我和张俊博今天的待办记下来\n把我和张俊博这7天的待办记下来\n完成待办 报价已发\n/new\n打开XXX的数字分身\n退出数字分身',
+        '可用命令：\n今天待办\n明天待办\n记一下，明天给xxx发报价\n把我和xxx今天的待办记下来\n把我和xxx这7天的待办记下来\n完成待办 报价已发\n/new\n打开XXX的数字分身\n退出数字分身',
         contextToken)
       return true
     }

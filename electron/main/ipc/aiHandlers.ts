@@ -1560,6 +1560,15 @@ export function registerAiHandlers(ctx: MainProcessContext): void {
     }
   })
 
+  ipcMain.handle('todo:openFile', async (_event, id: string) => {
+    try {
+      const { openHuajiTodoFile } = await import('../../services/agent/huajiTodos')
+      return await openHuajiTodoFile(String(id || ''))
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
   ipcMain.handle('memory:create', async (_event, payload: {
     memoryUid?: string
     sourceType?: string
