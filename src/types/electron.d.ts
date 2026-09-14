@@ -1716,6 +1716,8 @@ export interface ElectronAPI {
     readDiary: (date: string) => Promise<{ success: boolean; diary?: MemoryDiaryEntryInfo; error?: string }>
     deleteDiary: (date: string) => Promise<{ success: boolean; error?: string }>
     summarizeTodayDiary: () => Promise<{ success: boolean; alreadyExists?: boolean; diary?: MemoryDiaryEntryInfo; error?: string }>
+    readHuajiWorkLog: (date?: string) => Promise<{ success: boolean; log?: { date: string; content: string; path: string } | null; error?: string }>
+    rebuildHuajiWorkLog: (date?: string) => Promise<{ success: boolean; log?: { date: string; content: string; path: string }; error?: string }>
     create: (payload: { memoryUid?: string; sourceType?: AgentMemorySourceType; content?: string; title?: string; importance?: number; confidence?: number; tags?: string[] }) => Promise<{ success: boolean; item?: AgentMemoryItem; error?: string }>
     delete: (id: number) => Promise<{ success: boolean; error?: string }>
     update: (payload: { id: number; sourceType?: AgentMemorySourceType; content?: string; importance?: number; confidence?: number; tags?: string[] }) => Promise<{ success: boolean; item?: AgentMemoryItem; error?: string }>

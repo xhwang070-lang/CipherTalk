@@ -336,6 +336,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('memory:deleteDiary', date) as Promise<{ success: boolean; error?: string }>,
     summarizeTodayDiary: () =>
       ipcRenderer.invoke('memory:summarizeTodayDiary') as Promise<{ success: boolean; alreadyExists?: boolean; diary?: unknown; error?: string }>,
+    readHuajiWorkLog: (date?: string) =>
+      ipcRenderer.invoke('memory:readHuajiWorkLog', date) as Promise<{ success: boolean; log?: { date: string; content: string; path: string } | null; error?: string }>,
+    rebuildHuajiWorkLog: (date?: string) =>
+      ipcRenderer.invoke('memory:rebuildHuajiWorkLog', date) as Promise<{ success: boolean; log?: { date: string; content: string; path: string }; error?: string }>,
     create: (payload: {
       memoryUid?: string
       sourceType?: string

@@ -348,11 +348,22 @@ class NightlyMemoryService {
     if (this.timer) return
     this.ctx = ctx
     this.timer = setInterval(() => {
+      void this.rebuildWorkLog()
       void this.check()
     }, CHECK_INTERVAL_MS)
     this.startupTimer = setTimeout(() => {
+      void this.rebuildWorkLog()
       void this.check()
     }, STARTUP_DELAY_MS)
+  }
+
+  private async rebuildWorkLog(): Promise<void> {
+    try {
+      const { rebuildHuajiWorkLog, localDateKey } = await import('../agent/huajiWorkLog')
+      await rebuildHuajiWorkLog(localDateKey())
+    } catch (error) {
+      this.ctx?.getLogService()?.warn('NightlyMemory', '华记工作日志整理跳过', { error: error instanceof Error ? error.message : String(error) })
+    }
   }
 
   stop(): void {

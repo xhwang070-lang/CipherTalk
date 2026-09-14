@@ -1833,6 +1833,20 @@ export default function AgentPage() {
       action: handleSummarizeThisConversation,
     },
     {
+      id: 'today-work',
+      commands: ['/今日工作', '/today'],
+      aliases: ['jinri', '今天办了什么'],
+      label: '今日华记工作日志',
+      description: '根据工作日志说明我今天让华记办过什么，不翻别人的微信聊天',
+      icon: Clock,
+      action: () => {
+        void handleSubmit({
+          text: '请根据华记工作日志和当前记忆，说明我今天让你办过什么。只看我和华记之间的工作台账，不要去翻别人的微信聊天。按时间列出：问了什么、是否完成、失败原因。如果今天没有记录，直接说没有。',
+          files: [],
+        })
+      },
+    },
+    {
       id: 'clear',
       commands: ['/clear', '/new'],
       aliases: ['qingkong', 'xin', '清空', '新对话'],

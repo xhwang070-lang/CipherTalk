@@ -1424,6 +1424,7 @@ class WeixinBotService {
       }
     } finally {
       await typing?.stop()
+      void import('../agent/huajiWorkLog').then((mod) => mod.rebuildHuajiWorkLog()).catch(() => undefined)
     }
   }
 

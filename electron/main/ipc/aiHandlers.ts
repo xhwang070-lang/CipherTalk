@@ -1490,6 +1490,26 @@ export function registerAiHandlers(ctx: MainProcessContext): void {
     }
   })
 
+  ipcMain.handle('memory:readHuajiWorkLog', async (_event, date?: string) => {
+    try {
+      const { readHuajiWorkLog, localDateKey } = await import('../../services/agent/huajiWorkLog')
+      const log = readHuajiWorkLog(date || localDateKey())
+      return log ? { success: true, log } : { success: true, log: null }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  ipcMain.handle('memory:rebuildHuajiWorkLog', async (_event, date?: string) => {
+    try {
+      const { rebuildHuajiWorkLog, localDateKey } = await import('../../services/agent/huajiWorkLog')
+      const log = await rebuildHuajiWorkLog(date || localDateKey())
+      return { success: true, log }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
   ipcMain.handle('memory:create', async (_event, payload: {
     memoryUid?: string
     sourceType?: string

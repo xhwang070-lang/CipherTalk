@@ -633,6 +633,7 @@ export class MemoryDatabase {
     mkdirSync(join(root, ITEMS_DIR), { recursive: true })
     mkdirSync(join(root, SELF_REFERENCE_DIR, 'diaries'), { recursive: true })
     mkdirSync(join(root, 'conversations'), { recursive: true })
+    mkdirSync(join(root, 'huaji-work-logs'), { recursive: true })
     mkdirSync(join(root, 'tasks'), { recursive: true })
     mkdirSync(join(root, 'notes'), { recursive: true })
     this.writeIfMissing(join(root, 'MEMORY.md'), [
@@ -644,6 +645,7 @@ export class MemoryDatabase {
       '- ct-self-reference/relationship.md - AI 与用户的关系',
       '- ct-self-reference/diaries/ - 每日日记',
       '- conversations/ - 对话日志',
+      '- huaji-work-logs/ - 华记工作日志（你和华记之间办了什么）',
       '- tasks/ - 任务笔记',
       '- notes/ - 知识笔记',
       '',
@@ -1158,6 +1160,16 @@ export class MemoryDatabase {
       parts.push(`\n## ${file.title}\n${content}`)
     }
 
+    const workLogs = this.listRecentFiles(join(root, 'huaji-work-logs'), 2)
+    if (workLogs.length > 0) {
+      parts.push('\n## 华记工作日志')
+      parts.push('这是用户和华记之间的工作台账，不是微信好友日记。问今天让华记办过什么、查过谁时，优先看这里。')
+      for (const file of workLogs) {
+        const content = this.readTextFile(file, 8000)
+        if (content) parts.push(`\n### ${basename(file)}\n${content}`)
+      }
+    }
+
     const diaries = this.listRecentFiles(join(root, SELF_REFERENCE_DIR, 'diaries'), 2)
     if (diaries.length > 0) {
       parts.push('\n## 最近日记')
@@ -1232,7 +1244,11 @@ export class MemoryDatabase {
 
   private retrieveRecentContext(days: number): MarkdownMemoryRetrieval {
     const root = this.ensureBank()
-    const files = this.listRecentFiles(join(root, 'conversations'), Math.max(1, Math.min(days, 7)))
+    const workLogs = this.listRecentFiles(join(root, 'huaji-work-logs'), Math.max(1, Math.min(days, 7)))
+    const files = [
+      ...workLogs,
+      ...this.listRecentFiles(join(root, 'conversations'), Math.max(1, Math.min(days, 7))),
+    ]
     const context = files
       .map((file) => {
         const content = this.readTextFile(file, 10_000)
@@ -1247,6 +1263,7 @@ export class MemoryDatabase {
   private retrieveTopicContext(query: string, limit: number): MarkdownMemoryRetrieval {
     const root = this.ensureBank()
     const spaces = [
+      { label: '华记工作日志', dir: join(root, 'huaji-work-logs'), fileLimit: 60, charLimit: 40_000, textLimit: 2200 },
       { label: '对话', dir: join(root, 'conversations'), fileLimit: 365, charLimit: 80_000, textLimit: 1800 },
       { label: '任务', dir: join(root, 'tasks'), fileLimit: 120, charLimit: 20_000, textLimit: 2200 },
       { label: '笔记', dir: join(root, 'notes'), fileLimit: 120, charLimit: 20_000, textLimit: 2200 },

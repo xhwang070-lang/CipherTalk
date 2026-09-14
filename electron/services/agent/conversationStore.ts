@@ -108,6 +108,21 @@ function safeJsonParseMessage(value: string): UIMessage | null {
   return null
 }
 
+function textFromAgentMessageJson(raw: string): string {
+  try {
+    const message = JSON.parse(raw) as { parts?: Array<{ text?: unknown }> }
+    const parts = Array.isArray(message.parts) ? message.parts : []
+    return parts
+      .map((part) => typeof part?.text === 'string' ? part.text : '')
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 120)
+  } catch {
+    return ''
+  }
+}
+
 export class AgentConversationStore {
   private db: Database.Database | null = null
   private dbPath: string | null = null
@@ -552,6 +567,45 @@ export class AgentConversationStore {
     const record = this.loadMeta(id)
     this.emitChange('messages-replaced', record, options)
     return record
+  }
+
+  listTurnsBetween(startMs: number, endMs: number): Array<{
+    conversationId: number
+    source: string
+    title: string
+    role: string
+    text: string
+    createdAt: number
+  }> {
+    const db = this.getDb()
+    const identity = this.getAccountIdentity()
+    this.claimCompatibleAccountRows(db, identity)
+    const rows = db.prepare(`
+      SELECT c.id AS conversation_id, c.source AS source, c.title AS title,
+             m.role AS role, m.ui_message_json AS ui_message_json, m.created_at AS created_at
+      FROM agent_messages m
+      JOIN agent_conversations c ON c.id = m.conversation_id
+      WHERE c.account_id = ?
+        AND m.created_at >= ?
+        AND m.created_at < ?
+        AND c.scope_kind != 'persona'
+      ORDER BY m.created_at ASC, m.id ASC
+    `).all(identity.primary, startMs, endMs) as Array<{
+      conversation_id: number
+      source: string
+      title: string
+      role: string
+      ui_message_json: string
+      created_at: number
+    }>
+    return rows.map((row) => ({
+      conversationId: Number(row.conversation_id),
+      source: String(row.source || 'app'),
+      title: String(row.title || ''),
+      role: String(row.role || ''),
+      text: textFromAgentMessageJson(String(row.ui_message_json || '')),
+      createdAt: Number(row.created_at || 0),
+    })).filter((row) => row.text)
   }
 
   getLast(scope?: AgentScope): AgentConversationRecord | null {

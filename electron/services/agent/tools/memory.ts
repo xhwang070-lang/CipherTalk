@@ -374,6 +374,20 @@ export async function afterTurnMemory(opts: {
 }): Promise<AutoMemoryResult[]> {
   const { scope, providerConfig, userText, assistantText, signal } = opts
   memoryDatabase.appendConversationTurn(userText, assistantText)
+  try {
+    const question = String(userText || '').trim()
+    if (question && !question.includes('请根据华记工作日志')) {
+      const { appendHuajiWorkLogEntry } = await import('../huajiWorkLog')
+      appendHuajiWorkLogEntry({
+        source: 'app',
+        question: question,
+        result: assistantText,
+        ok: true,
+      })
+    }
+  } catch {
+    // 工作日志失败不影响记忆抽取。
+  }
   const auto = await extractMemories({ scope, providerConfig, userText, assistantText, signal })
   await maybeRunDailyConsolidation(providerConfig, signal)
   return auto

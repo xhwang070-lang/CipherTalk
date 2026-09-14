@@ -263,6 +263,8 @@ function getDiaryExportOptions(node: HTMLElement, includeMemoryClues: boolean, w
 export default function DiaryPage() {
   const [diaries, setDiaries] = useState<MemoryDiaryEntryInfo[]>([])
   const [selectedDate, setSelectedDate] = useState('')
+  const [workLog, setWorkLog] = useState<{ date: string; content: string } | null>(null)
+  const [workLogBusy, setWorkLogBusy] = useState(false)
   const selectedDateRef = useRef('')
   const [selectedDiary, setSelectedDiary] = useState<MemoryDiaryEntryInfo | null>(null)
   const [loading, setLoading] = useState(true)
@@ -356,6 +358,34 @@ export default function DiaryPage() {
   useEffect(() => {
     void loadDiaries()
   }, [loadDiaries])
+
+  const loadWorkLog = useCallback(async () => {
+    try {
+      const res = await window.electronAPI.memory.readHuajiWorkLog()
+      if (res.success) setWorkLog(res.log || null)
+    } catch {
+      setWorkLog(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadWorkLog()
+  }, [loadWorkLog])
+
+  const rebuildWorkLog = useCallback(async () => {
+    if (workLogBusy) return
+    setWorkLogBusy(true)
+    setError('')
+    try {
+      const res = await window.electronAPI.memory.rebuildHuajiWorkLog()
+      if (!res.success || !res.log) throw new Error(res.error || '整理工作日志失败')
+      setWorkLog(res.log)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '整理工作日志失败')
+    } finally {
+      setWorkLogBusy(false)
+    }
+  }, [workLogBusy])
 
   useEffect(() => {
     if (settingsOpen) void loadDiarySettings()
@@ -521,6 +551,27 @@ export default function DiaryPage() {
           </Button>
         </div>
       </header>
+
+      <Card className="mx-7 mb-4">
+        <Card.Header className="gap-2">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <Card.Title className="text-base">今日华记工作日志</Card.Title>
+              <Card.Description className="text-sm leading-7">
+                这是你和华记之间办过的事，不是微信好友日记。微信里也可以问「我今天让你办过什么」。
+              </Card.Description>
+            </div>
+            <Button isDisabled={workLogBusy} size="sm" variant="secondary" onPress={() => void rebuildWorkLog()}>
+              {workLogBusy ? '整理中...' : '整理今日'}
+            </Button>
+          </div>
+        </Card.Header>
+        <Card.Content>
+          <pre className="m-0 max-h-56 overflow-auto whitespace-pre-wrap text-sm leading-7 text-foreground">
+            {workLog?.content || '今天还没有和华记办过事。微信里问一句，或在助手里聊一轮，再点整理。'}
+          </pre>
+        </Card.Content>
+      </Card>
 
       {error && (
         <Card className="mx-7 mb-4 border-danger/20 bg-danger-soft text-danger-soft-foreground">
