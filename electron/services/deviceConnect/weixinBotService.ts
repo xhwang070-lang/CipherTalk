@@ -1462,6 +1462,7 @@ class WeixinBotService {
           person: candidate.displayName,
           sessionId: candidate.username,
           range: pending.range || (pending.when === 'tomorrow' ? 'tomorrow' : 'today'),
+          onProgress: (text) => { void sendText(session, from, text, contextToken) },
         })
         await sendText(session, from, formatExtractChatTodos(result), contextToken)
         return true
@@ -1565,6 +1566,7 @@ class WeixinBotService {
         person: candidates[0].displayName,
         sessionId: candidates[0].username,
         range: todoExtract.range,
+        onProgress: (text) => { void sendText(session, from, text, contextToken) },
       })
       await sendText(session, from, formatExtractChatTodos(result), contextToken)
       return true

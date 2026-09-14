@@ -89,7 +89,7 @@ export function createExtractChatTodos() {
     description:
       '从指定一场微信聊天里提取今天/明天待办并记到华记待办本。用户说「把我和张俊博今天的待办记下来」时用。' +
       '必须先用 list_contacts 拿到那一个人/群的 username，只看这一场，禁止扫别人的聊天。' +
-      '人名、金额、货期必须能对上该场原文；对不上的会标待核。不要夜间全库自动挖。',
+      '人名、金额、货期必须能对上该场原文；对不上的会标待核。语音会本地转写，图片用当前能看图的模型识别。不要夜间全库自动挖。',
     inputSchema: z.object({
       person: z.string().min(1).describe('人名或群名，例如 张俊博'),
       sessionId: z.string().optional().describe('该场聊天 username。能确定时必填，避免同名串人'),

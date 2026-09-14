@@ -40,6 +40,7 @@ export type ExtractChatTodosResult = {
   skipped: number
   candidates?: ChatTodoCandidate[]
   message?: string
+  mediaNote?: string
 }
 
 const ACTION_RE = /报价|打样|发货|货期|核对|确认|改合同|合同号|下单|转账|到货|安排|公差|催货|付款|尾款|对账|发图纸|发合同|交货|周期|合同|图纸|样品|法兰|开票|发票|材质|数量|改一下|发我|发给我|帮我|你看下|确认一下|尽快|转了|打款/
@@ -160,6 +161,16 @@ function looksLikeOtherPerson(text: string, person: string): boolean {
   return names.some((name) => name !== person && name !== '我们' && name !== '他们')
 }
 
+function messageKind(message: Message): 'image' | 'voice' | 'other' {
+  const type = Number(message.localType || 0) % 1000
+  if (type === 3) return 'image'
+  if (type === 34) return 'voice'
+  const text = String(message.parsedContent || '')
+  if (text === '[图片]') return 'image'
+  if (text === '[语音消息]') return 'voice'
+  return 'other'
+}
+
 function messageText(message: Message): string {
   const compact = compactMessage(message)
   const pieces = [
@@ -168,6 +179,103 @@ function messageText(message: Message): string {
     message.quotedContent || '',
   ].map((item) => String(item || '').replace(/\s+/g, ' ').trim())
   return pieces.filter(Boolean).join(' ').trim()
+}
+
+const MAX_VOICE = 15
+const MAX_IMAGE = 8
+const MEDIA_BUDGET_MS = 90_000
+
+async function transcribeVoice(sessionId: string, message: Message): Promise<string> {
+  const { sttRuntimeService } = await import('../sttRuntimeService')
+  if (sttRuntimeService.hasCachedTranscript(sessionId, message.createTime, message.localId)) {
+    return String(sttRuntimeService.getCachedTranscript(sessionId, message.createTime, message.localId) || '').replace(/\s+/g, ' ').trim().slice(0, 140)
+  }
+  const voice = await chatService.getVoiceData(sessionId, String(message.localId), message.createTime, message.serverId)
+  if (!voice.success || !voice.data) return ''
+  const result = await sttRuntimeService.transcribeWavBuffer(Buffer.from(voice.data, 'base64'), {
+    cache: { sessionId, createTime: message.createTime, localId: message.localId },
+  })
+  return String(result.transcript || '').replace(/\s+/g, ' ').trim().slice(0, 140)
+}
+
+async function describeImage(sessionId: string, message: Message): Promise<string> {
+  const image = await chatService.getImageData(sessionId, String(message.localId), message.createTime)
+  if (!image.success || !image.data) return ''
+  const buffer = Buffer.from(image.data, 'base64')
+  if (!buffer.length) return ''
+  const [{ resolveProviderConfig }, { currentModelVisionSupport }, { createLanguageModel }, { generateText }, { detectImageMime }] = await Promise.all([
+    import('./resolveProviderConfig'),
+    import('./tools/mediaHistory'),
+    import('./provider'),
+    import('ai'),
+    import('../media/mediaResolver'),
+  ])
+  const providerConfig = resolveProviderConfig()
+  if (currentModelVisionSupport(providerConfig) === false) return ''
+  const mediaType = detectImageMime(buffer) || 'image/jpeg'
+  const description = (await generateText({
+    model: createLanguageModel(providerConfig),
+    system: '你是华记的看图工具。只用中文。只提取图里能确定的待办：报价、货期、数量、尺寸公差、材质、合同要求、金额。没有就回复「无待办」。不要编。',
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'text', text: '提取这张微信图片里的待办信息。' },
+        { type: 'file', mediaType, data: { type: 'data', data: buffer.toString('base64') } },
+      ],
+    }],
+    temperature: 0.1,
+  })).text.trim()
+  if (!description || description === '无待办' || description.indexOf('无待办') === 0) return ''
+  return description.replace(/\s+/g, ' ').slice(0, 120)
+}
+
+async function enrichMediaTexts(
+  sessionId: string,
+  ordered: Message[],
+  onProgress?: (text: string) => void,
+): Promise<{ texts: Map<number, string>; note: string }> {
+  const voices = ordered.filter((item) => messageKind(item) === 'voice').slice(-MAX_VOICE)
+  const images = ordered.filter((item) => messageKind(item) === 'image').slice(-MAX_IMAGE)
+  if (voices.length === 0 && images.length === 0) return { texts: new Map(), note: '' }
+  onProgress?.('在识别这一场的语音和图片，可能要一两分钟。')
+  const started = Date.now()
+  const texts = new Map<number, string>()
+  let voiceOk = 0
+  let imageOk = 0
+  let voiceError = ''
+  let imageError = ''
+  for (const message of voices) {
+    if (Date.now() - started > MEDIA_BUDGET_MS) break
+    try {
+      const transcript = await transcribeVoice(sessionId, message)
+      if (transcript) {
+        texts.set(message.localId, '[语音] ' + transcript)
+        voiceOk += 1
+      }
+    } catch (error) {
+      voiceError = error instanceof Error ? error.message : String(error)
+    }
+  }
+  for (const message of images) {
+    if (Date.now() - started > MEDIA_BUDGET_MS) break
+    try {
+      const description = await describeImage(sessionId, message)
+      if (description) {
+        texts.set(message.localId, '[图片] ' + description)
+        imageOk += 1
+      }
+    } catch (error) {
+      imageError = error instanceof Error ? error.message : String(error)
+    }
+  }
+  const parts = []
+  if (voiceOk) parts.push('语音转写 ' + voiceOk + ' 条')
+  if (imageOk) parts.push('图片识别 ' + imageOk + ' 张')
+  if (!voiceOk && voices.length && voiceError) parts.push('语音没转出来：' + voiceError.slice(0, 40))
+  if (!imageOk && images.length && imageError) parts.push('图片没看出来：' + imageError.slice(0, 40))
+  if (!voiceOk && voices.length && !voiceError) parts.push('语音还没转写模型或转写为空')
+  if (!imageOk && images.length && !imageError) parts.push('当前模型可能看不了图，换 Grok/GPT 再试')
+  return { texts, note: parts.join('；') }
 }
 
 function isTodoText(text: string): boolean {
@@ -223,6 +331,7 @@ export async function extractChatTodos(input: {
   range?: ExtractTodoRange
   when?: HuajiTodoWhen
   date?: string
+  onProgress?: (text: string) => void
 }): Promise<ExtractChatTodosResult> {
   const person = String(input.person || '').trim()
   const range: ExtractTodoRange = input.range || (input.when === 'tomorrow' ? 'tomorrow' : 'today')
@@ -263,10 +372,11 @@ export async function extractChatTodos(input: {
     return { ...empty, person: displayName, sessionId, message: error instanceof Error ? error.message : String(error) }
   }
 
+  const media = await enrichMediaTexts(sessionId, ordered, input.onProgress)
   const senderMap = await resolveSenders(ordered.map((m) => m.senderUsername || ''))
   const messages = ordered.map((m) => ({
     fromMe: compactMessage(m, senderMap.get(m.senderUsername || '')).fromMe,
-    text: messageText(m),
+    text: media.texts.get(m.localId) || messageText(m),
   }))
   if (messages.length === 0) {
     const latestRes = await chatService.getMessages(sessionId, 0, 1)
@@ -287,10 +397,12 @@ export async function extractChatTodos(input: {
     usedRange = 'days7'
     ordered = await readSessionMessages(sessionId, usedRange)
     const nextSenders = await resolveSenders(ordered.map((m) => m.senderUsername || ''))
+    const moreMedia = await enrichMediaTexts(sessionId, ordered, input.onProgress)
     extracted = extractFromMessages(displayName, ordered.map((m) => ({
       fromMe: compactMessage(m, nextSenders.get(m.senderUsername || '')).fromMe,
-      text: messageText(m),
+      text: moreMedia.texts.get(m.localId) || messageText(m),
     })), fallbackWhen)
+    if (moreMedia.note) media.note = moreMedia.note
   }
 
   const added: HuajiTodoItem[] = []
@@ -323,9 +435,10 @@ export async function extractChatTodos(input: {
       message: skipped
         ? '这些待办本子里已经有了。'
         : '和「' + displayName + '」' + windowLabel + '没有抽出可记的待办。可以说「把我和' + displayName + '这7天的待办记下来」。',
+      mediaNote: media.note,
     }
   }
-  return { ok: true, person: displayName, sessionId, date, range: usedRange, added, skipped }
+  return { ok: true, person: displayName, sessionId, date, range: usedRange, added, skipped, mediaNote: media.note }
 }
 
 export function formatExtractChatTodos(result: ExtractChatTodosResult): string {
@@ -340,5 +453,6 @@ export function formatExtractChatTodos(result: ExtractChatTodosResult): string {
     lines.push((item.due === tomorrowDateKey() ? '明天 ' : '今天 ') + (item.unverified ? '待核 ' : '') + item.title)
   }
   if (result.skipped) lines.push('另有 ' + result.skipped + ' 条已经在本子里。')
+  if (result.mediaNote) lines.push(result.mediaNote)
   return lines.join('\n')
 }
