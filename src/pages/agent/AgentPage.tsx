@@ -1847,6 +1847,24 @@ export default function AgentPage() {
       },
     },
     {
+      id: 'today-todo',
+      commands: ['/今日待办', '/todos'],
+      aliases: ['daiban', '明天待办'],
+      label: '今日待办',
+      description: '查看今天和明天的待办，不翻微信聊天',
+      icon: ListCheck,
+      action: () => {
+        void window.electronAPI.todo.list('today').then(async (today) => {
+          const tomorrow = await window.electronAPI.todo.list('tomorrow')
+          const fmt = (label: string, items?: Array<{ title: string }>) => {
+            if (!items || items.length === 0) return label + '：无'
+            return label + '：\n' + items.map((item, index) => (index + 1) + '. ' + item.title).join('\n')
+          }
+          setAgentNotice([fmt('今日待办', today.items), fmt('明日待办', tomorrow.items)].join('\n\n'))
+        }).catch((error) => setAgentNotice(error instanceof Error ? error.message : '读取待办失败'))
+      },
+    },
+    {
       id: 'clear',
       commands: ['/clear', '/new'],
       aliases: ['qingkong', 'xin', '清空', '新对话'],

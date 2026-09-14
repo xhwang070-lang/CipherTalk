@@ -306,8 +306,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
 
+  todo: {
+    list: (when?: 'today' | 'tomorrow' | 'all') =>
+      ipcRenderer.invoke('todo:list', when) as Promise<{ success: boolean; items?: Array<{ id: string; title: string; due: string; done: boolean; person?: string }>; error?: string }>,
+    add: (payload: { title: string; when?: 'today' | 'tomorrow'; person?: string }) =>
+      ipcRenderer.invoke('todo:add', payload) as Promise<{ success: boolean; item?: { id: string; title: string; due: string; done: boolean; person?: string }; error?: string }>,
+    complete: (idOrTitle: string) =>
+      ipcRenderer.invoke('todo:complete', idOrTitle) as Promise<{ success: boolean; item?: { id: string; title: string }; error?: string }>,
+    uncomplete: (id: string) =>
+      ipcRenderer.invoke('todo:uncomplete', id) as Promise<{ success: boolean; item?: { id: string; title: string }; error?: string }>,
+    remove: (id: string) =>
+      ipcRenderer.invoke('todo:remove', id) as Promise<{ success: boolean; error?: string }>,
+  },
   // AI 长期记忆管理（cachePath/memory-bank）
   memory: {
+
     migrationStatus: () =>
       ipcRenderer.invoke('memory:migrationStatus') as Promise<{ success: boolean; status?: unknown; error?: string }>,
     migrateLegacy: () =>

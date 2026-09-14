@@ -34,6 +34,10 @@ const CACHEABLE_BUILTIN_TOOL_NAMES = new Set([
   'forget',
   'consolidate_memory',
   'delegate_analysis',
+  'add_todo',
+  'list_todos',
+  'complete_todo',
+  'remove_todo',
   'export_chat',
 ])
 

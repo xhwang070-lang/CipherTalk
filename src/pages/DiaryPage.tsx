@@ -5,6 +5,7 @@ import { ArrowDownToLine, ArrowRotateLeft, ArrowsRotateLeft, ArrowUpRightFromSqu
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import type { MemoryDiaryEntryInfo } from '../types/electron'
+import HuajiTodoBoard from './HuajiTodoBoard'
 import {
   DEFAULT_DIARY_SUMMARY_HOUR,
   MAX_DIARY_CUSTOM_PROMPT_LENGTH,
@@ -605,6 +606,8 @@ export default function DiaryPage() {
           </button>
         </Card.Content>
       </Card>
+
+      <HuajiTodoBoard />
 
       {error && (
         <Card className="mx-7 mb-4 border-danger/20 bg-danger-soft text-danger-soft-foreground">

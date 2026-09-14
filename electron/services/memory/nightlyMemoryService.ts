@@ -360,6 +360,8 @@ class NightlyMemoryService {
   private async rebuildWorkLog(): Promise<void> {
     try {
       const { rebuildHuajiWorkLog, localDateKey } = await import('../agent/huajiWorkLog')
+      const { rolloverHuajiTodos } = await import('../agent/huajiTodos')
+      rolloverHuajiTodos(localDateKey())
       await rebuildHuajiWorkLog(localDateKey())
     } catch (error) {
       this.ctx?.getLogService()?.warn('NightlyMemory', '华记工作日志整理跳过', { error: error instanceof Error ? error.message : String(error) })

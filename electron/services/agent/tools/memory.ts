@@ -320,9 +320,16 @@ export async function buildMemoryContext(scope: AgentScope): Promise<string> {
         }).filter((m) => !m.sessionId)
 
     const lines = limitMemoryLines(rankContextMemories([...globalProfiles, ...scoped]))
-    if (lines.length === 0) return wakeup
+    let todoBlock = ''
+    try {
+      const { formatHuajiTodos } = await import('../huajiTodos')
+      todoBlock = '\n\n# 华记待办\n' + formatHuajiTodos('today') + '\n' + formatHuajiTodos('tomorrow')
+    } catch {
+      todoBlock = ''
+    }
+    if (lines.length === 0) return wakeup + todoBlock
 
-    return `${wakeup}\n\n# 启动记忆摘要\n这些是经过筛选的高置信长期记忆，只作为上下文参考；若与当前对话冲突，以当前对话为准。每条保留 id/type/confidence/about，细节不足时用 recall 检索。\n${lines.join('\n')}`
+    return `${wakeup}${todoBlock}\n\n# 启动记忆摘要\n这些是经过筛选的高置信长期记忆，只作为上下文参考；若与当前对话冲突，以当前对话为准。每条保留 id/type/confidence/about，细节不足时用 recall 检索。\n${lines.join('\n')}`
   } catch {
     return ''
   }

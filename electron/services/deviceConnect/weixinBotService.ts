@@ -1492,12 +1492,34 @@ class WeixinBotService {
 
     if (isHelpCommand(trimmed)) {
       await sendText(session, from,
-        '可用命令：\n/new\n打开XXX的数字分身\n和XXX的分身聊天\n退出数字分身\n当前模式',
+        '可用命令：\n今天待办\n明天待办\n记一下，明天给张俊博发报价\n完成待办 报价已发\n/new\n打开XXX的数字分身\n退出数字分身'
         contextToken)
       return true
     }
 
+    const todoWhen = (await import('../agent/huajiTodos')).parseTodoListCommand(trimmed)
+    if (todoWhen) {
+      const { formatHuajiTodos } = await import('../agent/huajiTodos')
+      await sendText(session, from, formatHuajiTodos(todoWhen), contextToken)
+      return true
+    }
+    const todoAdd = (await import('../agent/huajiTodos')).parseTodoAddCommand(trimmed)
+    if (todoAdd) {
+      const { addHuajiTodo } = await import('../agent/huajiTodos')
+      const item = addHuajiTodo(todoAdd)
+      await sendText(session, from, '已记下' + (todoAdd.when === 'tomorrow' ? '明天：' : '今天：') + item.title, contextToken)
+      return true
+    }
+    const todoDone = (await import('../agent/huajiTodos')).parseTodoDoneCommand(trimmed)
+    if (todoDone) {
+      const { completeHuajiTodo } = await import('../agent/huajiTodos')
+      const item = completeHuajiTodo(todoDone)
+      await sendText(session, from, item ? ('已完成：' + item.title) : ('没有找到待办「' + todoDone + '」'), contextToken)
+      return true
+    }
+
     const query = parseOpenPersonaCommand(trimmed)
+
     if (!query) return false
 
     const candidates = await this.searchPersonaContactCandidates(query)

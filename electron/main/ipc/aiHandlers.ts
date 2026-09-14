@@ -1510,6 +1510,56 @@ export function registerAiHandlers(ctx: MainProcessContext): void {
     }
   })
 
+  ipcMain.handle('todo:list', async (_event, when?: 'today' | 'tomorrow' | 'all') => {
+    try {
+      const { listHuajiTodos, rolloverHuajiTodos } = await import('../../services/agent/huajiTodos')
+      rolloverHuajiTodos()
+      return { success: true, items: listHuajiTodos(when || 'all') }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  ipcMain.handle('todo:add', async (_event, payload: { title?: string; when?: 'today' | 'tomorrow'; person?: string }) => {
+    try {
+      const { addHuajiTodo } = await import('../../services/agent/huajiTodos')
+      const item = addHuajiTodo({ title: String(payload?.title || ''), when: payload?.when === 'tomorrow' ? 'tomorrow' : 'today', person: payload?.person, source: 'user' })
+      return { success: true, item }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  ipcMain.handle('todo:complete', async (_event, idOrTitle: string) => {
+    try {
+      const { completeHuajiTodo } = await import('../../services/agent/huajiTodos')
+      const item = completeHuajiTodo(String(idOrTitle || ''))
+      return item ? { success: true, item } : { success: false, error: '没有找到这条待办' }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  ipcMain.handle('todo:uncomplete', async (_event, id: string) => {
+    try {
+      const { uncompleteHuajiTodo } = await import('../../services/agent/huajiTodos')
+      const item = uncompleteHuajiTodo(String(id || ''))
+      return item ? { success: true, item } : { success: false, error: '没有找到这条待办' }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  ipcMain.handle('todo:remove', async (_event, id: string) => {
+    try {
+      const { removeHuajiTodo } = await import('../../services/agent/huajiTodos')
+      const ok = removeHuajiTodo(String(id || ''))
+      return ok ? { success: true } : { success: false, error: '没有这条待办' }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
   ipcMain.handle('memory:create', async (_event, payload: {
     memoryUid?: string
     sourceType?: string

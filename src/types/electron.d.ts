@@ -1705,7 +1705,15 @@ export interface ElectronAPI {
     onChunk: (runId: string, callback: (chunk: unknown) => void) => () => void
     onProgress: (runId: string, callback: (progress: unknown) => void) => () => void
   }
+  todo: {
+    list: (when?: 'today' | 'tomorrow' | 'all') => Promise<{ success: boolean; items?: Array<{ id: string; title: string; due: string; done: boolean; person?: string }>; error?: string }>
+    add: (payload: { title: string; when?: 'today' | 'tomorrow'; person?: string }) => Promise<{ success: boolean; item?: { id: string; title: string; due: string; done: boolean; person?: string }; error?: string }>
+    complete: (idOrTitle: string) => Promise<{ success: boolean; item?: { id: string; title: string }; error?: string }>
+    uncomplete: (id: string) => Promise<{ success: boolean; item?: { id: string; title: string }; error?: string }>
+    remove: (id: string) => Promise<{ success: boolean; error?: string }>
+  }
   memory: {
+
     migrationStatus: () => Promise<{ success: boolean; status?: MemoryMigrationStatusInfo; error?: string }>
     migrateLegacy: () => Promise<{ success: boolean; result?: MemoryMigrationResultInfo; error?: string }>
     list: (opts?: { sourceType?: AgentMemorySourceType; sourceTypes?: AgentMemorySourceType[]; sessionId?: string; tags?: string[]; withoutTags?: string[]; minConfidence?: number; limit?: number }) => Promise<{ success: boolean; items?: AgentMemoryItem[]; stats?: { itemCount: number }; error?: string }>
