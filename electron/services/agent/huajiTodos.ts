@@ -17,11 +17,14 @@ export type HuajiTodoItem = {
   done: boolean
   source: HuajiTodoSource
   person?: string
+  sessionId?: string
+  unverified?: boolean
+  evidence?: string
   createdAt: number
   doneAt?: number
 }
 
-type TodoFile = { items: HuajiTodoItem[] }
+type TodoFile = { items: HuajiTodoItem[]; lastMorningPush?: string }
 
 function pad2(value: number): string {
   return String(value).padStart(2, '0')
@@ -49,14 +52,17 @@ function readFile(): TodoFile {
   if (!existsSync(file)) return { items: [] }
   try {
     const parsed = JSON.parse(readFileSync(file, 'utf8')) as TodoFile
-    return { items: Array.isArray(parsed.items) ? parsed.items : [] }
+    return {
+      items: Array.isArray(parsed.items) ? parsed.items : [],
+      lastMorningPush: typeof parsed.lastMorningPush === 'string' ? parsed.lastMorningPush : undefined,
+    }
   } catch {
     return { items: [] }
   }
 }
 
 function writeFile(data: TodoFile): void {
-  writeFileSync(todoPath(), JSON.stringify({ items: data.items }, null, 2), 'utf8')
+  writeFileSync(todoPath(), JSON.stringify({ items: data.items, lastMorningPush: data.lastMorningPush || undefined }, null, 2), 'utf8')
 }
 
 function newId(): string {
@@ -88,7 +94,15 @@ export function listHuajiTodos(when?: HuajiTodoWhen | 'all'): HuajiTodoItem[] {
   })
 }
 
-export function addHuajiTodo(input: { title: string; when?: HuajiTodoWhen; source?: HuajiTodoSource; person?: string }): HuajiTodoItem {
+export function addHuajiTodo(input: {
+  title: string
+  when?: HuajiTodoWhen
+  source?: HuajiTodoSource
+  person?: string
+  sessionId?: string
+  unverified?: boolean
+  evidence?: string
+}): HuajiTodoItem {
   const title = String(input.title || '').replace(/\s+/g, ' ').trim()
   if (!title) throw new Error('待办内容不能为空')
   const today = localDateKey()
@@ -99,6 +113,9 @@ export function addHuajiTodo(input: { title: string; when?: HuajiTodoWhen; sourc
     done: false,
     source: input.source || 'user',
     person: input.person ? String(input.person).trim().slice(0, 40) : undefined,
+    sessionId: input.sessionId ? String(input.sessionId).trim() : undefined,
+    unverified: input.unverified ? true : undefined,
+    evidence: input.evidence ? String(input.evidence).replace(/\s+/g, ' ').trim().slice(0, 120) : undefined,
     createdAt: Date.now(),
   }
   const data = readFile()
@@ -134,7 +151,7 @@ export function removeHuajiTodo(id: string): boolean {
   const data = readFile()
   const next = data.items.filter((row) => row.id !== id)
   if (next.length === data.items.length) return false
-  writeFile({ items: next })
+  writeFile({ items: next, lastMorningPush: data.lastMorningPush })
   return true
 }
 
@@ -142,9 +159,25 @@ export function formatHuajiTodos(when: HuajiTodoWhen): string {
   const items = listHuajiTodos(when)
   const label = when === 'tomorrow' ? '明日待办' : '今日待办'
   if (items.length === 0) {
-    return label + '是空的。可以说「记一下，明天给张俊博发报价」。'
+    return label + '是空的。可以说「记一下，明天给张俊博发报价」，或「把我和张俊博今天的待办记下来」。'
   }
-  return [label + '：'].concat(items.map((item, index) => (index + 1) + '. ' + item.title)).join('\n')
+  return [label + '：'].concat(items.map((item, index) => {
+    const mark = item.unverified ? '待核 ' : ''
+    const who = item.person ? '（' + item.person + '）' : ''
+    return (index + 1) + '. ' + mark + item.title + who
+  })).join('\n')
+}
+
+export function consumeMorningTodoPush(today = localDateKey()): boolean {
+  const data = readFile()
+  if (data.lastMorningPush === today) return false
+  data.lastMorningPush = today
+  writeFile(data)
+  return true
+}
+
+export function peekMorningTodoPush(today = localDateKey()): boolean {
+  return readFile().lastMorningPush === today
 }
 
 export function parseTodoListCommand(text: string): HuajiTodoWhen | null {

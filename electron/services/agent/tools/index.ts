@@ -37,7 +37,7 @@ import { createCodeWorkspaceTools } from './codeWorkspace'
 import { exportChat } from './exportChat'
 import { createAgentCapabilityTools } from './capabilities'
 import { inspectChatFile } from './inspectChatFile'
-import { createAddTodo, createListTodos, createCompleteTodo, createRemoveTodo } from './todos'
+import { createAddTodo, createListTodos, createCompleteTodo, createRemoveTodo, createExtractChatTodos } from './todos'
 
 /** 基础读/查工具（不含 delegate_analysis），主 Agent 与子 Agent 共用。 */
 export function buildBaseTools(_scope: AgentScope): ToolSet {
@@ -139,6 +139,7 @@ export function buildChatTools(
     list_todos: createListTodos(),
     complete_todo: createCompleteTodo(),
     remove_todo: createRemoveTodo(),
+    extract_chat_todos: createExtractChatTodos(),
     consolidate_memory: createConsolidate(),
     delegate_analysis: createDelegateAnalysis({
       providerConfig,

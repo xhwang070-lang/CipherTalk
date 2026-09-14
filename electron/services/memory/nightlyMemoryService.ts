@@ -349,10 +349,12 @@ class NightlyMemoryService {
     this.ctx = ctx
     this.timer = setInterval(() => {
       void this.rebuildWorkLog()
+      void this.pushMorningTodos()
       void this.check()
     }, CHECK_INTERVAL_MS)
     this.startupTimer = setTimeout(() => {
       void this.rebuildWorkLog()
+      void this.pushMorningTodos()
       void this.check()
     }, STARTUP_DELAY_MS)
   }
@@ -365,6 +367,18 @@ class NightlyMemoryService {
       await rebuildHuajiWorkLog(localDateKey())
     } catch (error) {
       this.ctx?.getLogService()?.warn('NightlyMemory', '华记工作日志整理跳过', { error: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
+  private async pushMorningTodos(): Promise<void> {
+    try {
+      const { weixinBotService } = await import('../deviceConnect/weixinBotService')
+      const result = await weixinBotService.pushMorningTodosIfDue()
+      if (result.pushed) {
+        this.ctx?.getLogService()?.info('NightlyMemory', '早上待办已推送到微信', { reason: result.reason })
+      }
+    } catch (error) {
+      this.ctx?.getLogService()?.warn('NightlyMemory', '早上待办推送跳过', { error: error instanceof Error ? error.message : String(error) })
     }
   }
 

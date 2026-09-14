@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Card, Description, InputGroup, Label, ListBox, Modal, Popover, ScrollShadow, Spinner, TextField, TimeField, Toolbar } from '@heroui/react'
+import { useNavigate } from 'react-router-dom'
 import { Time } from '@internationalized/date'
 import { ArrowDownToLine, ArrowRotateLeft, ArrowsRotateLeft, ArrowUpRightFromSquare, BookOpen, Check, Clock, Copy, FloppyDisk, Gear, PencilToLine, Text, TrashBin } from '@gravity-ui/icons'
 import { marked } from 'marked'
@@ -269,7 +270,21 @@ function getDiaryExportOptions(node: HTMLElement, includeMemoryClues: boolean, w
   }
 }
 
+function conversationIdFromHref(href: string | null): number {
+  if (!href) return 0
+  try {
+    const fromQuery = Number(new URL(href, 'https://huaji.local').searchParams.get('conversation') || 0)
+    if (fromQuery > 0) return fromQuery
+  } catch {
+    // ignore
+  }
+  const hash = href.split('#')[1] || href
+  const query = hash.includes('?') ? hash.split('?')[1] : ''
+  return Number(new URLSearchParams(query).get('conversation') || 0)
+}
+
 export default function DiaryPage() {
+  const navigate = useNavigate()
   const [diaries, setDiaries] = useState<MemoryDiaryEntryInfo[]>([])
   const [selectedDate, setSelectedDate] = useState('')
   const [workLog, setWorkLog] = useState<{ date: string; content: string } | null>(null)
@@ -391,6 +406,17 @@ export default function DiaryPage() {
   useEffect(() => {
     void loadWorkLog()
   }, [loadWorkLog])
+
+  const openWorkLogConversation = useCallback((event: { target: EventTarget | null; preventDefault: () => void; stopPropagation: () => void }) => {
+    const target = event.target as HTMLElement | null
+    const link = target?.closest?.('a') as HTMLAnchorElement | null
+    const conversationId = conversationIdFromHref(link?.getAttribute('href') || '')
+    if (!conversationId) return
+    event.preventDefault()
+    event.stopPropagation()
+    setWorkLogOpen(false)
+    navigate('/agent?conversation=' + conversationId)
+  }, [navigate])
 
   const rebuildWorkLog = useCallback(async () => {
     if (workLogBusy) return
@@ -597,7 +623,14 @@ export default function DiaryPage() {
           <button
             className="m-0 block max-h-44 w-full overflow-hidden text-left"
             type="button"
-            onClick={() => setWorkLogOpen(true)}
+            onClick={(event) => {
+              const target = event.target as HTMLElement | null
+              if (target?.closest?.('a')) {
+                openWorkLogConversation(event)
+                return
+              }
+              setWorkLogOpen(true)
+            }}
           >
             <div
               className="diary-markdown work-log-preview text-sm leading-7 text-foreground"
@@ -727,13 +760,14 @@ export default function DiaryPage() {
               <Card.Header className="flex-row items-start gap-3 border-b border-border p-5">
                 <div className="min-w-0">
                   <Card.Title>今日华记工作日志</Card.Title>
-                  <Card.Description>你今天让华记办过的事，不是待办清单。</Card.Description>
+                  <Card.Description>点「打开对话」回到那一轮助手记录。</Card.Description>
                 </div>
               </Card.Header>
               <Card.Content className="p-0">
                 <ScrollShadow hideScrollBar className="max-h-[calc(100vh-8rem)] px-6 py-5" size={48}>
                   <article
                     className="diary-markdown text-sm leading-8 text-foreground"
+                    onClick={openWorkLogConversation}
                     dangerouslySetInnerHTML={{ __html: workLogHtml || '<p>今天还没有和华记办过事。</p>' }}
                   />
                 </ScrollShadow>

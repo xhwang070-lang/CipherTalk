@@ -4,6 +4,7 @@
  * 提示词预设、记忆引导、@提及、消息渲染小组件等已拆到同目录下的多个文件，这里只保留主组件本身。
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useChat } from '@ai-sdk/react'
 import { isToolUIPart, lastAssistantMessageIsCompleteWithApprovalResponses, type ChatStatus, type UIMessage } from 'ai'
 import { AlertDialog, Button as HeroButton, ButtonGroup, Dropdown, Header, Label, Modal, SearchField, Separator, Spinner, Surface, Switch, Toolbar, Tooltip, toast } from '@heroui/react'
@@ -278,6 +279,8 @@ function toBasicModelDetail(id: string, providerId: string): AIModelInfo {
 }
 
 export default function AgentPage() {
+  const [searchParams] = useSearchParams()
+  const requestedConversationId = Number(searchParams.get('conversation') || 0)
   const [presets, setPresets] = useState<configService.AiConfigPreset[]>([])
   const [providersInfo, setProvidersInfo] = useState<AIProviderInfo[]>([])
   const [selectedPresetId, setSelectedPresetId] = useState('current')
@@ -1411,6 +1414,13 @@ export default function AgentPage() {
 
   loadConversationByIdRef.current = loadConversationById
 
+  useEffect(() => {
+    if (!Number.isInteger(requestedConversationId) || requestedConversationId <= 0) return
+    if (conversationIdRef.current === requestedConversationId) return
+    void loadConversationById(requestedConversationId, { closeRecords: false }).then((ok) => {
+      if (!ok) setAgentNotice('这条工作日志对应的对话已经找不到了')
+    })
+  }, [loadConversationById, requestedConversationId])
 
   useEffect(() => {
     return window.electronAPI.agent.onConversationUpdated((event: AgentConversationUpdatedEvent) => {
@@ -2047,6 +2057,7 @@ export default function AgentPage() {
       if (autoRunInFlightRef.current) return false
       if (readStoredActiveAgentConversation() === NEW_AGENT_CONVERSATION_MARKER) return false
       if (localStorage.getItem('agent:pendingAutoRun')) return false
+      if (Number(new URLSearchParams(window.location.hash.split('?')[1] || '').get('conversation') || 0) > 0) return false
       const result = await window.electronAPI.agent.loadConversation(id)
       if (cancelled || conversationIdRef.current || messagesRef.current.length > 0) return false
       if (autoRunInFlightRef.current) return false

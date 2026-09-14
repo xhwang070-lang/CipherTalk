@@ -35,6 +35,9 @@ import { resolveWechatPeerName, wechatBotConversationTitle, writeWechatBotRunLog
 
 const TOKEN_FILE = 'wechat-bot-token.json'
 const MODE_FILE = 'wechat-bot-modes.json'
+const TODO_PUSH_FILE = 'wechat-bot-todo-push.json'
+const TODO_PUSH_HOUR = 8
+const TODO_PUSH_RECIPIENT_DAYS = 14
 const QR_DEADLINE_MS = 5 * 60_000
 const QR_CODE_RENDER_OPTIONS = { width: 280, margin: 2, errorCorrectionLevel: 'H' as const }
 const TYPING_KEEPALIVE_MS = 5_000
@@ -207,6 +210,14 @@ type PendingPersonaSelection = {
   query: string
   candidates: WechatContactCandidate[]
   createdAt: number
+  purpose?: 'persona' | 'todos'
+  when?: 'today' | 'tomorrow'
+}
+
+type TodoPushRecipient = {
+  userId: string
+  contextToken?: string
+  lastSeen: number
 }
 
 type PendingPersonaQueue = {
@@ -1233,6 +1244,7 @@ class WeixinBotService {
             console.log('[WechatBot] 跳过空消息', { from, text: incoming.logText })
             continue
           }
+          this.rememberTodoPushRecipient(from, msg.context_token)
           await this.handleMessage(from, incoming, msg.context_token)
         }
       } catch (e) {
@@ -1443,6 +1455,16 @@ class WeixinBotService {
         return true
       }
       this.pendingPersonaSelections.delete(from)
+      if (pending.purpose === 'todos') {
+        const { extractChatTodos, formatExtractChatTodos } = await import('../agent/huajiChatTodos')
+        const result = await extractChatTodos({
+          person: candidate.displayName,
+          sessionId: candidate.username,
+          when: pending.when === 'tomorrow' ? 'tomorrow' : 'today',
+        })
+        await sendText(session, from, formatExtractChatTodos(result), contextToken)
+        return true
+      }
       await this.activatePersonaMode(from, candidate, contextToken)
       return true
     }
@@ -1492,7 +1514,7 @@ class WeixinBotService {
 
     if (isHelpCommand(trimmed)) {
       await sendText(session, from,
-        '可用命令：\n今天待办\n明天待办\n记一下，明天给张俊博发报价\n完成待办 报价已发\n/new\n打开XXX的数字分身\n退出数字分身',
+        '可用命令：\n今天待办\n明天待办\n记一下，明天给张俊博发报价\n把我和张俊博今天的待办记下来\n完成待办 报价已发\n/new\n打开XXX的数字分身\n退出数字分身',
         contextToken)
       return true
     }
@@ -1515,6 +1537,35 @@ class WeixinBotService {
       const { completeHuajiTodo } = await import('../agent/huajiTodos')
       const item = completeHuajiTodo(todoDone)
       await sendText(session, from, item ? ('已完成：' + item.title) : ('没有找到待办「' + todoDone + '」'), contextToken)
+      return true
+    }
+
+    const todoExtract = (await import('../agent/huajiChatTodos')).parseTodoExtractCommand(trimmed)
+    if (todoExtract) {
+      const { extractChatTodos, formatExtractChatTodos, searchTodoChatCandidates } = await import('../agent/huajiChatTodos')
+      const candidates = await searchTodoChatCandidates(todoExtract.person)
+      if (candidates.length === 0) {
+        await sendText(session, from, '没有找到「' + todoExtract.person + '」对应的好友或群。', contextToken)
+        return true
+      }
+      if (candidates.length > 1) {
+        this.pendingPersonaSelections.set(from, {
+          query: todoExtract.person,
+          candidates: candidates.map((item) => ({ username: item.username, displayName: item.displayName, kind: item.kind })),
+          createdAt: Date.now(),
+          purpose: 'todos',
+          when: todoExtract.when,
+        })
+        const list = candidates.map((c, i) => (i + 1) + '. ' + c.displayName).join('\n')
+        await sendText(session, from, '找到多个「' + todoExtract.person + '」：\n' + list + '\n回复编号选择一场聊天。', contextToken)
+        return true
+      }
+      const result = await extractChatTodos({
+        person: candidates[0].displayName,
+        sessionId: candidates[0].username,
+        when: todoExtract.when,
+      })
+      await sendText(session, from, formatExtractChatTodos(result), contextToken)
       return true
     }
 
@@ -2313,6 +2364,71 @@ class WeixinBotService {
       personaActions: [],
       personaVoice: persona.ttsVoice,
       ttsInstructions: persona.card.ttsInstructions,
+    }
+  }
+
+  rememberTodoPushRecipient(userId: string, contextToken?: string): void {
+    const id = String(userId || '').trim()
+    if (!id) return
+    const data = this.loadTodoPushState()
+    const now = Date.now()
+    const next = data.users.filter((item) => item.userId !== id)
+    next.unshift({ userId: id, contextToken: contextToken || undefined, lastSeen: now })
+    data.users = next.slice(0, 8)
+    this.saveTodoPushState(data)
+  }
+
+  async pushMorningTodosIfDue(now = new Date()): Promise<{ pushed: boolean; reason: string }> {
+    if (now.getHours() < TODO_PUSH_HOUR) return { pushed: false, reason: '未到早上' }
+    const session = this.session
+    if (!session || this.status !== 'connected') return { pushed: false, reason: '微信未连接' }
+    const { formatHuajiTodos, listHuajiTodos, peekMorningTodoPush, consumeMorningTodoPush } = await import('../agent/huajiTodos')
+    const { localDateKey } = await import('../agent/huajiWorkLog')
+    const today = localDateKey(now.getTime())
+    if (peekMorningTodoPush(today)) return { pushed: false, reason: '今天已经推过' }
+    const items = listHuajiTodos('today')
+    if (items.length === 0) return { pushed: false, reason: '今日待办是空的' }
+    const recipients = this.loadTodoPushState().users.filter((item) => now.getTime() - item.lastSeen <= TODO_PUSH_RECIPIENT_DAYS * 24 * 60 * 60 * 1000)
+    if (recipients.length === 0) return { pushed: false, reason: '还没有跟华记说过话的微信用户' }
+    const text = formatHuajiTodos('today')
+    let sent = 0
+    for (const recipient of recipients) {
+      try {
+        await sendText(session, recipient.userId, text, recipient.contextToken)
+        sent += 1
+      } catch (error) {
+        this.logger?.warn('WechatBot', '早上待办推送失败', {
+          userId: recipient.userId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+    if (!sent) return { pushed: false, reason: '推送失败' }
+    consumeMorningTodoPush(today)
+    this.logger?.info('WechatBot', '早上待办已推送', { count: items.length, recipients: sent })
+    return { pushed: true, reason: '已推送给 ' + sent + ' 人' }
+  }
+
+  private todoPushPath(): string {
+    return join(getUserDataPath(), TODO_PUSH_FILE)
+  }
+
+  private loadTodoPushState(): { users: TodoPushRecipient[] } {
+    try {
+      const file = this.todoPushPath()
+      if (!existsSync(file)) return { users: [] }
+      const parsed = JSON.parse(readFileSync(file, 'utf-8')) as { users?: TodoPushRecipient[] }
+      return { users: Array.isArray(parsed.users) ? parsed.users : [] }
+    } catch {
+      return { users: [] }
+    }
+  }
+
+  private saveTodoPushState(data: { users: TodoPushRecipient[] }): void {
+    try {
+      writeFileSync(this.todoPushPath(), JSON.stringify(data, null, 2), 'utf-8')
+    } catch (error) {
+      this.logger?.warn('WechatBot', '保存待办推送对象失败', { error: String(error) })
     }
   }
 

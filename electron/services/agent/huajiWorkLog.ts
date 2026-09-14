@@ -13,6 +13,7 @@ export type HuajiWorkLogEntry = {
   ok?: boolean
   tools?: string[]
   at?: number
+  conversationId?: number
 }
 
 export type HuajiWorkLogInfo = {
@@ -106,9 +107,15 @@ function header(date: string): string {
   ].join('\n')
 }
 
-function formatEntry(at: number, source: string, question: string, result: { ok: boolean; text: string }): string {
+function conversationLink(conversationId?: number): string {
+  const id = Number(conversationId || 0)
+  if (!Number.isInteger(id) || id <= 0) return ''
+  return ' [打开对话](#/agent?conversation=' + id + ')'
+}
+
+function formatEntry(at: number, source: string, question: string, result: { ok: boolean; text: string }, conversationId?: number): string {
   return [
-    '### ' + formatClock(at) + ' · ' + sourceLabel(source),
+    '### ' + formatClock(at) + ' · ' + sourceLabel(source) + conversationLink(conversationId),
     question,
     (result.ok ? '完成' : '失败') + '：' + result.text,
     '',
@@ -133,7 +140,7 @@ export function appendHuajiWorkLogEntry(entry: HuajiWorkLogEntry): void {
     if (!existsSync(file)) writeFileSync(file, header(date), 'utf8')
     const result = summarizeWorkResult(entry.result)
     if (entry.ok === false) result.ok = false
-    appendFileSync(file, formatEntry(at, entry.source, question, result), 'utf8')
+    appendFileSync(file, formatEntry(at, entry.source, question, result, entry.conversationId), 'utf8')
   } catch {
     // 工作日志失败不影响主回答。
   }
@@ -168,7 +175,7 @@ export async function rebuildHuajiWorkLog(date = localDateKey()): Promise<HuajiW
         const result = summarizeWorkResult(turn.text)
         const key = sourceLabel(lastSource) + '|' + question
         const lastKey = seen.length ? seen[seen.length - 1] : ''
-        const block = formatEntry(turn.createdAt || lastAt, lastSource, question, result)
+        const block = formatEntry(turn.createdAt || lastAt, lastSource, question, result, currentId)
         if (key === lastKey && blocks.length) {
           blocks[blocks.length - 1] = block
         } else {

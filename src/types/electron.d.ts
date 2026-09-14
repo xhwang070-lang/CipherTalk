@@ -1706,8 +1706,8 @@ export interface ElectronAPI {
     onProgress: (runId: string, callback: (progress: unknown) => void) => () => void
   }
   todo: {
-    list: (when?: 'today' | 'tomorrow' | 'all') => Promise<{ success: boolean; items?: Array<{ id: string; title: string; due: string; done: boolean; person?: string }>; error?: string }>
-    add: (payload: { title: string; when?: 'today' | 'tomorrow'; person?: string }) => Promise<{ success: boolean; item?: { id: string; title: string; due: string; done: boolean; person?: string }; error?: string }>
+    list: (when?: 'today' | 'tomorrow' | 'all') => Promise<{ success: boolean; items?: Array<{ id: string; title: string; due: string; done: boolean; person?: string; unverified?: boolean }>; error?: string }>
+    add: (payload: { title: string; when?: 'today' | 'tomorrow'; person?: string }) => Promise<{ success: boolean; item?: { id: string; title: string; due: string; done: boolean; person?: string; unverified?: boolean }; error?: string }>
     complete: (idOrTitle: string) => Promise<{ success: boolean; item?: { id: string; title: string }; error?: string }>
     uncomplete: (id: string) => Promise<{ success: boolean; item?: { id: string; title: string }; error?: string }>
     remove: (id: string) => Promise<{ success: boolean; error?: string }>

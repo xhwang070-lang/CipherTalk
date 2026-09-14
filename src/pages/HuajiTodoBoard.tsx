@@ -8,6 +8,7 @@ type TodoItem = {
   due: string
   done: boolean
   person?: string
+  unverified?: boolean
 }
 
 type TodoWhen = 'today' | 'tomorrow'
@@ -93,7 +94,7 @@ export default function HuajiTodoBoard() {
       </Card.Header>
       <Card.Content className="space-y-3">
         {items.length === 0 ? (
-          <p className="m-0 text-sm text-muted-foreground">还没有。下面记一条，或微信说「记一下，明天给张俊博发报价」。</p>
+          <p className="m-0 text-sm text-muted-foreground">还没有。下面记一条，或微信说「把我和张俊博今天的待办记下来」。</p>
         ) : (
           <ul className="m-0 list-none space-y-2 p-0">
             {items.map((item) => (
@@ -106,7 +107,11 @@ export default function HuajiTodoBoard() {
                 >
                   {item.done ? <Check className="size-3.5" /> : null}
                 </button>
-                <span className={'min-w-0 flex-1 text-sm leading-6 ' + (item.done ? 'text-muted-foreground line-through' : 'text-foreground')}>{item.title}</span>
+                <span className={'min-w-0 flex-1 text-sm leading-6 ' + (item.done ? 'text-muted-foreground line-through' : 'text-foreground')}>
+                  {item.unverified ? <span className="mr-1 text-xs text-muted-foreground">待核</span> : null}
+                  {item.title}
+                  {item.person ? <span className="ml-1 text-xs text-muted-foreground">（{item.person}）</span> : null}
+                </span>
                 <Button isIconOnly aria-label="删除待办" size="sm" variant="ghost" onPress={() => void remove(item.id)}>
                   <TrashBin className="size-4" />
                 </Button>

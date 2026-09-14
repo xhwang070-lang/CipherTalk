@@ -7,12 +7,13 @@ import {
   removeHuajiTodo,
   type HuajiTodoWhen,
 } from '../huajiTodos'
+import { extractChatTodos, formatExtractChatTodos } from '../huajiChatTodos'
 
 export function createAddTodo() {
   return tool({
     description:
       '记下一条待办。用户说「记一下明天给张俊博发报价」「今天待办加上核对公差」时用。' +
-      '只记用户明确要办的事，不要从别人的聊天里自动猜测待办。when=today 今天，tomorrow 明天。',
+      '只记用户明确要办的事。从某一场聊天提取待办请用 extract_chat_todos，不要自己扫全库。when=today 今天，tomorrow 明天。',
     inputSchema: z.object({
       title: z.string().min(1).describe('待办短句，例如 给张俊博发法兰报价'),
       when: z.enum(['today', 'tomorrow']).default('today').describe('today=今天，tomorrow=明天'),
@@ -48,6 +49,7 @@ export function createListTodos() {
           due: item.due,
           done: item.done,
           person: item.person || '',
+          unverified: !!item.unverified,
         })),
       }
     },
@@ -78,6 +80,37 @@ export function createRemoveTodo() {
     execute: async ({ id }) => {
       const ok = removeHuajiTodo(id)
       return ok ? { removed: true, id } : { removed: false, reason: '没有这条待办' }
+    },
+  })
+}
+
+export function createExtractChatTodos() {
+  return tool({
+    description:
+      '从指定一场微信聊天里提取今天/明天待办并记到华记待办本。用户说「把我和张俊博今天的待办记下来」时用。' +
+      '必须先用 list_contacts 拿到那一个人/群的 username，只看这一场，禁止扫别人的聊天。' +
+      '人名、金额、货期必须能对上该场原文；对不上的会标待核。不要夜间全库自动挖。',
+    inputSchema: z.object({
+      person: z.string().min(1).describe('人名或群名，例如 张俊博'),
+      sessionId: z.string().optional().describe('该场聊天 username。能确定时必填，避免同名串人'),
+      when: z.enum(['today', 'tomorrow']).default('today'),
+    }),
+    execute: async ({ person, sessionId, when }) => {
+      try {
+        const result = await extractChatTodos({ person, sessionId, when: when as HuajiTodoWhen })
+        return {
+          ...result,
+          text: formatExtractChatTodos(result),
+          items: result.added.map((item) => ({
+            id: item.id,
+            title: item.title,
+            due: item.due,
+            unverified: !!item.unverified,
+          })),
+        }
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : String(e) }
+      }
     },
   })
 }
