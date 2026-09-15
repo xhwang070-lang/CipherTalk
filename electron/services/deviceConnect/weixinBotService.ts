@@ -114,27 +114,43 @@ function wantsWeekOrMonthSummary(text: string): boolean {
   if (/(多少条|谁最活跃|排行|排名|统计一下|一共多少)/.test(compact)) return false
   const asksSummary = /(总结|梳理|复盘|回顾|聊了什么|在聊什么)/.test(compact)
   const asksPeriod = /(近一周|最近一周|这一周|近七天|近7天|七天|近一个月|最近一个月|本月|一个月)/.test(compact)
-  const asksPrivateWeek = /(近一周|最近一周|近七天).{0,8}私聊|私聊.{0,8}(近一周|最近一周|近七天)/.test(compact)
-  return asksPrivateWeek || (asksSummary && asksPeriod)
+  const asksRosterWeek = /(近一周|最近一周|近七天|近一个月).{0,8}(私聊|群聊)|(私聊|群聊).{0,8}(近一周|最近一周|近七天|近一个月)/.test(compact)
+  return asksRosterWeek || (asksSummary && asksPeriod)
 }
 
-function usedPeriodRead(usedTools: string[], commandText = ''): boolean {
-  if (wantsAllPrivateSummary(commandText)) return usedTools.includes('read_private_period')
-  return usedTools.includes('read_period') || usedTools.includes('read_private_period')
+function wantsAllGroupSummary(text: string): boolean {
+  const compact = String(text || '').replace(/\s+/g, '')
+  if (/^(续|接着写|继续)$/.test(compact)) {
+    const progress = getLastPrivatePeriodProgress()
+    return Boolean(progress && !progress.complete && progress.kind === 'group')
+  }
+  if (!wantsWeekOrMonthSummary(text)) return false
+  return compact.includes('群聊')
 }
 
 function wantsAllPrivateSummary(text: string): boolean {
   const compact = String(text || '').replace(/\s+/g, '')
   if (/^(续|接着写|继续)$/.test(compact)) {
     const progress = getLastPrivatePeriodProgress()
-    return Boolean(progress && !progress.complete)
+    return Boolean(progress && !progress.complete && progress.kind !== 'group')
   }
   if (!wantsWeekOrMonthSummary(text)) return false
   if (!compact.includes('私聊')) return false
   return !/(跟我|和我|我和|我跟).{0,20}(近一周|近一个月|近七天)/.test(compact)
 }
 
-const FORCE_PERIOD_READ_TEXT = "上一轮没有读聊天原文，作废。所有私聊总结必须立刻调用 read_private_period({period 跟用户说的时间走，近一周或近一个月})，不要问用户要人名，不要只用统计。有 nextCursor 就继续调，直到 complete=true。点了具体人名才用 read_period。"
+function usedPeriodRead(usedTools: string[], commandText = ''): boolean {
+  if (wantsAllGroupSummary(commandText)) return usedTools.includes('read_group_period')
+  if (wantsAllPrivateSummary(commandText)) return usedTools.includes('read_private_period')
+  return usedTools.includes('read_period') || usedTools.includes('read_private_period') || usedTools.includes('read_group_period')
+}
+
+function forcePeriodReadText(commandText: string): string {
+  if (wantsAllGroupSummary(commandText)) {
+    return "上一轮没有读群聊原文，作废。所有群聊总结必须立刻调用 read_group_period({period:'近一周'或'近一个月'})，不要问用户要群名，不要只用统计。有 nextCursor 就继续调，直到 complete=true。"
+  }
+  return "上一轮没有读聊天原文，作废。所有私聊总结必须立刻调用 read_private_period({period:'近一周'或'近一个月'})，不要问用户要人名，不要只用统计。有 nextCursor 就继续调，直到 complete=true。"
+}
 
 function isPreambleOnlyWechatReply(text: string): boolean {
   const compact = String(text || '').replace(/\s+/g, '')
@@ -1373,7 +1389,7 @@ class WeixinBotService {
         const followHistory = [
           ...history,
           { id: `wx-a-skip-${Date.now()}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: rawReply.text || '（未读原文）' }] },
-          { id: `wx-u-force-read-${Date.now()}`, role: 'user' as const, parts: [{ type: 'text' as const, text: FORCE_PERIOD_READ_TEXT }] },
+          { id: `wx-u-force-read-${Date.now()}`, role: 'user' as const, parts: [{ type: 'text' as const, text: forcePeriodReadText(commandText) }] },
         ]
         const reread = await this.runAgent(followHistory, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name) } })
         if (usedPeriodRead(usedTools, commandText) && reread.text.trim()) {
@@ -1381,7 +1397,7 @@ class WeixinBotService {
         } else if (!usedPeriodRead(usedTools, commandText)) {
           rawReply = {
             ...rawReply,
-            text: '这次还没读到聊天原文。请再发一遍：把近一周的私聊总结一下。不用点名，我会按人翻。',
+            text: wantsAllGroupSummary(commandText) ? '这次还没读到群聊原文。请再发一遍：把近一周的群聊总结一下。不用点群名。' : '这次还没读到聊天原文。请再发一遍：把近一周的私聊总结一下。不用点名。',
             textBubbles: undefined,
             media: [],
           }
@@ -1389,17 +1405,19 @@ class WeixinBotService {
       }
 
 
-      if (wantsAllPrivateSummary(commandText) && usedTools.includes('read_private_period')) {
+      if ((wantsAllPrivateSummary(commandText) || wantsAllGroupSummary(commandText)) && (usedTools.includes('read_private_period') || usedTools.includes('read_group_period'))) {
         let hops = 0
         while (hops < 10) {
           const progress = getLastPrivatePeriodProgress()
           if (!progress || progress.complete || !progress.nextCursor) break
           hops += 1
-          console.warn('[WechatBot] 私聊总结未翻完，自动继续', progress)
+          const tool = progress.kind === 'group' ? 'read_group_period' : 'read_private_period'
+          const unit = progress.kind === 'group' ? '群' : '人'
+          console.warn('[WechatBot] 会话总结未翻完，自动继续', progress)
           const followHistory = [
             ...history,
             { id: `wx-a-priv-${Date.now()}-${hops}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: rawReply.text || '' }] },
-            { id: `wx-u-priv-${Date.now()}-${hops}`, role: 'user' as const, parts: [{ type: 'text' as const, text: `继续 read_private_period，nextCursor 原样传入：${JSON.stringify(progress.nextCursor)}。只写当前这个人已读到的天，写过的人不要重复。不要问人名。` }] },
+            { id: `wx-u-priv-${Date.now()}-${hops}`, role: 'user' as const, parts: [{ type: 'text' as const, text: `继续 ${tool}，nextCursor 原样传入：${JSON.stringify(progress.nextCursor)}。只写当前这个${unit}已读到的天，写过的不要重复。不要问名字。` }] },
           ]
           const more = await this.runAgent(followHistory, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name) } })
           if (more.text.trim()) {
@@ -1411,9 +1429,10 @@ class WeixinBotService {
         }
         const leftover = getLastPrivatePeriodProgress()
         if (leftover && !leftover.complete) {
+          const unit = leftover.kind === 'group' ? '群' : '人'
           rawReply = {
             ...rawReply,
-            text: `${rawReply.text || ''}\n---wx-next---\n已写到 ${leftover.currentName}（${leftover.peopleIndex}/${leftover.peopleTotal}），还剩 ${leftover.remaining} 人。回复「续」接着写，不用点名。`,
+            text: `${rawReply.text || ''}\n---wx-next---\n已写到 ${leftover.currentName}（${leftover.peopleIndex}/${leftover.peopleTotal}），还剩 ${leftover.remaining} 个${unit}。回复「续」接着写，不用点名。`,
           }
         }
       }

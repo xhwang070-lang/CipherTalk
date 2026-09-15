@@ -93,6 +93,10 @@ function isPrivateSession(username: string): boolean {
   return true
 }
 
+function isGroupSession(username: string): boolean {
+  return String(username || '').toLowerCase().includes('@chatroom')
+}
+
 // ========= 三种统计 =========
 
 async function runOverview(scope: Array<{ dbPath: string; tables: string[] }>, range: TimeRangeSec) {
@@ -219,11 +223,14 @@ async function runTimeDistribution(
 }
 
 export async function listPrivateRanking(range: TimeRangeSec, limit: number) {
-  // 候选私聊会话 → hash → username
+  return listSessionRanking(range, limit, 'private')
+}
+
+export async function listSessionRanking(range: TimeRangeSec, limit: number, kind: 'private' | 'group' = 'private') {
   let usernames: string[] = []
   try {
     const sessions = await dbAdapter.all<{ username: string }>('session', '', 'SELECT username FROM SessionTable')
-    usernames = sessions.map((s) => s.username).filter(isPrivateSession)
+    usernames = sessions.map((s) => s.username).filter(kind === 'group' ? isGroupSession : isPrivateSession)
   } catch (e) {
     return { error: `读取会话列表失败: ${e instanceof Error ? e.message : String(e)}` }
   }
@@ -308,7 +315,7 @@ export const chatStats = tool({
   execute: async ({ metric, sessionId, startTimeMs, endTimeMs, groupBy, limit }) => {
     try {
       const range = normalizeTimeRange(startTimeMs, endTimeMs)
-      if (metric === 'ranking') return await listPrivateRanking(range, limit)
+      if (metric === 'ranking') return await listSessionRanking(range, limit, 'private')
       const scope = await collectScope(sessionId)
       if (scope.length === 0) return { metric, note: '没有可统计的消息库（会话可能未加载或 sessionId 无效）' }
       if (metric === 'overview') return await runOverview(scope, range)
