@@ -296,7 +296,7 @@ export const chatStats = tool({
     '- overview：消息总数、各类型(文字/图片/语音/视频/表情)条数、我发vs收到、活跃天数、时间跨度。可选 sessionId 限定某会话。\n' +
     '- ranking：互动最多的联系人排行（按消息数，私聊），全局；用于"谁聊得最多"。\n' +
     '- time_distribution：按 groupBy(hour/weekday/month) 的消息量分布，附峰值；用于"互动高峰在什么时候"。\n' +
-    'sessionId 来自 list_contacts；时间一律毫秒时间戳。要看具体聊了啥用 get_timeline / search_messages，不要用本工具。',
+    'sessionId 来自 list_contacts；时间一律毫秒时间戳。不能当聊天总结。用户要总结近一周/私聊时，ranking 只用来找出要读的人，然后必须对每个人调用 read_period；禁止只交统计结果。要看具体聊了啥用 read_period / get_timeline。',
   inputSchema: z.object({
     metric: z.enum(['overview', 'ranking', 'time_distribution']).describe('统计类型'),
     sessionId: z.string().optional().describe('限定某会话（username，来自 list_contacts）；ranking 忽略此项（恒全局）'),

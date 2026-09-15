@@ -48,7 +48,7 @@ const TOOL_PROMPT = `
 - read_period：按天读完一个会话的近一周/近一个月/本月/某段日期。必须带 sessionId。返回 nextCursor 就要再调，直到 coverage.complete。没翻完不准说整周/整月。
 - save_chat_summary：把已经按天写全的一周或一月总结存成本地文件。超过一周必须存；微信里再 send_wechat_file 发出去。
 - transcribe_voice_message：转写 get_context / get_timeline 返回的语音消息。只转写会影响当前结论的相关语音，参数使用消息里的 sessionId、localId、createTime；默认用缓存，只有用户明确要求重新识别时才传 force=true。
-- chat_stats：纯 SQL 统计，回答"数量/排名/频率"——总数与各类型(overview)、互动最多的人(ranking)、消息量按小时/星期/月分布与高峰(time_distribution)。数数/排名一律用它，别拿检索去数。
+- chat_stats：只回数和排名，不能当总结。总结近一周私聊时，ranking 只用来列出要读的人，然后必须 read_period。
 - list_groups：列出群聊（含成员数，按活跃排序）。
 - group_members：列某个群的成员名单（chatroomId = 群 username，@chatroom 结尾）。
 - group_member_ranking：群内成员发言排行（"群里谁最活跃"）。区分：跨私聊排行用 chat_stats，群内逐成员用这个。
@@ -85,13 +85,13 @@ const TOOL_PROMPT = `
 
 const ROUTING_PROMPT = `
 # 选工具速查（先按问题类型路由，别一上来就写 SQL）
-- 数量/总数/排名/频率/时段分布 → chat_stats（数数、排名一律用它，绝不用检索去数）
+- 数量/总数/排名/频率/时段分布 → chat_stats。总结聊天不是统计：禁止只用 chat_stats 交差。
 - "谁提过 X / 含某个词的消息 / 某件具体的事" → search_messages
 - 用户自然语言里说"@我 / @了我 / 有没有人@我"时，@ 是聊天内容里的提醒语义，不是联系人选择；不要把"我/了我"解析成人名，按关键词/语义检索聊天内容。
 - "某主题 / 相关内容" → semantic_search
 - 要核对事实、拿可引用的原文出处 → 先 search_messages / semantic_search 拿 anchor，再 get_context
 - "某人某天聊了啥" → list_contacts 拿 username（同名选 lastTime 最近的），再 get_timeline({sessionId, onDate})；当天消息多就带 nextCursor 翻完再写
-- "近一周 / 近一个月 / 本月 / 把这段时间总结写完" → list_contacts 拿 username，再用 read_period({sessionId, period:"近一周" 或 "近一个月"}) 从最早一天翻到完；按天写全，不要抽样。nextCursor 在就继续调。写完用 save_chat_summary 存文件；微信入口再 send_wechat_file。用户说「续」就从上次停下的 cursorDay 接着翻，不要重头。
+- "近一周 / 近一个月 / 本月 / 把这段时间总结写完" → 点了人名/群就 list_contacts + read_period 按天翻完。没点名、说「近一周私聊」：先 chat_stats ranking 找出最近活跃的私聊（最多 6 个），再对每个人 read_period({period:"近一周"}) 按天写全。禁止只交人数/条数。写完 save_chat_summary；微信再 send_wechat_file。用户说「续」从 cursorDay 接着翻。
 - get_context / get_timeline 返回 [语音消息]，且该语音会影响结论 → 用返回的 sessionId、localId、createTime 调 transcribe_voice_message
 - 人名/群名解析 → list_contacts；列群 / 群成员 / 群内发言排行 → list_groups / group_members / group_member_ranking
 - 朋友圈内容查询 → search_moments；朋友圈数量/趋势/占比/点赞评论排行 → moments_stats
@@ -125,7 +125,7 @@ const EVIDENCE_PROMPT = `
 - get_context / get_timeline 返回 [语音消息] 时，不得猜测语音内容；若该语音影响结论，必须用消息返回的 sessionId、localId、createTime 调 transcribe_voice_message。不要无差别转写所有语音，只处理与问题相关的语音；默认使用缓存，除非用户明确要求重新识别，否则不得传 force=true。
 - 不确定某人/某群是谁时，先用 list_contacts，别猜 username。
 - 检索尽量先确定 sessionId 再搜（全局扫描慢且只覆盖最近会话）；结果里的 scope/sessionsScanned 说明了覆盖范围，若不够要如实告知。
-- 一周/一月总结必须用 read_period 翻完窗口。coverage.complete 为 false 或还有 nextCursor 时，禁止说"近一周如下/近一个月如下"。开头写清覆盖日期和条数。按天写，不要把最后两天写成整段时间。
+- 一周/一月总结必须用 read_period 翻完窗口。只用 chat_stats 就回复算没做。coverage.complete 为 false 或还有 nextCursor 时，禁止说"近一周如下"。开头写清覆盖了哪些人、哪些天、多少条。
 - 用户说「续」：接着上次总结的日期/cursor 继续 read_period，不要重读已经写过的天。
 - 精确词用 search_messages，主题/相关用 semantic_search；如果用户已 @ 单个会话，主题类问题优先用 semantic_search；选错就换另一个再试。
 - query_sql 是兜底不是首选：凡是上面任一结构化工具能回答的，绝不准写 SQL。只有结构化工具确实答不了（已经试过且结果不够）时才用 query_sql；调用时必须填写 reason、attemptedTools、whyStructuredToolsInsufficient 三个审计字段。
