@@ -372,15 +372,6 @@ class NightlyMemoryService {
 
   private async pushMorningTodos(): Promise<void> {
     try {
-      const { pushMorningTodosToServiceAccountIfDue } = await import('../agent/huajiTodoWechatNotify')
-      const oa = await pushMorningTodosToServiceAccountIfDue()
-      if (oa.pushed) {
-        this.ctx?.getLogService()?.info('NightlyMemory', '早上待办已发到服务号', { reason: oa.reason })
-      }
-    } catch (error) {
-      this.ctx?.getLogService()?.warn('NightlyMemory', '服务号待办提醒跳过', { error: error instanceof Error ? error.message : String(error) })
-    }
-    try {
       const { weixinBotService } = await import('../deviceConnect/weixinBotService')
       const result = await weixinBotService.pushMorningTodosIfDue()
       if (result.pushed) {

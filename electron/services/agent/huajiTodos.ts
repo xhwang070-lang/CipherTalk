@@ -26,7 +26,7 @@ export type HuajiTodoItem = {
   doneAt?: number
 }
 
-type TodoFile = { items: HuajiTodoItem[]; lastMorningPush?: string; lastMorningServicePush?: string }
+type TodoFile = { items: HuajiTodoItem[]; lastMorningPush?: string }
 
 function pad2(value: number): string {
   return String(value).padStart(2, '0')
@@ -57,7 +57,6 @@ function readFile(): TodoFile {
     return {
       items: Array.isArray(parsed.items) ? parsed.items : [],
       lastMorningPush: typeof parsed.lastMorningPush === 'string' ? parsed.lastMorningPush : undefined,
-      lastMorningServicePush: typeof parsed.lastMorningServicePush === 'string' ? parsed.lastMorningServicePush : undefined,
     }
   } catch {
     return { items: [] }
@@ -65,7 +64,7 @@ function readFile(): TodoFile {
 }
 
 function writeFile(data: TodoFile): void {
-  writeFileSync(todoPath(), JSON.stringify({ items: data.items, lastMorningPush: data.lastMorningPush || undefined, lastMorningServicePush: data.lastMorningServicePush || undefined }, null, 2), 'utf8')
+  writeFileSync(todoPath(), JSON.stringify({ items: data.items, lastMorningPush: data.lastMorningPush || undefined }, null, 2), 'utf8')
 }
 
 function newId(): string {
@@ -186,18 +185,6 @@ export function consumeMorningTodoPush(today = localDateKey()): boolean {
 
 export function peekMorningTodoPush(today = localDateKey()): boolean {
   return readFile().lastMorningPush === today
-}
-
-export function consumeMorningServicePush(today = localDateKey()): boolean {
-  const data = readFile()
-  if (data.lastMorningServicePush === today) return false
-  data.lastMorningServicePush = today
-  writeFile(data)
-  return true
-}
-
-export function peekMorningServicePush(today = localDateKey()): boolean {
-  return readFile().lastMorningServicePush === today
 }
 
 export function parseTodoListCommand(text: string): HuajiTodoWhen | null {

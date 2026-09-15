@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Button, Card, InputGroup, Switch, TextField } from '@heroui/react'
+import { Button, Card, InputGroup, TextField } from '@heroui/react'
 import { Check, FolderOpen, Plus, TrashBin } from '@gravity-ui/icons'
 
 type TodoItem = {
@@ -21,9 +21,6 @@ export default function HuajiTodoBoard() {
   const [tomorrowDraft, setTomorrowDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [notifyEnabled, setNotifyEnabled] = useState(false)
-  const [notifyHasToken, setNotifyHasToken] = useState(false)
-  const [notifyHint, setNotifyHint] = useState('')
 
   const load = useCallback(async () => {
     const [today, tomorrow] = await Promise.all([
@@ -34,11 +31,6 @@ export default function HuajiTodoBoard() {
     if (!tomorrow.success) throw new Error(tomorrow.error || '读取明日待办失败')
     setTodayItems(today.items || [])
     setTomorrowItems(tomorrow.items || [])
-    const notify = await window.electronAPI.todo.notifyGet()
-    if (notify.success && notify.config) {
-      setNotifyEnabled(notify.config.enabled)
-      setNotifyHasToken(notify.config.hasToken)
-    }
   }, [])
 
   useEffect(() => {
@@ -98,39 +90,6 @@ export default function HuajiTodoBoard() {
   const displayPerson = (person?: string) => {
     const trimmed = String(person || '').trim()
     return trimmed.replace(/\d{6,}$/g, '').replace(/[-_\s]+$/g, '').trim() || trimmed
-  }
-
-  const toggleNotify = async (enabled: boolean) => {
-    setBusy(true)
-    setError('')
-    setNotifyHint('')
-    try {
-      const res = await window.electronAPI.todo.notifySave({ enabled })
-      if (!res.success || !res.config) throw new Error(res.error || '保存失败')
-      setNotifyEnabled(res.config.enabled)
-      setNotifyHasToken(res.config.hasToken)
-      setNotifyHint(res.config.enabled ? (res.config.hasToken ? '早上 8 点后会发到华博服务号。' : '已打开，但本机还没有通知密钥。') : '已关闭服务号提醒。')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '保存失败')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const testNotify = async () => {
-    if (busy) return
-    setBusy(true)
-    setError('')
-    setNotifyHint('')
-    try {
-      const res = await window.electronAPI.todo.notifyTest()
-      if (!res.success) throw new Error(res.error || '发送失败')
-      setNotifyHint(res.skipped ? '已跳过：' + (res.error || '没有发送') : '测试已发出，看微信里华博服务号。')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '发送失败')
-    } finally {
-      setBusy(false)
-    }
   }
 
   const remove = async (id: string) => {
@@ -222,22 +181,6 @@ export default function HuajiTodoBoard() {
   return (
     <div className="mx-7 mb-4 space-y-3">
       {error ? <p className="m-0 text-sm text-danger">{error}</p> : null}
-      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border px-3 py-2">
-        <Switch isDisabled={busy} isSelected={notifyEnabled} onChange={(enabled) => { void toggleNotify(enabled) }}>
-          <Switch.Control>
-            <Switch.Thumb />
-          </Switch.Control>
-          <Switch.Content>
-            <span className="text-sm">早上发到华博服务号</span>
-          </Switch.Content>
-        </Switch>
-        <Button isDisabled={busy} size="sm" variant="secondary" onPress={() => void testNotify()}>
-          现在测一条
-        </Button>
-        <span className="text-xs text-muted-foreground">
-          {notifyHint || (notifyHasToken ? '用待办模板，不走询价那条「收到新订单通知」。' : '还没配通知密钥，测发会失败。')}
-        </span>
-      </div>
       <div className="flex flex-col gap-3 lg:flex-row">
         {column('today', '今日待办', todayItems, todayDraft, setTodayDraft)}
         {column('tomorrow', '明日待办', tomorrowItems, tomorrowDraft, setTomorrowDraft)}
