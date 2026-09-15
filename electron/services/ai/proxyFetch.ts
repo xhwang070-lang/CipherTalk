@@ -104,9 +104,14 @@ export function requestUrlOf(input: any): string {
 }
 
 /** openai/anthropic 等境外站可走系统代理；自定义中转默认直连。 */
+export function isLoopbackAiHost(url?: string | null): boolean {
+  const host = hostnameOf(String(url || ''))
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0' || host.endsWith('.localhost')
+}
+
 export function shouldProxyAiRequest(baseURL?: string | null): boolean {
   const host = hostnameOf(String(baseURL || ''))
-  if (!host) return false
+  if (!host || isLoopbackAiHost(baseURL)) return false
   return /(^|\.)openai\.com$|(^|\.)anthropic\.com$|(^|\.)googleapis\.com$|(^|\.)google\.com$|(^|\.)openrouter\.ai$|(^|\.)x\.ai$/i.test(host)
 }
 
@@ -178,16 +183,22 @@ function createDirectChromiumFetch(): typeof globalThis.fetch | undefined {
 }
 
 export function resolveAiFetch(baseURL?: string | null): typeof globalThis.fetch | undefined {
-  // 这台机器直连 nova 会被 Cloudflare 拦成 403 HTML；Clash HTTP 代理能打到源站。
-  // 有系统 HTTP 代理时一律走 ProxyAgent，不要用 Chromium 直连 session。
+  const direct = createDirectFetch()
+  if (isLoopbackAiHost(baseURL)) return direct
   const proxied = createProxyFetch(getResolvedProxyUrl())
-  if (proxied) return proxied
+  if (proxied) {
+    return ((input: any, init?: any) => {
+      const url = requestUrlOf(input)
+      if (isLoopbackAiHost(url) || isLoopbackAiHost(baseURL)) return direct(input, init)
+      return proxied(input, init)
+    }) as typeof globalThis.fetch
+  }
   if (shouldProxyAiRequest(baseURL)) {
-    return createDefaultChromiumFetch() || createDirectFetch()
+    return createDefaultChromiumFetch() || direct
   }
   const parentFetch = createParentAiFetch()
   if (parentFetch) return parentFetch
-  return createDirectChromiumFetch() || createDirectFetch()
+  return createDirectChromiumFetch() || direct
 }
 
 export function isCloudflareOrHtmlBody(body: string): boolean {
