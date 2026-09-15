@@ -45,7 +45,8 @@
     "electron:build": "npm run build",
     "postinstall": "electron-rebuild",
     "check:wcdb-dll": "node scripts/check-wcdb-dll.cjs",
-    "pack:win": "node scripts/pack-win-fast.cjs"
+    "pack:win": "node scripts/pack-win-fast.cjs",
+    "pack:hot": "node scripts/hot-patch-installed.cjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.18",
