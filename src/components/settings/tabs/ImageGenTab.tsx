@@ -3,7 +3,7 @@
  * 启用并配好后，在 AI 助手里说"帮我画一张…"即可生成图片并展示在对话流里。
  * 自带 IPC（imageGen:getConfig/setConfig/test）。
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button, Card, ComboBox, Description, Input, InputGroup, Label, ListBox, Select, Spinner, Switch, TextField, Tooltip } from '@heroui/react'
 import { ArrowsRotateLeft, CircleCheck, CircleExclamation, Picture } from '@gravity-ui/icons'
 import type { ImageGenConfig } from '@/types/electron'
@@ -46,11 +46,7 @@ export default function ImageGenTab() {
   const protocolOption = PROTOCOL_OPTIONS.find((o) => o.value === cfg.protocol)
   const timeoutSeconds = Math.round((cfg.timeoutMs || DEFAULT_CFG.timeoutMs) / 1000)
   const customEndpoint = cfg.protocol === 'custom'
-  const modelOptions = useMemo(() => {
-    const ids = [...remoteModels]
-    if (cfg.model && !ids.includes(cfg.model)) ids.unshift(cfg.model)
-    return ids
-  }, [remoteModels, cfg.model])
+  const modelOptions = remoteModels
   const canRefreshModels = Boolean(cfg.apiKey) && (cfg.protocol === 'openai' || cfg.protocol === 'google' || Boolean(cfg.baseURL))
 
   const handleRefreshModels = async () => {
@@ -226,7 +222,7 @@ export default function ImageGenTab() {
             </Tooltip>
           </div>
           <Description>
-            和 AI 接入一样，点刷新从当前接口拉模型；带 image 的会排在前面。也可以手填。Google 改图常用 gemini-3.1-flash-image，更强用 gemini-3-pro-image。
+            点刷新只拉你当前还能调用的生图型号，对话模型不会出现。没有的也可以手填。
           </Description>
         </div>
 

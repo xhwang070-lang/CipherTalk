@@ -348,6 +348,83 @@ function looksLikeImageModelId(id: string): boolean {
   return /image|imagen|kolors|kolor|dall-e|dalle|flux|banana|gpt-image|sdxl|stable-diffusion/i.test(id)
 }
 
+function originFromBaseURL(url: string): string {
+  try {
+    const parsed = new URL(String(url || '').trim())
+    return `${parsed.protocol}//${parsed.host}`
+  } catch {
+    return ''
+  }
+}
+
+function quotaModelName(item: unknown): string {
+  if (typeof item === 'string') return item.trim()
+  if (!item || typeof item !== 'object') return ''
+  const rec = item as Record<string, unknown>
+  return String(rec.name || rec.id || rec.model || rec.model_id || '').trim()
+}
+
+function quotaModelUsable(item: unknown): boolean {
+  if (typeof item === 'string') return Boolean(item.trim())
+  if (!item || typeof item !== 'object') return false
+  const rec = item as Record<string, unknown>
+  const percentage = Number(rec.percentage)
+  if (Number.isFinite(percentage) && percentage <= 0) return false
+  const remaining = Number(rec.remaining_fraction ?? rec.remaining)
+  if (Number.isFinite(remaining) && remaining <= 0) return false
+  return Boolean(quotaModelName(item))
+}
+
+function extractQuotaImageModels(payload: unknown): string[] {
+  if (!payload || typeof payload !== 'object') return []
+  const obj = payload as Record<string, unknown>
+  const accounts = Array.isArray(obj.accounts) ? obj.accounts : Array.isArray(payload) ? payload : []
+  const ids = new Set<string>()
+  for (const account of accounts) {
+    if (!account || typeof account !== 'object') continue
+    const rec = account as Record<string, unknown>
+    if (rec.disabled === true) continue
+    const quota = rec.quota && typeof rec.quota === 'object' ? rec.quota as Record<string, unknown> : null
+    if (quota?.is_forbidden === true) continue
+    const models = Array.isArray(quota?.models) ? quota.models : []
+    for (const model of models) {
+      if (!quotaModelUsable(model)) continue
+      const name = quotaModelName(model)
+      if (name && looksLikeImageModelId(name)) ids.add(name)
+    }
+  }
+  return Array.from(ids).sort((a, b) => a.localeCompare(b))
+}
+
+async function listLocalQuotaImageModels(
+  origin: string,
+  apiKey: string,
+  fetchImpl: typeof fetch,
+  signal: AbortSignal,
+): Promise<string[] | null> {
+  if (!origin || !apiKey) return null
+  const headers = {
+    Accept: 'application/json',
+    Authorization: `Bearer ${apiKey}`,
+    'x-admin-token': apiKey,
+    'x-goog-api-key': apiKey,
+  }
+  for (const path of ['/api/accounts', '/accounts']) {
+    try {
+      const res = await fetchImpl(`${origin}${path}`, { method: 'GET', headers, signal })
+      if (!res.ok) continue
+      const payload = JSON.parse(await res.text().catch(() => '{}') || '{}')
+      if (!payload || typeof payload !== 'object') continue
+      const obj = payload as Record<string, unknown>
+      if (!Array.isArray(obj.accounts) && !Array.isArray(payload)) continue
+      return extractQuotaImageModels(payload)
+    } catch {
+      continue
+    }
+  }
+  return null
+}
+
 function extractModelIds(payload: unknown): string[] {
   if (!payload || typeof payload !== 'object') return []
   const obj = payload as Record<string, unknown>
@@ -412,6 +489,14 @@ export async function listImageGenModels(cfg: Partial<ImageGenConfig> = {}): Pro
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 15000)
   try {
+    const origin = originFromBaseURL(normalized.baseURL) || originFromBaseURL(url)
+    const quotaModels = await listLocalQuotaImageModels(origin, normalized.apiKey, fetchImpl, controller.signal)
+    if (quotaModels) {
+      if (quotaModels.length === 0) {
+        return { success: false, error: '当前中转账号没有可用的生图额度。对话模型不会出现在这里。' }
+      }
+      return { success: true, models: quotaModels }
+    }
     let res = await fetchImpl(url, { method: 'GET', headers, signal: controller.signal })
     let text = await res.text().catch(() => '')
     if (!res.ok && normalized.protocol === 'google' && /\/v1beta\/models$/i.test(url)) {
@@ -428,12 +513,8 @@ export async function listImageGenModels(cfg: Partial<ImageGenConfig> = {}): Pro
     } catch {
       return { success: false, error: '模型列表不是 JSON，也可以手动输入模型名。' }
     }
-    const models = extractModelIds(payload).sort((a, b) => {
-      const ia = looksLikeImageModelId(a) ? 0 : 1
-      const ib = looksLikeImageModelId(b) ? 0 : 1
-      return ia !== ib ? ia - ib : a.localeCompare(b)
-    })
-    if (models.length === 0) return { success: false, error: '接口没有返回模型。也可以手动输入模型名后保存。' }
+    const models = extractModelIds(payload).filter(looksLikeImageModelId).sort((a, b) => a.localeCompare(b))
+    if (models.length === 0) return { success: false, error: '接口里没有可调用的生图型号。也可以手动输入模型名后保存。' }
     return { success: true, models }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
