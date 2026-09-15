@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'fs'
 import { dbPathService } from '../../services/dbPathService'
 import { wcdbService } from '../../services/wcdbService'
 import { wxKeyService } from '../../services/wxKeyService'
+import { scanWeixinRuntimeKey } from '../../services/wxKeyRuntimeScan'
 import { wxKeyServiceMac } from '../../services/wxKeyServiceMac'
 import { applyKeyPackEnv, importKeyPack, parseKeyPack, pickEncKey, resolveKeyPackPath, upsertEncKey } from '../../services/localKeyPack'
 import type { MainProcessContext } from '../context'
@@ -388,7 +389,30 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
       // 轮询内存扫描（自适应：默认不提权直接扫；若检测到一字节都读不到，
       // 判定为权限不足，返回 needAdmin 让前端提示用管理员重开）。命中后数据库验证。
       event.sender.send('wxkey:status', { status: '微信启动中，正在扫描内存获取密钥...', level: 1 })
-      const deadline = Date.now() + 120000
+      event.sender.send('wxkey:status', { status: '正在扫描微信 4.1 运行时密钥...', level: 1 })
+      const contactDbs = wxids.map((id) => contactDbFor(id)).filter((item): item is string => Boolean(item))
+      try {
+        const runtime = await scanWeixinRuntimeKey({
+          contactDbPaths: contactDbs,
+          onProgress: (status) => event.sender.send('wxkey:status', { status, level: 1 }),
+        })
+        appendWxKeyScanLog(`runtimeScan ${JSON.stringify(runtime.stats)} err=${runtime.error || ''} hasKey=${Boolean(runtime.key)}`)
+        if (runtime.key) {
+          for (const wxid of wxids) {
+            upsertEncKey(runtime.key, dbPath, wxid)
+            const testResult = await wcdbService.testConnection(dbPath, runtime.key, wxid)
+            if (testResult.success) {
+              return { success: true, key: runtime.key, validatedWxid: wxid, account: null }
+            }
+          }
+          appendWxKeyScanLog('runtime key hmac-ok but wcdb open failed')
+        }
+      } catch (error) {
+        appendWxKeyScanLog(`runtimeScan error ${error instanceof Error ? error.message : String(error)}`)
+      }
+
+      event.sender.send('wxkey:status', { status: '运行时未命中，回退旧扫描（可能较慢）...', level: 1 })
+      const deadline = Date.now() + 45000
       let lastError = ''
       let sawBytes = false
       let rounds = 0
@@ -466,7 +490,7 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
             }
             lastError = testResult.error || ''
           }
-          if (!diag.key && (diag.candidates || 0) > 0) {
+          if (false && !diag.key && (diag.candidates || 0) > 0) {
             const extra = wxKeyService.scanDbKeyCandidates(contactDb)
             appendWxKeyScanLog(`fullKeys wxid=${wxid} count=${extra.keys.length} preview=${extra.rawPreview.replace(/\s+/g, ' ').slice(0, 180)}`)
             for (const hexKey of extra.keys) {
