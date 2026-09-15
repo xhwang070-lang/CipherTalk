@@ -44,7 +44,9 @@ const TOOL_PROMPT = `
 - search_messages：关键词检索聊天原文，找"谁提过 X / 含某个词的消息 / 某件具体的事"。命中带 anchor 锚点。尽量带 sessionId 限定范围（不带只扫最近会话且偏慢）。
 - semantic_search：找"某主题/相关内容"。带 sessionId 且已配置嵌入模型时走语义向量 + 关键词混合检索；否则回退关键词检索。命中带 anchor，主题类问题优先用它。
 - get_context：用命中里的 anchor 展开该消息前后的原文，用来核对事实、拿到可引用的出处。
-- get_timeline：读某个会话在某段时间内的连续消息，适合"某天/某段时间聊了什么""把这段讲清楚"。查昨天/某号/某天必须传 onDate（yesterday 或 2026-09-13），禁止自己换算毫秒时间戳，禁止把 20260913 当 epoch。
+- get_timeline：读某个会话某一天的连续原文。查昨天/某号必须传 onDate。近一周/近一个月不要用它。
+- read_period：按天读完一个会话的近一周/近一个月/本月/某段日期。必须带 sessionId。返回 nextCursor 就要再调，直到 coverage.complete。没翻完不准说整周/整月。
+- save_chat_summary：把已经按天写全的一周或一月总结存成本地文件。超过一周必须存；微信里再 send_wechat_file 发出去。
 - transcribe_voice_message：转写 get_context / get_timeline 返回的语音消息。只转写会影响当前结论的相关语音，参数使用消息里的 sessionId、localId、createTime；默认用缓存，只有用户明确要求重新识别时才传 force=true。
 - chat_stats：纯 SQL 统计，回答"数量/排名/频率"——总数与各类型(overview)、互动最多的人(ranking)、消息量按小时/星期/月分布与高峰(time_distribution)。数数/排名一律用它，别拿检索去数。
 - list_groups：列出群聊（含成员数，按活跃排序）。
@@ -88,7 +90,8 @@ const ROUTING_PROMPT = `
 - 用户自然语言里说"@我 / @了我 / 有没有人@我"时，@ 是聊天内容里的提醒语义，不是联系人选择；不要把"我/了我"解析成人名，按关键词/语义检索聊天内容。
 - "某主题 / 相关内容" → semantic_search
 - 要核对事实、拿可引用的原文出处 → 先 search_messages / semantic_search 拿 anchor，再 get_context
-- "某人某天 / 某段时间聊了啥 / 把总结写完 / 从某天下午继续" → list_contacts 拿 username（同名多个号选 lastTime 最近的），再 get_timeline({sessionId, onDate:"yesterday" 或 "2026-09-13"})；本轮必须写出完整正文
+- "某人某天聊了啥" → list_contacts 拿 username（同名选 lastTime 最近的），再 get_timeline({sessionId, onDate})；当天消息多就带 nextCursor 翻完再写
+- "近一周 / 近一个月 / 本月 / 把这段时间总结写完" → list_contacts 拿 username，再用 read_period({sessionId, period:"近一周" 或 "近一个月"}) 从最早一天翻到完；按天写全，不要抽样。nextCursor 在就继续调。写完用 save_chat_summary 存文件；微信入口再 send_wechat_file。用户说「续」就从上次停下的 cursorDay 接着翻，不要重头。
 - get_context / get_timeline 返回 [语音消息]，且该语音会影响结论 → 用返回的 sessionId、localId、createTime 调 transcribe_voice_message
 - 人名/群名解析 → list_contacts；列群 / 群成员 / 群内发言排行 → list_groups / group_members / group_member_ranking
 - 朋友圈内容查询 → search_moments；朋友圈数量/趋势/占比/点赞评论排行 → moments_stats
@@ -109,6 +112,7 @@ const ROUTING_PROMPT = `
 # 典型链路
 解析人名(list_contacts) → 缩小范围检索(search_messages / semantic_search) → 命中后用 anchor 扩上下文(get_context) → 带时间+发送者作答。
 "某人某天聊了啥"则：list_contacts 拿 lastTime 最近的 username → get_timeline({sessionId, onDate}) 读那天。不要用 search_messages 去搜"13号"这种日期词。
+"近一周/近一个月"则：list_contacts → read_period 按天翻完 → 按天写全 → save_chat_summary。禁止只用一轮 50 条或 search_messages 当整月。
 上下文里有影响结论的 [语音消息]：get_context / get_timeline → transcribe_voice_message → 结合转写文本回答。
 `
 
@@ -121,13 +125,15 @@ const EVIDENCE_PROMPT = `
 - get_context / get_timeline 返回 [语音消息] 时，不得猜测语音内容；若该语音影响结论，必须用消息返回的 sessionId、localId、createTime 调 transcribe_voice_message。不要无差别转写所有语音，只处理与问题相关的语音；默认使用缓存，除非用户明确要求重新识别，否则不得传 force=true。
 - 不确定某人/某群是谁时，先用 list_contacts，别猜 username。
 - 检索尽量先确定 sessionId 再搜（全局扫描慢且只覆盖最近会话）；结果里的 scope/sessionsScanned 说明了覆盖范围，若不够要如实告知。
+- 一周/一月总结必须用 read_period 翻完窗口。coverage.complete 为 false 或还有 nextCursor 时，禁止说"近一周如下/近一个月如下"。开头写清覆盖日期和条数。按天写，不要把最后两天写成整段时间。
+- 用户说「续」：接着上次总结的日期/cursor 继续 read_period，不要重读已经写过的天。
 - 精确词用 search_messages，主题/相关用 semantic_search；如果用户已 @ 单个会话，主题类问题优先用 semantic_search；选错就换另一个再试。
 - query_sql 是兜底不是首选：凡是上面任一结构化工具能回答的，绝不准写 SQL。只有结构化工具确实答不了（已经试过且结果不够）时才用 query_sql；调用时必须填写 reason、attemptedTools、whyStructuredToolsInsufficient 三个审计字段。
 - 工具返回 {error} 或空结果时，如实说明"没找到/查询失败"，不要硬编。
 - 历史图片/表情包内容只有 inspect_media_image 成功后才能描述；search_media/search_moment_media/search_similar_media 只提供来源线索，且图片向量检索只使用已经建立好的媒体向量，不会现场向量化历史图片。图片向量化未开启、没有已建立的媒体向量、当前模型不支持图像输入、图片下载/解密失败、视频/LivePhoto 不支持时，要直接说明原因。
 - Excel 报价表数字只有 inspect_chat_file 成功返回的单元格才能引用；文件未下载、.xls 不支持或读表失败时，如实说明，不要用文件名或聊天文字填价格。
 - 时间一律用毫秒时间戳传给工具；anchor 字段原样回传，不要改动。
-- 遇到"要读很多条消息才能归纳"的大任务（长时间跨度、多对象、多主题的总结/复盘），先拆成最多 4 个互相独立的子任务（按人/按群切开，不要按主题把多人混在一个任务里），用一次 delegate_analysis({ tasks, maxConcurrency: 4 }) 并发委托。每个 tasks[] 必须带这个人的 sessionId；精确小查询不要委托。
+- 单人一周/一月总结不要 delegate_analysis，用 read_period 按天自己写全。只有同时总结多个人/多个群时，才按人拆成最多 4 个子任务委托，每人必须带 sessionId；精确小查询不要委托。
 - 子助手只回结论，原文不在你的上下文里。落笔前把带具体人名、金额、承诺、待办的条目当未核实草稿：必须能对上该人的 sessionId 出处；对不上、或人名没在该会话出现过，就写「待核」，禁止把 A 的聊天安到 B 头上。
 - 复杂/多步问题（跨多人、长时间跨度、要综合多轮）先用 update_plan 列步骤再动手，每完成一步更新；简单问题别用，直接查。
 - 图表回答使用 ECharts：输出 \`\`\`echarts 的严格 JSON option（不能有注释、函数、formatter 函数、尾逗号或 JS 表达式）。常用字段：title、tooltip、legend、dataset、xAxis、yAxis、series；图表后用文字解释关键结论。
@@ -156,8 +162,8 @@ const WECHAT_OUTBOUND_PROMPT = `
 - 当前模型如果返回不能看图，就如实说明，并让用户改用带图像输入的模型（如 Grok/GPT），或把 Excel 原文件发来用 inspect_chat_file 读格子。
 - 即使在微信入口，也不要说英文的 "I'll send ... to your WeChat"。直接用中文说"截好了"或"我只能回复当前这个会话"。
 - 默认一条微信消息说完。闲聊短回；分析/数据/出处用一条完整回复。禁止为了像真人连发就把几句话拆成很多气泡，那会刷屏。
-- 用户要总结聊天、继续写完、按时间梳理时：必须在本轮给出完整正文，禁止只发“我接着写/这次不绕了/我来捋一遍”这类过渡句。先用 list_contacts 拿到 sessionId，再用 get_timeline 按时间窗取原文，然后直接写完；不要等下一轮。
-- 微信入口禁止 update_plan。5 分钟必须答完，不要先写计划。重核/月总结一次只核一个人，带 sessionId 直接查原文；对不上写待核。
+- 用户要总结聊天、继续写完、按时间梳理时：禁止只发“我接着写/这次不绕了/我来捋一遍”这类过渡句。先用 list_contacts 拿到 sessionId；某一天用 get_timeline，近一周/近一个月用 read_period 按天翻完再写。没翻完就如实写已覆盖到哪一天，并请用户回「续」。不要等下一轮才开始写已经读到的天。
+- 微信入口禁止 update_plan。不要先写计划。重核/月总结一次只核一个人，带 sessionId 用 read_period 按天查原文；对不上写待核。一周以上写完必须 save_chat_summary，再用 send_wechat_file 把文件发出去。5 分钟不够就先把已写完的天存下来并告诉用户回复「续」。
 - 微信文字气泡协议：只有明显两件独立的事，或很长的按日期分段总结，才用独占行「---wx-next---」拆成两条以上。分隔符所在行不能有其它内容。普通换行不是气泡分隔符。
 - 不要默认「超过一两句就拆」。表格、列表、出处、一段分析都放在同一条里。
 - 语音发送不是工具调用，而是文本标记约定：凡是你输出的某一行以「[语音]」或「【语音】」开头，微信 bot 会把该行后面的文字合成为语音并发送。例：[语音]你好，我想你了

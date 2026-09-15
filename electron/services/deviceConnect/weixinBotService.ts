@@ -49,7 +49,7 @@ const PERSONA_PENDING_FLUSH_MAX_MS = 10_000
 const PERSONA_PENDING_AFTER_BUSY_MS = 1_200
 const WECHAT_TEXT_BUBBLE_SEPARATOR = '---wx-next---'
 const WECHAT_REPLY_FALLBACK_TEXT = '不好意思，我有点嘎了，等一会儿哈！'
-const WECHAT_AGENT_DEADLINE_MS = 300_000
+const WECHAT_AGENT_DEADLINE_MS = 720_000
 const WECHAT_STILL_WORKING_TEXT = '还在查，可能要一两分钟。有结果或失败我会说原因。'
 const WECHAT_EMPTY_REPLY_TEXT = '这次模型没有返回内容。可能是没查到记录，或接口空响应。'
 
@@ -85,7 +85,7 @@ function wechatBotFailText(error: unknown, lastTool?: string): string {
   const stuck = wechatToolLabel(lastTool)
   const stuckText = stuck ? ('\u5361\u5728\u300c' + stuck + '\u300d\u3002') : ''
   if (/timeout|aborted|AbortError|\u8d85\u65f6/i.test(msg)) {
-    return '\u8fd9\u6b21\u6ca1\u8dd1\u5b8c\uff0c\u6211\u5148\u505c\u4e86\u3002\u539f\u56e0\uff1a' + stuckText + '\u67e5\u804a\u5929\u8bb0\u5f55\u6216\u6a21\u578b\u63a5\u53e3\u8d85\u65f6\u3002\u8bf7\u628a\u95ee\u9898\u7f29\u77ed\u518d\u95ee\u3002'
+    return '\u8fd9\u6b21\u6ca1\u5199\u5b8c\uff0c\u6211\u5148\u505c\u4e86\u3002' + stuckText + '\u56de\u590d\u300c\u7eed\u300d\u63a5\u7740\u4ece\u505c\u4e0b\u7684\u90a3\u5929\u5199\uff0c\u4e0d\u8981\u628a\u95ee\u9898\u7f29\u77ed\uff0c\u5df2\u5199\u8fc7\u7684\u4e0d\u7528\u91cd\u8bfb\u3002'
   }
   if (/finish|\u54cd\u5e94\u6d41|\u4e0d\u5b8c\u6574\u56de\u590d|\u8fde\u63a5\u4e2d\u65ad/i.test(msg)) {
     return '\u6ca1\u56de\u6210\u3002\u539f\u56e0\uff1a' + stuckText + '\u6a21\u578b\u8fde\u63a5\u65ad\u4e86\u3002\u8bf7\u628a\u91cd\u6838\u7f29\u6210\u4e00\u4e2a\u4eba\u6216\u66f4\u77ed\u65f6\u95f4\u518d\u95ee\u3002'
@@ -1323,7 +1323,7 @@ class WeixinBotService {
       let rawReply = await Promise.race([
         this.runAgent(history, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name) } }),
         new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error('处理超时（5分钟）。查聊天记录或模型接口太慢')), WECHAT_AGENT_DEADLINE_MS)
+          setTimeout(() => reject(new Error('处理超时（12分钟）。聊天总结还没写完')), WECHAT_AGENT_DEADLINE_MS)
         }),
       ])
       if (isPreambleOnlyWechatReply(rawReply.text) && rawReply.media.length === 0) {
@@ -2202,7 +2202,7 @@ class WeixinBotService {
     const personaActions: WechatPersonaAction[] = []
     const toolNames = new Map<string, string>()
     const abort = new AbortController()
-    const timeout = setTimeout(() => abort.abort(), 300_000)
+    const timeout = setTimeout(() => abort.abort(), WECHAT_AGENT_DEADLINE_MS)
     try {
     await agentProcessService.run(
       {

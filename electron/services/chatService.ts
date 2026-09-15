@@ -379,6 +379,7 @@ class ChatService extends EventEmitter {
       startTime?: number
       endTime: number
       limit: number
+      beforeCursor?: { sortSeq: number; createTime: number; localId: number }
     }
   ): Promise<{ success: boolean; messages?: Message[]; hasMore?: boolean; error?: string }> {
     return getMessagesByTimeRangeForSummary(this.state, sessionId, options)

@@ -148,10 +148,11 @@ export interface CompactMessage {
 }
 
 /** 把一条消息压成精简、可控大小、带出处字段的结构。 */
-export function compactMessage(msg: Message, senderName?: string): CompactMessage {
+export function compactMessage(msg: Message, senderName?: string, maxChars = 200): CompactMessage {
   const fromMe = msg.isSend === 1
   const sender = fromMe ? '我' : senderName || msg.senderUsername || '未知'
-  const text = String(msg.parsedContent || '').replace(/\s+/g, ' ').trim().slice(0, 200)
+  const limit = Number.isFinite(maxChars) ? Math.max(80, Math.min(Math.floor(maxChars), 8000)) : 200
+  const text = String(msg.parsedContent || '').replace(/\s+/g, ' ').trim().slice(0, limit)
   return {
     time: toLocalTime(msg.createTime),
     sender,

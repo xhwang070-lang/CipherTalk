@@ -300,6 +300,7 @@ export async function getMessagesByTimeRangeForSummary(state: ChatServiceState,
     startTime?: number
     endTime: number
     limit: number
+    beforeCursor?: { sortSeq: number; createTime: number; localId: number }
   }
 ): Promise<{ success: boolean; messages?: Message[]; hasMore?: boolean; error?: string }> {
   try {
@@ -316,12 +317,26 @@ export async function getMessagesByTimeRangeForSummary(state: ChatServiceState,
     }
 
     const pageSize = Math.min(200, Math.max(normalizedLimit, 80))
-    const maxScan = Math.min(1200, Math.max(normalizedLimit * 8, 240))
+    const maxScan = startTime !== undefined
+      ? Math.min(20000, Math.max(normalizedLimit * 20, 2000))
+      : Math.min(3000, Math.max(normalizedLimit * 12, 400))
     const inRange: Message[] = []
     let scanned = 0
-    let oldest: Message | null = null
+    let oldest: Message | null = options.beforeCursor
+      ? {
+          localId: options.beforeCursor.localId,
+          serverId: 0,
+          localType: 0,
+          createTime: options.beforeCursor.createTime,
+          sortSeq: options.beforeCursor.sortSeq,
+          isSend: null,
+          senderUsername: null,
+          parsedContent: '',
+          rawContent: '',
+        }
+      : null
     let hasMoreOlder = true
-    let first = true
+    let first = !options.beforeCursor
 
     while (inRange.length < normalizedLimit && scanned < maxScan && hasMoreOlder) {
       const result = first

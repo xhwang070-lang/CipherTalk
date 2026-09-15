@@ -19,7 +19,9 @@ const DEFAULT_TOOL_TIMEOUT_MS = 60_000
 const TOOL_TIMEOUT_OVERRIDES: Record<string, number> = {
   semantic_search: 90_000,
   search_messages: 90_000,
-  get_timeline: 90_000,
+  get_timeline: 180_000,
+  read_period: 180_000,
+  save_chat_summary: 60_000,
   get_context: 60_000,
   transcribe_voice_message: 600_000, // 本地大模型首次加载或在线转写可能耗时较长
   delegate_analysis: 600_000, // 子 Agent 批量整轮（最多 4 个并发子任务 + 可能触发首次重建），给更长上限
