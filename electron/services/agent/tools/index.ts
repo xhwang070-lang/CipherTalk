@@ -15,6 +15,7 @@ import { semanticSearch } from './semanticSearch'
 import { getContext } from './getContext'
 import { getTimeline } from './getTimeline'
 import { readPeriod } from './readPeriod'
+import { readPrivatePeriod } from './readPrivatePeriod'
 import { saveChatSummary } from './saveChatSummary'
 import { transcribeVoiceMessage } from './transcribeVoiceMessage'
 import { chatStats } from './chatStats'
@@ -50,6 +51,7 @@ export function buildBaseTools(_scope: AgentScope): ToolSet {
     get_context: getContext,
     get_timeline: getTimeline,
     read_period: readPeriod,
+    read_private_period: readPrivatePeriod,
     save_chat_summary: saveChatSummary,
     transcribe_voice_message: transcribeVoiceMessage,
     chat_stats: chatStats,
@@ -77,6 +79,7 @@ export function buildSubAgentTools(_scope: AgentScope): ToolSet {
     get_context: getContext,
     get_timeline: getTimeline,
     read_period: readPeriod,
+    read_private_period: readPrivatePeriod,
     save_chat_summary: saveChatSummary,
     transcribe_voice_message: transcribeVoiceMessage,
     chat_stats: chatStats,

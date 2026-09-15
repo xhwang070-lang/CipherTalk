@@ -32,6 +32,7 @@ import { synthesizeWeixinVoice } from './weixinVoiceService'
 import type { PersonaTtsVoiceBinding } from '../agent/persona/personaTypes'
 import type { AgentUploadedMediaContext } from '../agent/types'
 import { resolveWechatPeerName, wechatBotConversationTitle, writeWechatBotRunLog } from '../agent/wechatBotArchive'
+import { getLastPrivatePeriodProgress } from '../agent/tools/readPrivatePeriod'
 
 const TOKEN_FILE = 'wechat-bot-token.json'
 const MODE_FILE = 'wechat-bot-modes.json'
@@ -117,11 +118,23 @@ function wantsWeekOrMonthSummary(text: string): boolean {
   return asksPrivateWeek || (asksSummary && asksPeriod)
 }
 
-function usedPeriodRead(usedTools: string[]): boolean {
-  return usedTools.includes('read_period')
+function usedPeriodRead(usedTools: string[], commandText = ''): boolean {
+  if (wantsAllPrivateSummary(commandText)) return usedTools.includes('read_private_period')
+  return usedTools.includes('read_period') || usedTools.includes('read_private_period')
 }
 
-const FORCE_PERIOD_READ_TEXT = "上一轮没有读聊天原文，作废。必须立刻调用工具：没点名人就先 chat_stats ranking 找出最近活跃的最多6个私聊，然后对每个人 read_period({period:'近一周'}) 按天翻完再写。禁止只用统计或凭记忆回答。"
+function wantsAllPrivateSummary(text: string): boolean {
+  const compact = String(text || '').replace(/\s+/g, '')
+  if (/^(续|接着写|继续)$/.test(compact)) {
+    const progress = getLastPrivatePeriodProgress()
+    return Boolean(progress && !progress.complete)
+  }
+  if (!wantsWeekOrMonthSummary(text)) return false
+  if (!compact.includes('私聊')) return false
+  return !/(跟我|和我|我和|我跟).{0,20}(近一周|近一个月|近七天)/.test(compact)
+}
+
+const FORCE_PERIOD_READ_TEXT = "上一轮没有读聊天原文，作废。所有私聊总结必须立刻调用 read_private_period({period 跟用户说的时间走，近一周或近一个月})，不要问用户要人名，不要只用统计。有 nextCursor 就继续调，直到 complete=true。点了具体人名才用 read_period。"
 
 function isPreambleOnlyWechatReply(text: string): boolean {
   const compact = String(text || '').replace(/\s+/g, '')
@@ -1354,7 +1367,7 @@ class WeixinBotService {
           rawReply = continued
         }
       }
-      if (wantsWeekOrMonthSummary(commandText) && !usedPeriodRead(usedTools) && rawReply.media.length === 0) {
+      if (wantsWeekOrMonthSummary(commandText) && !usedPeriodRead(usedTools, commandText) && rawReply.media.length === 0) {
         console.warn('[WechatBot] 周/月总结未调用 read_period，强制重跑', { usedTools })
         this.logger?.warn('WechatBot', '周/月总结未读原文，强制重跑', { usedTools })
         const followHistory = [
@@ -1363,14 +1376,44 @@ class WeixinBotService {
           { id: `wx-u-force-read-${Date.now()}`, role: 'user' as const, parts: [{ type: 'text' as const, text: FORCE_PERIOD_READ_TEXT }] },
         ]
         const reread = await this.runAgent(followHistory, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name) } })
-        if (usedPeriodRead(usedTools) && reread.text.trim()) {
+        if (usedPeriodRead(usedTools, commandText) && reread.text.trim()) {
           rawReply = reread
-        } else if (!usedPeriodRead(usedTools)) {
+        } else if (!usedPeriodRead(usedTools, commandText)) {
           rawReply = {
             ...rawReply,
-            text: '这次还没读到聊天原文，统计不能当总结。请点名一个人再问，例如：总结我和张俊博近一周。',
+            text: '这次还没读到聊天原文。请再发一遍：把近一周的私聊总结一下。不用点名，我会按人翻。',
             textBubbles: undefined,
             media: [],
+          }
+        }
+      }
+
+
+      if (wantsAllPrivateSummary(commandText) && usedTools.includes('read_private_period')) {
+        let hops = 0
+        while (hops < 10) {
+          const progress = getLastPrivatePeriodProgress()
+          if (!progress || progress.complete || !progress.nextCursor) break
+          hops += 1
+          console.warn('[WechatBot] 私聊总结未翻完，自动继续', progress)
+          const followHistory = [
+            ...history,
+            { id: `wx-a-priv-${Date.now()}-${hops}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: rawReply.text || '' }] },
+            { id: `wx-u-priv-${Date.now()}-${hops}`, role: 'user' as const, parts: [{ type: 'text' as const, text: `继续 read_private_period，nextCursor 原样传入：${JSON.stringify(progress.nextCursor)}。只写当前这个人已读到的天，写过的人不要重复。不要问人名。` }] },
+          ]
+          const more = await this.runAgent(followHistory, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name) } })
+          if (more.text.trim()) {
+            rawReply = {
+              ...more,
+              text: [rawReply.text, more.text].filter((item) => String(item || '').trim()).join('\n---wx-next---\n'),
+            }
+          }
+        }
+        const leftover = getLastPrivatePeriodProgress()
+        if (leftover && !leftover.complete) {
+          rawReply = {
+            ...rawReply,
+            text: `${rawReply.text || ''}\n---wx-next---\n已写到 ${leftover.currentName}（${leftover.peopleIndex}/${leftover.peopleTotal}），还剩 ${leftover.remaining} 人。回复「续」接着写，不用点名。`,
           }
         }
       }

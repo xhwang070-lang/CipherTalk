@@ -218,7 +218,7 @@ async function runTimeDistribution(
   }
 }
 
-async function runRanking(range: TimeRangeSec, limit: number) {
+export async function listPrivateRanking(range: TimeRangeSec, limit: number) {
   // 候选私聊会话 → hash → username
   let usernames: string[] = []
   try {
@@ -308,7 +308,7 @@ export const chatStats = tool({
   execute: async ({ metric, sessionId, startTimeMs, endTimeMs, groupBy, limit }) => {
     try {
       const range = normalizeTimeRange(startTimeMs, endTimeMs)
-      if (metric === 'ranking') return await runRanking(range, limit)
+      if (metric === 'ranking') return await listPrivateRanking(range, limit)
       const scope = await collectScope(sessionId)
       if (scope.length === 0) return { metric, note: '没有可统计的消息库（会话可能未加载或 sessionId 无效）' }
       if (metric === 'overview') return await runOverview(scope, range)

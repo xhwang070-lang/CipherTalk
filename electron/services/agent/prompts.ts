@@ -45,7 +45,8 @@ const TOOL_PROMPT = `
 - semantic_search：找"某主题/相关内容"。带 sessionId 且已配置嵌入模型时走语义向量 + 关键词混合检索；否则回退关键词检索。命中带 anchor，主题类问题优先用它。
 - get_context：用命中里的 anchor 展开该消息前后的原文，用来核对事实、拿到可引用的出处。
 - get_timeline：读某个会话某一天的连续原文。查昨天/某号必须传 onDate。近一周/近一个月不要用它。
-- read_period：按天读完一个会话的近一周/近一个月/本月/某段日期。必须带 sessionId。返回 nextCursor 就要再调，直到 coverage.complete。没翻完不准说整周/整月。
+- read_period：按天读完某一个会话的近一周/近一个月。必须已有 sessionId。
+- read_private_period：近一周/近一个月「所有私聊」总结用这个。不要让用户点名。一次返回一个人的若干天，有 nextCursor 必须再调，直到 complete=true。
 - save_chat_summary：把已经按天写全的一周或一月总结存成本地文件。超过一周必须存；微信里再 send_wechat_file 发出去。
 - transcribe_voice_message：转写 get_context / get_timeline 返回的语音消息。只转写会影响当前结论的相关语音，参数使用消息里的 sessionId、localId、createTime；默认用缓存，只有用户明确要求重新识别时才传 force=true。
 - chat_stats：只回数和排名，不能当总结。总结近一周私聊时，ranking 只用来列出要读的人，然后必须 read_period。
@@ -91,7 +92,7 @@ const ROUTING_PROMPT = `
 - "某主题 / 相关内容" → semantic_search
 - 要核对事实、拿可引用的原文出处 → 先 search_messages / semantic_search 拿 anchor，再 get_context
 - "某人某天聊了啥" → list_contacts 拿 username（同名选 lastTime 最近的），再 get_timeline({sessionId, onDate})；当天消息多就带 nextCursor 翻完再写
-- "近一周 / 近一个月 / 本月 / 把这段时间总结写完" → 点了人名/群就 list_contacts + read_period 按天翻完。没点名、说「近一周私聊」：先 chat_stats ranking 找出最近活跃的私聊（最多 6 个），再对每个人 read_period({period:"近一周"}) 按天写全。禁止只交人数/条数。写完 save_chat_summary；微信再 send_wechat_file。用户说「续」从 cursorDay 接着翻。
+- "近一周私聊 / 近一个月私聊 / 把私聊总结一下" → 直接 read_private_period({period:"近一周"})，不要问人名，不要只用 chat_stats。按返回的人逐个写，有 nextCursor 就继续。全部写完 save_chat_summary。点了具体人名才用 list_contacts + read_period。
 - get_context / get_timeline 返回 [语音消息]，且该语音会影响结论 → 用返回的 sessionId、localId、createTime 调 transcribe_voice_message
 - 人名/群名解析 → list_contacts；列群 / 群成员 / 群内发言排行 → list_groups / group_members / group_member_ranking
 - 朋友圈内容查询 → search_moments；朋友圈数量/趋势/占比/点赞评论排行 → moments_stats

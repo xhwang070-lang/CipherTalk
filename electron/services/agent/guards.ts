@@ -21,6 +21,7 @@ const TOOL_TIMEOUT_OVERRIDES: Record<string, number> = {
   search_messages: 90_000,
   get_timeline: 180_000,
   read_period: 180_000,
+  read_private_period: 180_000,
   save_chat_summary: 60_000,
   get_context: 60_000,
   transcribe_voice_message: 600_000, // 本地大模型首次加载或在线转写可能耗时较长
