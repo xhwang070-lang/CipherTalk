@@ -343,6 +343,107 @@ export async function generateImageToFile(
   }
 }
 
+
+function looksLikeImageModelId(id: string): boolean {
+  return /image|imagen|kolors|kolor|dall-e|dalle|flux|banana|gpt-image|sdxl|stable-diffusion/i.test(id)
+}
+
+function extractModelIds(payload: unknown): string[] {
+  if (!payload || typeof payload !== 'object') return []
+  const obj = payload as Record<string, unknown>
+  const nested = obj.data && typeof obj.data === 'object' ? obj.data as Record<string, unknown> : null
+  const raw = Array.isArray(obj.models)
+    ? obj.models
+    : Array.isArray(obj.data)
+      ? obj.data
+      : Array.isArray(nested?.data)
+        ? nested.data
+        : Array.isArray(nested?.models)
+          ? nested.models
+          : []
+  const ids = raw
+    .map((item: unknown) => {
+      if (typeof item === 'string') return item.replace(/^models\//, '').trim()
+      if (!item || typeof item !== 'object') return ''
+      const rec = item as Record<string, unknown>
+      return String(rec.id || rec.name || '').replace(/^models\//, '').trim()
+    })
+    .filter(Boolean)
+  return Array.from(new Set(ids))
+}
+
+function resolveModelsEndpoint(cfg: ImageGenConfig): string {
+  if (cfg.protocol === 'custom') {
+    const u = String(cfg.baseURL || '').trim().replace(/\/+$/, '')
+    if (!u) throw new Error('请先填写完整接口地址')
+    if (/\/images\/generations$/i.test(u)) return u.replace(/\/images\/generations$/i, '/models')
+    return `${u.replace(/\/[^/]+$/, '')}/models`
+  }
+  const base = cfg.protocol === 'google'
+    ? (resolveGoogleImageBaseURL(cfg.baseURL) || String(cfg.baseURL || '').trim())
+    : String(cfg.baseURL || '').trim()
+  const normalized = base.replace(/\/+$/, '')
+  if (!normalized) {
+    if (cfg.protocol === 'google') return 'https://generativelanguage.googleapis.com/v1beta/models'
+    if (cfg.protocol === 'openai') return 'https://api.openai.com/v1/models'
+    throw new Error('请先填写接口地址')
+  }
+  return `${normalized}/models`
+}
+
+/** 从当前作图接口拉模型列表，和 AI 接入的刷新同一套路。生图相关型号排前面。 */
+export async function listImageGenModels(cfg: Partial<ImageGenConfig> = {}): Promise<{ success: boolean; models?: string[]; error?: string }> {
+  const normalized = normalizeImageGenConfig({ ...getImageGenConfig(), ...cfg })
+  if (!normalized.apiKey && normalized.protocol !== 'custom') {
+    return { success: false, error: '请先填写 API Key' }
+  }
+  let url: string
+  try {
+    url = resolveModelsEndpoint(normalized)
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) }
+  }
+  const fetchImpl = resolveAiFetch(normalized.baseURL) || fetch
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (normalized.apiKey) {
+    headers.Authorization = `Bearer ${normalized.apiKey}`
+    headers['x-goog-api-key'] = normalized.apiKey
+  }
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 15000)
+  try {
+    let res = await fetchImpl(url, { method: 'GET', headers, signal: controller.signal })
+    let text = await res.text().catch(() => '')
+    if (!res.ok && normalized.protocol === 'google' && /\/v1beta\/models$/i.test(url)) {
+      const fallback = url.replace(/\/v1beta\/models$/i, '/v1/models')
+      res = await fetchImpl(fallback, { method: 'GET', headers, signal: controller.signal })
+      text = await res.text().catch(() => '')
+    }
+    if (!res.ok) {
+      return { success: false, error: `刷新模型失败：HTTP ${res.status} ${(text || res.statusText).slice(0, 180)}` }
+    }
+    let payload: unknown = {}
+    try {
+      payload = JSON.parse(text || '{}')
+    } catch {
+      return { success: false, error: '模型列表不是 JSON，也可以手动输入模型名。' }
+    }
+    const models = extractModelIds(payload).sort((a, b) => {
+      const ia = looksLikeImageModelId(a) ? 0 : 1
+      const ib = looksLikeImageModelId(b) ? 0 : 1
+      return ia !== ib ? ia - ib : a.localeCompare(b)
+    })
+    if (models.length === 0) return { success: false, error: '接口没有返回模型。也可以手动输入模型名后保存。' }
+    return { success: true, models }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (/abort/i.test(message)) return { success: false, error: '刷新模型超时' }
+    return { success: false, error: `刷新模型失败：${message.slice(0, 180)}` }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /** 测试配置：真实生成一张小图验证全链路（会消耗少量额度）。 */
 export async function testImageGenConfig(cfg: Partial<ImageGenConfig>): Promise<ImageGenResult> {
   return generateImageToFile('一只可爱的橘猫，扁平插画风格', { size: '512x512', config: cfg })

@@ -1772,6 +1772,7 @@ export interface ElectronAPI {
     getConfig: () => Promise<{ success: boolean; config?: ImageGenConfig; available?: boolean; error?: string }>
     setConfig: (patch: Partial<ImageGenConfig>) => Promise<{ success: boolean; config?: ImageGenConfig; error?: string }>
     test: (cfg: Partial<ImageGenConfig>) => Promise<{ success: boolean; filePath?: string; mimeType?: string; error?: string }>
+    listModels: (cfg?: Partial<ImageGenConfig>) => Promise<{ success: boolean; models?: string[]; error?: string }>
   }
   // AI 接入
   ai: {

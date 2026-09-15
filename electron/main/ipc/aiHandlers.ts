@@ -1268,6 +1268,15 @@ export function registerAiHandlers(ctx: MainProcessContext): void {
     }
   })
 
+  ipcMain.handle('imageGen:listModels', async (_e, cfg: any) => {
+    try {
+      const { listImageGenModels } = await import('../../services/ai/imageGenService')
+      return await listImageGenModels(cfg || {})
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
   // 某会话的向量化状态：是否启用嵌入 + 已建片段数
   ipcMain.handle('embedding:sessionStatus', async (_e, sessionId: string) => {
     try {

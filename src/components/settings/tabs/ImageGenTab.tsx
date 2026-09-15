@@ -3,9 +3,9 @@
  * 启用并配好后，在 AI 助手里说"帮我画一张…"即可生成图片并展示在对话流里。
  * 自带 IPC（imageGen:getConfig/setConfig/test）。
  */
-import { useEffect, useState } from 'react'
-import { Button, Card, Description, InputGroup, Label, ListBox, Select, Switch, TextField } from '@heroui/react'
-import { CircleCheck, CircleExclamation, Picture } from '@gravity-ui/icons'
+import { useEffect, useMemo, useState } from 'react'
+import { Button, Card, ComboBox, Description, Input, InputGroup, Label, ListBox, Select, Spinner, Switch, TextField, Tooltip } from '@heroui/react'
+import { ArrowsRotateLeft, CircleCheck, CircleExclamation, Picture } from '@gravity-ui/icons'
 import type { ImageGenConfig } from '@/types/electron'
 
 const DEFAULT_CFG: ImageGenConfig = {
@@ -32,6 +32,8 @@ export default function ImageGenTab() {
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null)
   const [previewPath, setPreviewPath] = useState('')
+  const [remoteModels, setRemoteModels] = useState<string[]>([])
+  const [loadingModels, setLoadingModels] = useState(false)
 
   useEffect(() => {
     void window.electronAPI.imageGen.getConfig().then((res) => {
@@ -44,6 +46,34 @@ export default function ImageGenTab() {
   const protocolOption = PROTOCOL_OPTIONS.find((o) => o.value === cfg.protocol)
   const timeoutSeconds = Math.round((cfg.timeoutMs || DEFAULT_CFG.timeoutMs) / 1000)
   const customEndpoint = cfg.protocol === 'custom'
+  const modelOptions = useMemo(() => {
+    const ids = [...remoteModels]
+    if (cfg.model && !ids.includes(cfg.model)) ids.unshift(cfg.model)
+    return ids
+  }, [remoteModels, cfg.model])
+  const canRefreshModels = Boolean(cfg.apiKey) && (cfg.protocol === 'openai' || cfg.protocol === 'google' || Boolean(cfg.baseURL))
+
+  const handleRefreshModels = async () => {
+    if (!canRefreshModels) {
+      setStatus({ ok: false, text: '请先填写 API Key 和接口地址' })
+      return
+    }
+    setLoadingModels(true)
+    setStatus(null)
+    try {
+      const res = await window.electronAPI.imageGen.listModels(cfg)
+      if (!res.success || !res.models?.length) {
+        setStatus({ ok: false, text: res.error || '模型列表为空' })
+        return
+      }
+      setRemoteModels(res.models)
+      setStatus({ ok: true, text: `已刷新 ${res.models.length} 个模型` })
+    } catch (error) {
+      setStatus({ ok: false, text: error instanceof Error ? error.message : String(error) })
+    } finally {
+      setLoadingModels(false)
+    }
+  }
 
   const handleTest = async () => {
     setTesting(true)
@@ -145,13 +175,60 @@ export default function ImageGenTab() {
           </Description>
         </TextField>
 
-        <TextField fullWidth onChange={(v) => patch({ model: v })} value={cfg.model}>
-          <Label>模型</Label>
-          <InputGroup fullWidth variant="secondary">
-            <InputGroup.Input placeholder="Kwai-Kolors/Kolors" />
-          </InputGroup>
-          <Description>Google 用 gemini-3.1-flash-image（改图也用它）；硅基流动 Kwai-Kolors/Kolors、OpenAI gpt-image-1。</Description>
-        </TextField>
+        <div className="space-y-2">
+          <div className="flex min-w-0 items-end gap-2">
+            <ComboBox
+              allowsCustomValue
+              selectedKey={cfg.model || null}
+              inputValue={cfg.model}
+              onInputChange={(value) => patch({ model: value })}
+              onSelectionChange={(key) => {
+                if (key != null) patch({ model: String(key) })
+              }}
+              menuTrigger="focus"
+              variant="secondary"
+              fullWidth
+              className="min-w-0 flex-1"
+            >
+              <Label>模型</Label>
+              <ComboBox.InputGroup>
+                <Input placeholder="点刷新拉取，或直接输入模型名" variant="secondary" />
+                <ComboBox.Trigger />
+              </ComboBox.InputGroup>
+              <ComboBox.Popover>
+                <ListBox>
+                  {modelOptions.length === 0 ? (
+                    <ListBox.Item id="__empty" textValue="暂无模型" isDisabled>
+                      暂无模型，点右侧刷新
+                    </ListBox.Item>
+                  ) : modelOptions.map((id) => (
+                    <ListBox.Item key={id} id={id} textValue={id}>
+                      {id}
+                      <ListBox.ItemIndicator />
+                    </ListBox.Item>
+                  ))}
+                </ListBox>
+              </ComboBox.Popover>
+            </ComboBox>
+            <Tooltip delay={0}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                isIconOnly
+                onPress={() => void handleRefreshModels()}
+                isDisabled={loadingModels || !canRefreshModels}
+                aria-label="刷新模型列表"
+              >
+                {loadingModels ? <Spinner size="sm" /> : <ArrowsRotateLeft width={16} height={16} />}
+              </Button>
+              <Tooltip.Content>刷新模型列表</Tooltip.Content>
+            </Tooltip>
+          </div>
+          <Description>
+            和 AI 接入一样，点刷新从当前接口拉模型；带 image 的会排在前面。也可以手填。Google 改图常用 gemini-3.1-flash-image，更强用 gemini-3-pro-image。
+          </Description>
+        </div>
 
         <TextField fullWidth onChange={(v) => patch({ size: v.trim() })} value={cfg.size}>
           <Label>图片尺寸</Label>
