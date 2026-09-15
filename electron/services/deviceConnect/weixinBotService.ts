@@ -92,7 +92,7 @@ function wechatBotFailText(error: unknown, lastTool?: string): string {
   if (/finish|\u54cd\u5e94\u6d41|\u4e0d\u5b8c\u6574\u56de\u590d|\u8fde\u63a5\u4e2d\u65ad/i.test(msg)) {
     return '\u6ca1\u56de\u6210\u3002\u539f\u56e0\uff1a' + stuckText + '\u6a21\u578b\u8fde\u63a5\u65ad\u4e86\u3002\u8bf7\u628a\u91cd\u6838\u7f29\u6210\u4e00\u4e2a\u4eba\u6216\u66f4\u77ed\u65f6\u95f4\u518d\u95ee\u3002'
   }
-  if (/401|unauthorized|invalid.*key|api.?key/i.test(msg)) {
+  if (/401|unauthorized|invalid.*key|api.?key|No output generated|\u9274\u6743\u5931\u8d25/i.test(msg)) {
     return '\u6ca1\u56de\u6210\u3002\u539f\u56e0\uff1aAI \u63a5\u53e3\u5bc6\u94a5\u65e0\u6548\u6216\u6ca1\u914d\u597d\u3002'
   }
   if (/429|rate.?limit/i.test(msg)) {
@@ -569,6 +569,38 @@ function stripImageFilePartsForModel(messages: UIMessage[] = []): UIMessage[] {
     })
     return changed ? { ...message, parts: next } : message
   })
+}
+
+
+function looksLikeImageEditCommand(text: string): boolean {
+  const value = String(text || '').trim()
+  if (!value) return false
+  return /改成|改掉|修图|改图|替换|擦掉|不要改变尺寸|保持.{0,8}尺寸|把.{0,24}改/.test(value)
+}
+
+function decodeDataUrlImage(dataUrl: string): { data: Uint8Array; mediaType: string } | null {
+  const match = String(dataUrl || '').match(/^data:([^;]+);base64,(.+)$/i)
+  if (!match) return null
+  try {
+    const data = Buffer.from(match[2], 'base64')
+    if (!data.length) return null
+    return { data, mediaType: match[1].trim() || 'image/png' }
+  } catch {
+    return null
+  }
+}
+
+function lastHistoryImage(messages: UIMessage[] = []): { data: Uint8Array; mediaType: string } | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role !== 'user') continue
+    const parts = Array.isArray(messages[i].parts) ? messages[i].parts : []
+    for (const part of parts as any[]) {
+      if (!part || part.type !== 'file' || !String(part.mediaType || '').startsWith('image/')) continue
+      const decoded = decodeDataUrlImage(String(part.url || ''))
+      if (decoded) return decoded
+    }
+  }
+  return null
 }
 
 function extractUploadedMediaFromUiMessages(messages: UIMessage[] = []): AgentUploadedMediaContext | undefined {
@@ -1404,6 +1436,57 @@ class WeixinBotService {
         })
         this.logger?.warn('WechatBot', '图片未附文字，先问要做什么', { from, history: history.length })
         return
+      }
+      const editSource = lastHistoryImage(history)
+      if (incoming.plainText.trim() && incoming.fileParts.length === 0 && looksLikeImageEditCommand(incoming.plainText) && editSource) {
+        lastTool = 'generate_image'
+        if (!usedTools.includes('generate_image')) usedTools.push('generate_image')
+        typing = await this.startTypingIndicator(from, contextToken, () => lastTool)
+        try {
+          const { generateImageToFile } = await import('../ai/imageGenService')
+          const generated = await generateImageToFile(incoming.plainText, { sourceImage: editSource })
+          await typing?.stop()
+          typing = null
+          if (!generated.success || !generated.filePath) {
+            const fail = generated.error || '作图失败'
+            const live = this.session
+            if (live) await sendText(live, from, `没改成。原因：${fail}`, contextToken)
+            writeWechatBotRunLog({
+              from,
+              peerName,
+              question: incoming.logText,
+              tools: usedTools,
+              ok: false,
+              result: fail,
+              durationMs: Date.now() - startedAt,
+            })
+            return
+          }
+          const done = '改好了，尺寸按原图比例保留。'
+          const live = this.session
+          if (live) await sendText(live, from, done, contextToken)
+          await this.sendReplyMedia(from, [{ kind: 'image', source: 'tool', filePath: generated.filePath }], contextToken)
+          agentConversationStore.append(conv.id, [{
+            id: `wx-a-edit-${Date.now()}`,
+            role: 'assistant',
+            parts: [{ type: 'text', text: done }],
+          }])
+          writeWechatBotRunLog({
+            from,
+            peerName,
+            question: incoming.logText,
+            tools: usedTools,
+            ok: true,
+            result: done,
+            durationMs: Date.now() - startedAt,
+          })
+          this.logger?.warn('WechatBot', '跳过对话模型，直接按原图修改', { from, filePath: generated.filePath })
+          return
+        } catch (error) {
+          await typing?.stop()
+          typing = null
+          throw error
+        }
       }
       typing = await this.startTypingIndicator(from, contextToken, () => lastTool)
       const forceVoice = wantsVoiceReply(commandText)
