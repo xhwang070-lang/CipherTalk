@@ -116,16 +116,41 @@ function normalizeSize(size?: string): `${number}x${number}` | undefined {
   return /^\d+x\d+$/.test(value) ? (value as `${number}x${number}`) : undefined
 }
 
-/** openai / google 协议：AI SDK generateImage。 */
-async function generateViaAiSdk(prompt: string, cfg: ImageGenConfig, size?: string, signal?: AbortSignal): Promise<ImageGenResult> {
-  const fetch = resolveAiFetch(cfg.baseURL)
+export interface ImageGenSourceImage {
+  data: Uint8Array
+  mediaType: string
+}
+
+function looksLikeGeminiImageModel(model: string): boolean {
+  const id = String(model || '').toLowerCase()
+  return id.startsWith('gemini-') && id.includes('image')
+}
+
+/** Google native image API uses /v1beta. A leftover OpenAI /v1 path 404s. */
+export function resolveGoogleImageBaseURL(url?: string | null): string | undefined {
+  const trimmed = String(url || '').trim().replace(/\/+$/, '')
+  if (!trimmed) return undefined
+  if (/\/v1$/i.test(trimmed) && !/v1beta$/i.test(trimmed)) {
+    return trimmed.replace(/\/v1$/i, '/v1beta')
+  }
+  return trimmed
+}
+
+/** openai / google: AI SDK generateImage. Pass sourceImage to edit an existing picture. */
+async function generateViaAiSdk(prompt: string, cfg: ImageGenConfig, size?: string, signal?: AbortSignal, sourceImage?: ImageGenSourceImage): Promise<ImageGenResult> {
+  const baseURL = cfg.protocol === 'google'
+    ? resolveGoogleImageBaseURL(cfg.baseURL)
+    : (String(cfg.baseURL || '').trim() || undefined)
+  const fetch = resolveAiFetch(baseURL || cfg.baseURL)
   const model = cfg.protocol === 'google'
-    ? createGoogle({ apiKey: cfg.apiKey, baseURL: cfg.baseURL || undefined, name: 'image-gen', fetch }).imageModel(cfg.model)
-    : createOpenAI({ apiKey: cfg.apiKey, baseURL: cfg.baseURL || undefined, name: 'image-gen', fetch }).imageModel(cfg.model)
+    ? createGoogle({ apiKey: cfg.apiKey, baseURL, name: 'image-gen', fetch }).imageModel(cfg.model)
+    : createOpenAI({ apiKey: cfg.apiKey, baseURL, name: 'image-gen', fetch }).imageModel(cfg.model)
 
   const { image } = await generateImage({
     model,
-    prompt,
+    prompt: sourceImage
+      ? { text: prompt, images: [sourceImage.data] }
+      : prompt,
     n: 1,
     size: normalizeSize(size || cfg.size),
     maxRetries: 1,
@@ -209,7 +234,7 @@ async function generateViaCompatible(prompt: string, cfg: ImageGenConfig, size?:
 /** 生成图片并落盘。cfg 缺省读持久化配置（测试时传 overrides）。 */
 export async function generateImageToFile(
   prompt: string,
-  options: { size?: string; config?: Partial<ImageGenConfig>; signal?: AbortSignal } = {},
+  options: { size?: string; config?: Partial<ImageGenConfig>; signal?: AbortSignal; sourceImage?: ImageGenSourceImage } = {},
 ): Promise<ImageGenResult> {
   const cfg = normalizeImageGenConfig({ ...getImageGenConfig(), ...options.config })
   if (!cfg.apiKey) return { success: false, error: '未配置作图 API Key' }
@@ -223,10 +248,17 @@ export async function generateImageToFile(
   options.signal?.addEventListener('abort', () => controller.abort())
 
   try {
+    const sourceImage = options.sourceImage
+    if (sourceImage && (cfg.protocol === 'openai-compatible' || cfg.protocol === 'custom')) {
+      if (looksLikeGeminiImageModel(cfg.model)) {
+        return await generateViaAiSdk(input, { ...cfg, protocol: 'google' }, options.size, controller.signal, sourceImage)
+      }
+      return { success: false, error: '当前作图协议不支持改图。请把协议改成 Google Gemini，模型用 gemini-3.1-flash-image，地址填 /v1beta（例如 http://127.0.0.1:8045/v1beta）。' }
+    }
     if (cfg.protocol === 'openai-compatible' || cfg.protocol === 'custom') {
       return await generateViaCompatible(input, cfg, options.size, controller.signal)
     }
-    return await generateViaAiSdk(input, cfg, options.size, controller.signal)
+    return await generateViaAiSdk(input, cfg, options.size, controller.signal, sourceImage)
   } catch (e) {
     if (controller.signal.aborted && !options.signal?.aborted) {
       return { success: false, error: `作图请求超时（>${Math.round(timeoutMs / 1000)}秒），请稍后重试` }
@@ -238,6 +270,9 @@ export async function generateImageToFile(
         return { success: false, error: `连不上本机作图接口 ${where}。请确认反重力/中转已启动；本机地址不应走系统代理。` }
       }
       return { success: false, error: `连不上作图接口 ${where}（${message}）。检查地址、网络或代理。` }
+    }
+    if (/not found/i.test(message) && (cfg.protocol === 'google' || looksLikeGeminiImageModel(cfg.model))) {
+      return { success: false, error: '作图接口 404。Google 协议请把地址改成 /v1beta（例如 http://127.0.0.1:8045/v1beta），不要填 OpenAI 兼容的 /v1。' }
     }
     return { success: false, error: message }
   } finally {

@@ -28,7 +28,7 @@ import { searchMoments, momentsStats } from './moments'
 import { createRemember, createRecall, createListMemories, createForget, createConsolidate } from './memory'
 import { createDelegateAnalysis } from './delegateAnalysis'
 import { buildMcpTools } from './mcpExternal'
-import { generateImage } from './generateImage'
+import { createGenerateImage, generateImage } from './generateImage'
 import { searchStickers, sendSticker } from './stickers'
 import { sendRandomImage } from './sendRandomImage'
 import { createInspectMediaImage, createSearchSimilarMedia, searchMedia, searchMomentMedia, sendMediaFromHistory } from './mediaHistory'
@@ -138,7 +138,7 @@ export function buildChatTools(
     ...createAgentCapabilityTools(),
     ...createCanvasTools(options.canvasContext, options.emitChunk),
     ...buildMcpTools(mcpTools),
-    ...(enableImageGen ? { generate_image: generateImage } : {}),
+    ...(enableImageGen ? { generate_image: createGenerateImage(options.uploadedMediaContext) } : {}),
     ...(options.allowWechatReplyMedia ? createWechatReplyMediaTools() : {}),
     export_chat: exportChat,
     persona_control: personaControl,

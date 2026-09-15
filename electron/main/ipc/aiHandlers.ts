@@ -328,25 +328,24 @@ function localDateKey(date = new Date()): string {
 }
 
 function extractUploadedMediaContext(messages: UIMessage[] = []): AgentUploadedMediaContext | undefined {
-  let userMessage: UIMessage | undefined
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    if (messages[i]?.role === 'user') {
-      userMessage = messages[i]
-      break
+  const images: AgentUploadedMediaContext['images'] = []
+  for (let i = messages.length - 1; i >= 0 && images.length < 6; i -= 1) {
+    if (messages[i]?.role !== 'user') continue
+    const parts = Array.isArray((messages[i] as any)?.parts) ? (messages[i] as any).parts as any[] : []
+    for (const part of parts) {
+      if (!part || part.type !== 'file' || typeof part.url !== 'string' || !String(part.mediaType || '').startsWith('image/')) continue
+      const dataUrl = String(part.url || '')
+      if (!dataUrl.startsWith('data:image/')) continue
+      images.push({
+        id: `upload-${images.length + 1}`,
+        mediaType: String(part.mediaType || 'image/png'),
+        filename: typeof part.filename === 'string' ? part.filename : undefined,
+        dataUrl,
+        sizeBytes: Number.isFinite(Number(part.sizeBytes)) ? Number(part.sizeBytes) : undefined,
+      })
+      if (images.length >= 6) break
     }
   }
-  const parts = Array.isArray((userMessage as any)?.parts) ? (userMessage as any).parts as any[] : []
-  const images = parts
-    .filter((part) => part && part.type === 'file' && typeof part.url === 'string' && String(part.mediaType || '').startsWith('image/'))
-    .map((part, index) => ({
-      id: `upload-${index + 1}`,
-      mediaType: String(part.mediaType || 'image/png'),
-      filename: typeof part.filename === 'string' ? part.filename : undefined,
-      dataUrl: String(part.url || ''),
-      sizeBytes: Number.isFinite(Number(part.sizeBytes)) ? Number(part.sizeBytes) : undefined,
-    }))
-    .filter((item) => item.dataUrl.startsWith('data:image/'))
-    .slice(0, 6)
   return images.length > 0 ? { images } : undefined
 }
 

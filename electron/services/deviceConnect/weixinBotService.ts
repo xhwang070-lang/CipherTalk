@@ -554,18 +554,24 @@ function textFromUiMessage(message: UIMessage): string {
 }
 
 function extractUploadedMediaFromUiMessages(messages: UIMessage[] = []): AgentUploadedMediaContext | undefined {
-  const lastUser = [...messages].reverse().find((item) => item.role === 'user')
-  const parts = Array.isArray(lastUser?.parts) ? lastUser.parts : []
-  const images = parts
-    .filter((part): part is FileUIPart => Boolean(part && part.type === 'file' && String(part.mediaType || '').startsWith('image/') && typeof part.url === 'string'))
-    .map((part, index) => ({
-      id: `upload-${index + 1}`,
-      mediaType: String(part.mediaType || 'image/jpeg'),
-      filename: part.filename,
-      dataUrl: String(part.url || ''),
-    }))
-    .filter((item) => item.dataUrl.startsWith('data:image/'))
-    .slice(0, 6)
+  const images: NonNullable<AgentUploadedMediaContext>['images'] = []
+  for (let i = messages.length - 1; i >= 0 && images.length < 6; i -= 1) {
+    if (messages[i]?.role !== 'user') continue
+    const parts = Array.isArray(messages[i]?.parts) ? messages[i].parts : []
+    for (const part of parts) {
+      if (!part || part.type !== 'file' || typeof (part as FileUIPart).url !== 'string' || !String((part as FileUIPart).mediaType || '').startsWith('image/')) continue
+      const file = part as FileUIPart
+      const dataUrl = String(file.url || '')
+      if (!dataUrl.startsWith('data:image/')) continue
+      images.push({
+        id: `upload-${images.length + 1}`,
+        mediaType: String(file.mediaType || 'image/jpeg'),
+        filename: file.filename,
+        dataUrl,
+      })
+      if (images.length >= 6) break
+    }
+  }
   return images.length > 0 ? { images } : undefined
 }
 

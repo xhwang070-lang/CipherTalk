@@ -22,7 +22,7 @@ const PROTOCOL_OPTIONS: Array<{ value: ImageGenConfig['protocol']; label: string
   { value: 'openai-compatible', label: 'OpenAI 兼容', hint: '硅基流动、智谱等国内厂商的 /images/generations 接口' },
   { value: 'custom', label: '自定义完整地址', hint: '直接请求填写的完整 URL，不自动拼接 /images/generations' },
   { value: 'openai', label: 'OpenAI 官方', hint: 'gpt-image-1 / dall-e-3，走官方协议' },
-  { value: 'google', label: 'Google Gemini', hint: 'Imagen 系列模型' },
+  { value: 'google', label: 'Google Gemini', hint: 'gemini-3.1-flash-image 等生图模型；地址用 /v1beta' },
 ]
 
 export default function ImageGenTab() {
@@ -139,7 +139,9 @@ export default function ImageGenTab() {
           <Description>
             {customEndpoint
               ? '自定义完整地址会直接请求此 URL；请求体仍使用 OpenAI 图片生成格式。'
-              : 'OpenAI 官方/Google 可留空用默认地址；OpenAI 兼容厂商必填 /v1 地址。'}
+              : cfg.protocol === 'google'
+                ? '走本机/局域网中转时填 http://127.0.0.1:8045/v1beta（注意是 v1beta）。留空则直连 Google 官方。不要填 /v1。'
+                : 'OpenAI 官方可留空用默认地址；OpenAI 兼容厂商必填 /v1 地址。'}
           </Description>
         </TextField>
 
@@ -148,7 +150,7 @@ export default function ImageGenTab() {
           <InputGroup fullWidth variant="secondary">
             <InputGroup.Input placeholder="Kwai-Kolors/Kolors" />
           </InputGroup>
-          <Description>如硅基流动 Kwai-Kolors/Kolors、OpenAI gpt-image-1、智谱 cogview-4。</Description>
+          <Description>Google 用 gemini-3.1-flash-image（改图也用它）；硅基流动 Kwai-Kolors/Kolors、OpenAI gpt-image-1。</Description>
         </TextField>
 
         <TextField fullWidth onChange={(v) => patch({ size: v.trim() })} value={cfg.size}>
