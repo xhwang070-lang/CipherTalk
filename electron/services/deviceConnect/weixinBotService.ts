@@ -32,7 +32,7 @@ import { synthesizeWeixinVoice } from './weixinVoiceService'
 import type { PersonaTtsVoiceBinding } from '../agent/persona/personaTypes'
 import type { AgentUploadedMediaContext } from '../agent/types'
 import { resolveWechatPeerName, wechatBotConversationTitle, writeWechatBotRunLog } from '../agent/wechatBotArchive'
-import { getLastPrivatePeriodProgress } from '../agent/tools/readPrivatePeriod'
+import { getLastPrivatePeriodProgress, type RosterPeriodProgress } from '../agent/tools/readPrivatePeriod'
 
 const TOKEN_FILE = 'wechat-bot-token.json'
 const MODE_FILE = 'wechat-bot-modes.json'
@@ -115,14 +115,14 @@ function wantsWeekOrMonthSummary(text: string): boolean {
   if (/(多少条|谁最活跃|排行|排名|统计一下|一共多少)/.test(compact)) return false
   const asksSummary = /(总结|梳理|复盘|回顾|聊了什么|在聊什么)/.test(compact)
   const asksPeriod = /(近一周|最近一周|这一周|近七天|近7天|七天|近一个月|最近一个月|本月|一个月)/.test(compact)
-  const asksRosterWeek = /(近一周|最近一周|近七天|近一个月).{0,8}(私聊|群聊)|(私聊|群聊).{0,8}(近一周|最近一周|近七天|近一个月)/.test(compact)
+  const asksRosterWeek = /(近一周|最近一周|近七天|近一个月).{0,8}(私聊|私信|群聊)|(私聊|私信|群聊).{0,8}(近一周|最近一周|近七天|近一个月)/.test(compact)
   return asksRosterWeek || (asksSummary && asksPeriod)
 }
 
 function wantsAllGroupSummary(text: string): boolean {
   const compact = String(text || '').replace(/\s+/g, '')
   if (/^(续|接着写|继续)$/.test(compact)) {
-    const progress = getLastPrivatePeriodProgress()
+    const progress = currentRosterProgress()
     return Boolean(progress && !progress.complete && progress.kind === 'group')
   }
   if (!wantsWeekOrMonthSummary(text)) return false
@@ -132,11 +132,11 @@ function wantsAllGroupSummary(text: string): boolean {
 function wantsAllPrivateSummary(text: string): boolean {
   const compact = String(text || '').replace(/\s+/g, '')
   if (/^(续|接着写|继续)$/.test(compact)) {
-    const progress = getLastPrivatePeriodProgress()
+    const progress = currentRosterProgress()
     return Boolean(progress && !progress.complete && progress.kind !== 'group')
   }
   if (!wantsWeekOrMonthSummary(text)) return false
-  if (!compact.includes('私聊')) return false
+  if (!/(私聊|私信)/.test(compact)) return false
   return !/(跟我|和我|我和|我跟).{0,20}(近一周|近一个月|近七天)/.test(compact)
 }
 
@@ -637,6 +637,29 @@ function rememberToolNameFromChunk(chunk: UIMessageChunk, toolNames: Map<string,
   if (typeof c.toolCallId === 'string' && typeof c.toolName === 'string') {
     toolNames.set(c.toolCallId, c.toolName)
   }
+}
+
+let lastWechatRosterProgress: RosterPeriodProgress | null = null
+
+function currentRosterProgress(): RosterPeriodProgress | null {
+  return lastWechatRosterProgress || getLastPrivatePeriodProgress()
+}
+
+function noteRosterProgressFromChunk(chunk: UIMessageChunk, toolNames: Map<string, string>): void {
+  const c = chunk as { type?: string; toolCallId?: string; toolName?: string; output?: any }
+  if (c.type !== 'tool-output-available' || !c.output || c.output.error) return
+  const toolName = c.toolName || (c.toolCallId ? toolNames.get(c.toolCallId) : undefined)
+  if (toolName !== 'read_private_period' && toolName !== 'read_group_period') return
+  lastWechatRosterProgress = {
+    kind: c.output.kind === 'group' || toolName === 'read_group_period' ? 'group' : 'private',
+    complete: Boolean(c.output.complete),
+    peopleTotal: Number(c.output.person?.total || c.output.peopleTotal || 0),
+    peopleIndex: Number(c.output.person?.index || 0),
+    currentName: String(c.output.person?.displayName || ''),
+    remaining: Number(c.output.peopleRemaining || 0),
+    nextCursor: c.output.nextCursor || null,
+  }
+  console.warn('[WechatBot] roster progress', lastWechatRosterProgress)
 }
 
 function extractMediaFromToolChunk(
@@ -1535,8 +1558,8 @@ class WeixinBotService {
 
       if ((wantsAllPrivateSummary(commandText) || wantsAllGroupSummary(commandText)) && (usedTools.includes('read_private_period') || usedTools.includes('read_group_period'))) {
         let hops = 0
-        while (hops < 10) {
-          const progress = getLastPrivatePeriodProgress()
+        while (hops < 30) {
+          const progress = currentRosterProgress()
           if (!progress || progress.complete || !progress.nextCursor) break
           hops += 1
           const tool = progress.kind === 'group' ? 'read_group_period' : 'read_private_period'
@@ -1545,7 +1568,7 @@ class WeixinBotService {
           const followHistory = [
             ...history,
             { id: `wx-a-priv-${Date.now()}-${hops}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: rawReply.text || '' }] },
-            { id: `wx-u-priv-${Date.now()}-${hops}`, role: 'user' as const, parts: [{ type: 'text' as const, text: `继续 ${tool}，nextCursor 原样传入：${JSON.stringify(progress.nextCursor)}。只写当前这个${unit}已读到的天，写过的不要重复。不要问名字。` }] },
+            { id: `wx-u-priv-${Date.now()}-${hops}`, role: 'user' as const, parts: [{ type: 'text' as const, text: `继续 ${tool}，nextCursor 原样传入：${JSON.stringify(progress.nextCursor)}。把这次返回的${unit}都写上；packedPeople 里条数少、只有几句的也要写（报价、约定、待办、文件）。写过的不要重复。不要问名字。complete 为 false 时不要说已经全部整理好了。` }] },
           ]
           const more = await this.runAgent(followHistory, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name) } })
           if (more.text.trim()) {
@@ -1555,7 +1578,7 @@ class WeixinBotService {
             }
           }
         }
-        const leftover = getLastPrivatePeriodProgress()
+        const leftover = currentRosterProgress()
         if (leftover && !leftover.complete) {
           const unit = leftover.kind === 'group' ? '群' : '人'
           rawReply = {
@@ -2450,6 +2473,7 @@ class WeixinBotService {
       },
       (chunk) => {
         rememberToolNameFromChunk(chunk, toolNames)
+        noteRosterProgressFromChunk(chunk, toolNames)
         const toolChunk = chunk as { toolName?: unknown; toolCallId?: unknown }
         const toolName = typeof toolChunk.toolName === 'string'
           ? toolChunk.toolName

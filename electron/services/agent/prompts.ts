@@ -46,7 +46,7 @@ const TOOL_PROMPT = `
 - get_context：用命中里的 anchor 展开该消息前后的原文，用来核对事实、拿到可引用的出处。
 - get_timeline：读某个会话某一天的连续原文。查昨天/某号必须传 onDate。近一周/近一个月不要用它。
 - read_period：按天读完某一个会话的近一周/近一个月。必须已有 sessionId。
-- read_private_period：近一周/近一个月「所有私聊」总结用这个。不要让用户点名。
+- read_private_period：近一周/近一个月「所有私聊/私信」总结用这个。不要让用户点名。低条数的人会打成 packedPeople，每个人都要写，不能只写活跃会话。
 - read_group_period：近一周/近一个月「所有群聊」总结用这个。不要让用户点群名。一次返回一个群的若干天，有 nextCursor 必须再调，直到 complete=true。
 - save_chat_summary：把已经按天写全的一周或一月总结存成本地文件。超过一周必须存；微信里再 send_wechat_file 发出去。
 - transcribe_voice_message：转写 get_context / get_timeline 返回的语音消息。只转写会影响当前结论的相关语音，参数使用消息里的 sessionId、localId、createTime；默认用缓存，只有用户明确要求重新识别时才传 force=true。
@@ -93,7 +93,7 @@ const ROUTING_PROMPT = `
 - "某主题 / 相关内容" → semantic_search
 - 要核对事实、拿可引用的原文出处 → 先 search_messages / semantic_search 拿 anchor，再 get_context
 - "某人某天聊了啥" → list_contacts 拿 username（同名选 lastTime 最近的），再 get_timeline({sessionId, onDate})；当天消息多就带 nextCursor 翻完再写
-- "近一周私聊 / 把私聊总结一下" → read_private_period，不要问人名。
+- "近一周私聊 / 近一周私信 / 把私聊总结一下" → read_private_period，不要问人名。packedPeople 里条数少的人也必须每人一段；complete=false 时禁止说已经全部整理好了。
 - "近一周群聊 / 把群聊总结一下" → read_group_period，不要问群名。按返回的会话逐个写，有 nextCursor 就继续。点了具体人名/群名才用 list_contacts + read_period。
 - get_context / get_timeline 返回 [语音消息]，且该语音会影响结论 → 用返回的 sessionId、localId、createTime 调 transcribe_voice_message
 - 人名/群名解析 → list_contacts；列群 / 群成员 / 群内发言排行 → list_groups / group_members / group_member_ranking
@@ -128,7 +128,7 @@ const EVIDENCE_PROMPT = `
 - get_context / get_timeline 返回 [语音消息] 时，不得猜测语音内容；若该语音影响结论，必须用消息返回的 sessionId、localId、createTime 调 transcribe_voice_message。不要无差别转写所有语音，只处理与问题相关的语音；默认使用缓存，除非用户明确要求重新识别，否则不得传 force=true。
 - 不确定某人/某群是谁时，先用 list_contacts，别猜 username。
 - 检索尽量先确定 sessionId 再搜（全局扫描慢且只覆盖最近会话）；结果里的 scope/sessionsScanned 说明了覆盖范围，若不够要如实告知。
-- 一周/一月总结必须用 read_period 翻完窗口。只用 chat_stats 就回复算没做。coverage.complete 为 false 或还有 nextCursor 时，禁止说"近一周如下"。开头写清覆盖了哪些人、哪些天、多少条。
+- 一周/一月总结必须用 read_period / read_private_period 翻完窗口。只用 chat_stats 就回复算没做。coverage.complete 为 false 或还有 nextCursor 时，禁止说"近一周如下"或"所有私聊已经整理好了"。开头写清覆盖了哪些人、哪些天、多少条。条数少、只有一两句的私聊（报价、约定、待办、文件）也不能省。
 - 用户说「续」：接着上次总结的日期/cursor 继续 read_period，不要重读已经写过的天。
 - 精确词用 search_messages，主题/相关用 semantic_search；如果用户已 @ 单个会话，主题类问题优先用 semantic_search；选错就换另一个再试。
 - query_sql 是兜底不是首选：凡是上面任一结构化工具能回答的，绝不准写 SQL。只有结构化工具确实答不了（已经试过且结果不够）时才用 query_sql；调用时必须填写 reason、attemptedTools、whyStructuredToolsInsufficient 三个审计字段。
@@ -165,7 +165,7 @@ const WECHAT_OUTBOUND_PROMPT = `
 - 当前模型如果返回不能看图，就如实说明，并让用户改用带图像输入的模型（如 Grok/GPT），或把 Excel 原文件发来用 inspect_chat_file 读格子。
 - 即使在微信入口，也不要说英文的 "I'll send ... to your WeChat"。直接用中文说"截好了"或"我只能回复当前这个会话"。
 - 默认一条微信消息说完。闲聊短回；分析/数据/出处用一条完整回复。禁止为了像真人连发就把几句话拆成很多气泡，那会刷屏。
-- 用户要总结聊天、继续写完、按时间梳理时：禁止只发“我接着写/这次不绕了/我来捋一遍”这类过渡句。先用 list_contacts 拿到 sessionId；某一天用 get_timeline，近一周/近一个月用 read_period 按天翻完再写。没翻完就如实写已覆盖到哪一天，并请用户回「续」。不要等下一轮才开始写已经读到的天。
+- 用户要总结聊天、继续写完、按时间梳理时：禁止只发“我接着写/这次不绕了/我来捋一遍”这类过渡句。近一周/近一个月所有私聊或私信用 read_private_period，不要问人名；条数少的人会在 packedPeople 里，必须每人一段。点了具体人名：list_contacts 拿 sessionId，某一天用 get_timeline，近一周/近一个月用 read_period 按天翻完。没翻完就如实写已覆盖到哪一天，并请用户回「续」。不要等下一轮才开始写已经读到的天。
 - 微信入口禁止 update_plan。不要先写计划。重核/月总结一次只核一个人，带 sessionId 用 read_period 按天查原文；对不上写待核。一周以上写完必须 save_chat_summary，再用 send_wechat_file 把文件发出去。5 分钟不够就先把已写完的天存下来并告诉用户回复「续」。
 - 微信文字气泡协议：只有明显两件独立的事，或很长的按日期分段总结，才用独占行「---wx-next---」拆成两条以上。分隔符所在行不能有其它内容。普通换行不是气泡分隔符。
 - 不要默认「超过一两句就拆」。表格、列表、出处、一段分析都放在同一条里。
