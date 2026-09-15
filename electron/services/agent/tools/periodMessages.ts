@@ -126,7 +126,7 @@ function messageKind(msg: Message): 'text' | 'voice' | 'image' | 'video' | 'file
 
 export function compactPeriodMessage(msg: Message, senderName?: string) {
   const kind = messageKind(msg)
-  const base = compactMessage(msg, senderName, 4000)
+  const base = compactMessage(msg, senderName, 280)
   const fileName = msg.fileName || undefined
   let text = base.text
   if (kind === 'voice' && !/语音/.test(text)) text = text ? `[语音消息] ${text}` : '[语音消息]'
@@ -226,7 +226,11 @@ export async function buildPeriodPage(opts: {
     byDay.set(date, list)
   }
   const days = Array.from(byDay.keys()).sort()
-  const maxDays = Math.max(1, Math.min(opts.maxDays || 2, 5))
+  const coverAllDays = !opts.cursor && days.length > 1
+  const maxDays = coverAllDays ? days.length : Math.max(1, Math.min(opts.maxDays || 7, 8))
+  const perDayCap = coverAllDays
+    ? Math.max(8, Math.floor(PERIOD_PAGE_MESSAGE_BUDGET / Math.max(days.length, 1)))
+    : PERIOD_PAGE_MESSAGE_BUDGET
   let dayIndex = 0
   let msgIndex = 0
   if (opts.cursor?.cursorDay) {
@@ -256,7 +260,7 @@ export async function buildPeriodPage(opts: {
     const all = byDay.get(date) || []
     const slice = all.slice(msgIndex)
     const room = PERIOD_PAGE_MESSAGE_BUDGET - used
-    const take = slice.slice(0, room)
+    const take = slice.slice(0, Math.min(room, coverAllDays ? perDayCap : room))
     const compacted = take.map((m) => compactPeriodMessage(m, senderMap.get(m.senderUsername || '')))
     pageDays.push({
       date,
@@ -269,18 +273,23 @@ export async function buildPeriodPage(opts: {
     used += take.length
     if (msgIndex + take.length < all.length) {
       const last = take[take.length - 1]
-      nextCursor = {
-        cursorDay: date,
-        afterSortSeq: last.sortSeq,
-        afterCreateTime: last.createTime,
-        afterLocalId: last.localId,
+      if (!nextCursor) {
+        nextCursor = {
+          cursorDay: date,
+          afterSortSeq: last.sortSeq,
+          afterCreateTime: last.createTime,
+          afterLocalId: last.localId,
+        }
       }
-      break
+      if (!coverAllDays) break
+      dayIndex += 1
+      msgIndex = 0
+      continue
     }
     dayIndex += 1
     msgIndex = 0
-    if (dayIndex < days.length && (pageDays.length >= maxDays || used >= PERIOD_PAGE_MESSAGE_BUDGET)) {
-      nextCursor = { cursorDay: days[dayIndex] }
+    if (!coverAllDays && dayIndex < days.length && (pageDays.length >= maxDays || used >= PERIOD_PAGE_MESSAGE_BUDGET)) {
+      if (!nextCursor) nextCursor = { cursorDay: days[dayIndex] }
       break
     }
   }
@@ -315,7 +324,7 @@ export async function buildPeriodPage(opts: {
     days: pageDays,
     nextCursor,
     hint: nextCursor
-      ? `这一页还没到窗口起点。必须带 nextCursor 再调 read_period，把 ${pageDays.map((d) => d.date).join('、')} 写完后再翻下一页。没翻完不准说整周/整月。`
+      ? `本页日期：${pageDays.map((d) => d.date).join('、')}。窗口还没读完，必须带 nextCursor 再调，把剩下的天/条写完。没翻完不准说整周/整月已经总结完。`
       : loaded.complete
         ? `窗口内 ${loaded.messages.length} 条已经读完，按天写全即可。语音/文件只列出，除非用户要求转写或读表。`
         : `已读 ${loaded.messages.length} 条就到上限了，更早的还没进来。正文里写清覆盖到哪一天，不要装完整。`,

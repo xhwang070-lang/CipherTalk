@@ -24,7 +24,7 @@ export const readPeriod = tool({
     afterSortSeq: z.number().optional().describe('nextCursor.afterSortSeq，原样传入'),
     afterCreateTime: z.number().optional().describe('nextCursor.afterCreateTime，原样传入'),
     afterLocalId: z.number().optional().describe('nextCursor.afterLocalId，原样传入'),
-    maxDays: z.number().int().min(1).max(5).default(2).describe('这一页最多返回几天'),
+    maxDays: z.number().int().min(1).max(7).default(7).describe('这一页最多返回几天。近一周默认 7，不要只取 1 天。'),
   }),
   execute: async ({
     sessionId,
