@@ -652,8 +652,13 @@ export interface AiConfigPreset {
 
 // 获取所有配置预设
 export async function getAiConfigPresets(): Promise<AiConfigPreset[]> {
-  const value = await config.get('aiConfigPresets')
-  return (value as AiConfigPreset[]) || []
+  const read = async () => await config.get('aiConfigPresets')
+  let value = await read()
+  if (!Array.isArray(value)) {
+    await new Promise((resolve) => setTimeout(resolve, 80))
+    value = await read()
+  }
+  return Array.isArray(value) ? value : []
 }
 
 // 保存配置预设

@@ -109,9 +109,12 @@ export function useSettingsConfig() {
       await configService.setAutoUpdateDebounceTime(config.autoUpdateDebounceTime)
       await configService.setQuoteStyle(config.quoteStyle)
       await configService.setExportDefaultDateRange(config.exportDefaultDateRange)
-      await configService.setAiProvider(config.aiProvider)
-      await configService.setAiApiKey(config.aiApiKey)
-      await configService.setAiModel(config.aiModel)
+      // AI 接入有自己的保存入口。这里再用空的 store 默认值回写，会把已保存的 Key/模型清空。
+      if (String(config.aiApiKey || '').trim() || String(config.aiModel || '').trim()) {
+        await configService.setAiProvider(config.aiProvider)
+        await configService.setAiApiKey(config.aiApiKey)
+        await configService.setAiModel(config.aiModel)
+      }
       await configService.setSttLanguages(config.sttLanguages)
       await configService.setSttModelType(config.sttModelType)
       await configService.setSttMode(config.sttMode)

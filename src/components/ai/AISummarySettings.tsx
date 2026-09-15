@@ -407,6 +407,8 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
   const [baseURL, setBaseURL] = useState('')
   const [customProtocol, setCustomProtocol] = useState<AiProviderProtocol>('openai-responses')
   const [showApiKey, setShowApiKey] = useState(false)
+  const [aiSettingsReady, setAiSettingsReady] = useState(false)
+  const restoredPresetRef = useRef(false)
   const [isTesting, setIsTesting] = useState(false)
   const [isLoadingModels, setIsLoadingModels] = useState(false)
   const [remoteModels, setRemoteModels] = useState<string[]>([])
@@ -502,9 +504,10 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
   const presetProtocolOption = presetDraftProtocolOptions.find(option => option.value === presetDraft.protocol)
   const presetModelSelectedKey = presetDraftModelOptions.some(option => option.value === presetDraft.model) ? presetDraft.model : null
   useEffect(() => {
-    void loadProviders()
-    void loadAllProviderConfigs()
-    void loadPresets()
+    void (async () => {
+      await Promise.all([loadProviders(), loadAllProviderConfigs(), loadPresets()])
+      setAiSettingsReady(true)
+    })()
   }, [])
 
   useEffect(() => {
@@ -513,9 +516,9 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
   }, [])
 
   useEffect(() => {
-    if (!provider) return
+    if (!aiSettingsReady || !provider || !currentProvider) return
     const config = providerConfigs[provider]
-    if (currentProvider?.allowCustomBaseURL) {
+    if (currentProvider.allowCustomBaseURL) {
       setBaseURL(config?.baseURL || defaultProviderBaseURL(provider, currentProvider))
     } else {
       setBaseURL('')
@@ -524,14 +527,12 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
     if (config) {
       setField('aiApiKey', config.apiKey || '')
       setField('aiModel', normalizeProviderModel(provider, config.model || ''))
-    } else {
-      setField('aiModel', normalizeProviderModel(provider, currentProvider?.models?.[0] || ''))
     }
-    setCustomProtocol(config?.protocol || currentProvider?.protocol || 'openai-responses')
+    setCustomProtocol(config?.protocol || currentProvider.protocol || 'openai-responses')
     setRemoteModels([])
     setRemoteModelDetails([])
     setModelListError('')
-  }, [provider, providerConfigs, currentProvider?.models, currentProvider?.protocol])
+  }, [aiSettingsReady, provider, providerConfigs, currentProvider, setField])
 
   useEffect(() => {
     const normalized = normalizeProviderModel(provider, model)
@@ -921,7 +922,7 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
     setShowSavePresetDialog(true)
   }
 
-  const handleLoadPreset = async (presetId: string) => {
+  const handleLoadPreset = async (presetId: string, silent = false) => {
     const preset = await configService.loadAiConfigPreset(presetId)
     if (!preset) {
       showMessage('配置预设不存在', false)
@@ -935,8 +936,21 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
     setBaseURL(preset.baseURL || '')
     await persistProviderConfig(presetProvider, preset.apiKey, preset.model, preset.baseURL || '', preset.protocol || 'openai-responses')
     await configService.setActiveAiConfigPresetId(preset.id)
-    showMessage('配置预设已加载', true)
+    if (!silent) showMessage('配置预设已加载', true)
   }
+
+  useEffect(() => {
+    if (!aiSettingsReady || restoredPresetRef.current) return
+    const config = providerConfigs[provider]
+    const empty = !config?.apiKey && !config?.model && !config?.baseURL
+    if (!empty || presets.length === 0) return
+    restoredPresetRef.current = true
+    void (async () => {
+      const activeId = await configService.getActiveAiConfigPresetId()
+      const preset = presets.find(item => item.id === activeId) || presets[0]
+      if (preset) await handleLoadPreset(preset.id, true)
+    })()
+  }, [aiSettingsReady, provider, providerConfigs, presets])
 
   const handleEditPreset = (preset: configService.AiConfigPreset) => {
     setEditingPresetId(preset.id)
