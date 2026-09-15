@@ -107,6 +107,22 @@ function wechatBotFailText(error: unknown, lastTool?: string): string {
   return stuckText ? ('\u6ca1\u56de\u6210\u3002\u539f\u56e0\uff1a' + stuckText) : WECHAT_REPLY_FALLBACK_TEXT
 }
 
+function wantsWeekOrMonthSummary(text: string): boolean {
+  const compact = String(text || '').replace(/\s+/g, '')
+  if (!compact) return false
+  if (/(多少条|谁最活跃|排行|排名|统计一下|一共多少)/.test(compact)) return false
+  const asksSummary = /(总结|梳理|复盘|回顾|聊了什么|在聊什么)/.test(compact)
+  const asksPeriod = /(近一周|最近一周|这一周|近七天|近7天|七天|近一个月|最近一个月|本月|一个月)/.test(compact)
+  const asksPrivateWeek = /(近一周|最近一周|近七天).{0,8}私聊|私聊.{0,8}(近一周|最近一周|近七天)/.test(compact)
+  return asksPrivateWeek || (asksSummary && asksPeriod)
+}
+
+function usedPeriodRead(usedTools: string[]): boolean {
+  return usedTools.includes('read_period')
+}
+
+const FORCE_PERIOD_READ_TEXT = "上一轮没有读聊天原文，作废。必须立刻调用工具：没点名人就先 chat_stats ranking 找出最近活跃的最多6个私聊，然后对每个人 read_period({period:'近一周'}) 按天翻完再写。禁止只用统计或凭记忆回答。"
+
 function isPreambleOnlyWechatReply(text: string): boolean {
   const compact = String(text || '').replace(/\s+/g, '')
   if (!compact || compact.length > 80) return false
@@ -1338,6 +1354,27 @@ class WeixinBotService {
           rawReply = continued
         }
       }
+      if (wantsWeekOrMonthSummary(commandText) && !usedPeriodRead(usedTools) && rawReply.media.length === 0) {
+        console.warn('[WechatBot] 周/月总结未调用 read_period，强制重跑', { usedTools })
+        this.logger?.warn('WechatBot', '周/月总结未读原文，强制重跑', { usedTools })
+        const followHistory = [
+          ...history,
+          { id: `wx-a-skip-${Date.now()}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: rawReply.text || '（未读原文）' }] },
+          { id: `wx-u-force-read-${Date.now()}`, role: 'user' as const, parts: [{ type: 'text' as const, text: FORCE_PERIOD_READ_TEXT }] },
+        ]
+        const reread = await this.runAgent(followHistory, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name) } })
+        if (usedPeriodRead(usedTools) && reread.text.trim()) {
+          rawReply = reread
+        } else if (!usedPeriodRead(usedTools)) {
+          rawReply = {
+            ...rawReply,
+            text: '这次还没读到聊天原文，统计不能当总结。请点名一个人再问，例如：总结我和张俊博近一周。',
+            textBubbles: undefined,
+            media: [],
+          }
+        }
+      }
+
       rawReply = await this.completeDesktopScreenshotReplyIfNeeded(rawReply, allowDesktopScreenshotReply)
       console.log(`[WechatBot] 普通 Agent 原始回复 textLength=${rawReply.text.length} bubbles=${rawReply.textBubbles?.length || 0} media=${rawReply.media.length}`)
       const reply = splitVoiceMarkedReply(rawReply, forceVoice)
