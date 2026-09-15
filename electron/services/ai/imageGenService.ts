@@ -11,7 +11,7 @@ import { generateImage } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createGoogle } from '@ai-sdk/google'
 import { ConfigService } from '../config'
-import { createProxyFetch, getResolvedProxyUrl } from './proxyFetch'
+import { isPrivateLanAiHost, resolveAiFetch } from './proxyFetch'
 
 export interface ImageGenConfig {
   enabled: boolean
@@ -118,7 +118,7 @@ function normalizeSize(size?: string): `${number}x${number}` | undefined {
 
 /** openai / google 协议：AI SDK generateImage。 */
 async function generateViaAiSdk(prompt: string, cfg: ImageGenConfig, size?: string, signal?: AbortSignal): Promise<ImageGenResult> {
-  const fetch = createProxyFetch(getResolvedProxyUrl())
+  const fetch = resolveAiFetch(cfg.baseURL)
   const model = cfg.protocol === 'google'
     ? createGoogle({ apiKey: cfg.apiKey, baseURL: cfg.baseURL || undefined, name: 'image-gen', fetch }).imageModel(cfg.model)
     : createOpenAI({ apiKey: cfg.apiKey, baseURL: cfg.baseURL || undefined, name: 'image-gen', fetch }).imageModel(cfg.model)
@@ -145,7 +145,7 @@ async function generateViaAiSdk(prompt: string, cfg: ImageGenConfig, size?: stri
  */
 async function generateViaCompatible(prompt: string, cfg: ImageGenConfig, size?: string, signal?: AbortSignal): Promise<ImageGenResult> {
   if (!cfg.baseURL) return { success: false, error: cfg.protocol === 'custom' ? '未配置作图完整接口地址' : '未配置作图接口地址' }
-  const fetchImpl = createProxyFetch(getResolvedProxyUrl()) || fetch
+  const fetchImpl = resolveAiFetch(cfg.baseURL) || fetch
   const endpoint = cfg.protocol === 'custom'
     ? cfg.baseURL.trim()
     : `${cfg.baseURL.trim().replace(/\/+$/, '')}/images/generations`
@@ -173,6 +173,12 @@ async function generateViaCompatible(prompt: string, cfg: ImageGenConfig, size?:
       const payload = JSON.parse(text)
       message = payload?.error?.message || payload?.message || message
     } catch { /* 用原始状态码 */ }
+    if (response.status === 404) {
+      return { success: false, error: `作图接口不存在（404）。OpenAI 兼容作图走 /images/generations；gemini-3.7-flash 是对话模型，请换成 Kolors / gpt-image-1 / imagen 等作图模型。` }
+    }
+    if (response.status === 429) {
+      return { success: false, error: `作图被限流或额度用完（429）：${message}` }
+    }
     return { success: false, error: `作图请求失败: ${message}` }
   }
 
@@ -225,7 +231,15 @@ export async function generateImageToFile(
     if (controller.signal.aborted && !options.signal?.aborted) {
       return { success: false, error: `作图请求超时（>${Math.round(timeoutMs / 1000)}秒），请稍后重试` }
     }
-    return { success: false, error: e instanceof Error ? e.message : String(e) }
+    const message = e instanceof Error ? e.message : String(e)
+    if (/fetch failed|ECONNREFUSED|ENOTFOUND|network/i.test(message)) {
+      const where = String(cfg.baseURL || '').trim() || '作图接口'
+      if (isPrivateLanAiHost(cfg.baseURL)) {
+        return { success: false, error: `连不上本机作图接口 ${where}。请确认反重力/中转已启动；本机地址不应走系统代理。` }
+      }
+      return { success: false, error: `连不上作图接口 ${where}（${message}）。检查地址、网络或代理。` }
+    }
+    return { success: false, error: message }
   } finally {
     clearTimeout(timeout)
   }
