@@ -340,6 +340,7 @@ export class AiExportProcessService {
     const resourcesRoot = process.resourcesPath || appPath
     return isElectronPackaged()
       ? [
+          join(resourcesRoot, 'app', 'dist-electron', UTILITY_FILE),
           join(resourcesRoot, 'app.asar.unpacked', 'dist-electron', UTILITY_FILE),
           join(resourcesRoot, 'app.asar', 'dist-electron', UTILITY_FILE),
           join(resourcesRoot, 'dist-electron', UTILITY_FILE),

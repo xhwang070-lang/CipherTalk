@@ -140,6 +140,13 @@ copyDir(dist, path.join(appDir, 'dist'))
 copyDir(distElectron, path.join(appDir, 'dist-electron'))
 fs.copyFileSync(path.join(root, 'package.json'), path.join(appDir, 'package.json'))
 
+const unpackedElectron = path.join(resourcesDir, 'app.asar.unpacked', 'dist-electron')
+if (fs.existsSync(path.dirname(unpackedElectron))) {
+  console.log('copying dist-electron into app.asar.unpacked (agent utility process) ...')
+  fs.rmSync(unpackedElectron, { recursive: true, force: true })
+  copyDir(distElectron, unpackedElectron)
+}
+
 if (!skipRestart) {
   console.log('starting Huaji ...')
   spawnSync('cmd', ['/c', 'start', '', exePath], { cwd: installDir, windowsHide: true })

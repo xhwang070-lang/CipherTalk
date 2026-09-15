@@ -203,6 +203,10 @@ async function generateViaAiSdk(prompt: string, cfg: ImageGenConfig, size?: stri
     : createOpenAI({ apiKey: cfg.apiKey, baseURL, name: 'image-gen', fetch }).imageModel(cfg.model)
 
   const editRatio = aspectRatioOf(sourceImage)
+  if (sourceImage) {
+    const dim = readImageSize(sourceImage.data)
+    console.warn(`[image-gen] edit source=${dim?.width || '?'}x${dim?.height || '?'} aspectRatio=${editRatio || 'none'}`)
+  }
   const { image } = await generateImage({
     model,
     prompt: sourceImage
