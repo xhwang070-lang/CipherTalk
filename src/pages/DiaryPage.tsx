@@ -599,6 +599,7 @@ export default function DiaryPage() {
         </div>
       </header>
 
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
       <Card className="mx-7 mb-4">
         <Card.Header className="gap-2">
           <div className="flex items-start justify-between gap-3">
@@ -660,11 +661,11 @@ export default function DiaryPage() {
       )}
 
       {loading ? (
-        <div className="flex min-h-0 flex-1 items-center justify-center">
+        <div className="flex min-h-64 items-center justify-center py-16">
           <Spinner />
         </div>
       ) : diaries.length === 0 ? (
-        <div className="flex min-h-0 flex-1 items-center justify-center px-7">
+        <div className="flex min-h-64 items-center justify-center px-7 py-16">
           <Card className="w-full max-w-120 text-center">
             <Card.Header className="items-center gap-3">
               <div className="mx-auto flex size-11 items-center justify-center rounded-full bg-accent-soft text-accent-soft-foreground">
@@ -676,7 +677,7 @@ export default function DiaryPage() {
           </Card>
         </div>
       ) : (
-        <ScrollShadow hideScrollBar className="min-h-0 flex-1 px-7 pb-7" size={48}>
+        <ScrollShadow hideScrollBar className="px-7 pb-7" size={48}>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4 pr-1">
             {diaries.map((diary) => {
               const active = diary.date === selectedDate
@@ -751,6 +752,7 @@ export default function DiaryPage() {
           </div>
         </ScrollShadow>
       )}
+      </div>
 
       <Modal.Backdrop isOpen={workLogOpen} onOpenChange={setWorkLogOpen} variant="blur">
         <Modal.Container placement="center" size="lg">
@@ -884,7 +886,7 @@ export default function DiaryPage() {
           <Modal.Dialog className="relative bg-transparent p-0 shadow-none">
             <Card
               ref={diaryExportRef}
-              className="diary-book-card relative mx-auto flex max-h-[calc(100vh-5rem)] w-full max-w-210 flex-col overflow-hidden rounded-4xl p-0"
+              className="diary-book-card relative mx-auto flex h-[calc(100vh-5rem)] max-h-[calc(100vh-5rem)] w-full max-w-210 min-h-0 flex-col overflow-hidden rounded-4xl p-0"
             >
               <Modal.CloseTrigger className="diary-paper-tool-button diary-paper-close absolute right-4 top-4 z-20" />
               {!reading && !summarizing && selectedDiary && (
@@ -969,7 +971,7 @@ export default function DiaryPage() {
                   </Popover>
                 </Toolbar>
               )}
-              <Card.Content className="relative z-10 min-h-0 p-0">
+              <Card.Content className="relative z-10 min-h-0 flex-1 overflow-hidden p-0">
                 {summarizing ? (
                   <div className="flex min-h-[60vh] flex-col items-center justify-center gap-5 px-8 py-20 text-center">
                     <div className="flex size-14 items-center justify-center rounded-full bg-black/5">
@@ -985,7 +987,7 @@ export default function DiaryPage() {
                     <Spinner />
                   </div>
                 ) : (
-                  <ScrollShadow hideScrollBar className="diary-reader-scroll max-h-[calc(100vh-5rem)]" size={56}>
+                  <ScrollShadow hideScrollBar className="diary-reader-scroll h-full min-h-0 overflow-y-auto" size={56}>
                     <article
                       className={`diary-markdown diary-book-page diary-font-${readerFont} w-full px-0 py-20`}
                       dangerouslySetInnerHTML={{ __html: html }}
@@ -1056,6 +1058,10 @@ export default function DiaryPage() {
             mix-blend-mode: multiply;
           }
           .diary-reader-scroll {
+            height: 100%;
+            min-height: 0;
+            overflow-y: auto;
+            overscroll-behavior: contain;
             background:
               linear-gradient(90deg, transparent 0 4.78rem, rgba(179, 74, 72, 0.42) 4.78rem, rgba(179, 74, 72, 0.42) 4.86rem, transparent 4.86rem),
               repeating-linear-gradient(180deg, transparent 0 3.52rem, rgba(66, 114, 146, 0.24) 3.52rem, rgba(66, 114, 146, 0.24) calc(3.52rem + 1px), transparent calc(3.52rem + 1px) 3.84rem),
