@@ -545,14 +545,7 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
     setProviders(list)
     if (provider === 'relayone') {
       setField('aiProvider', 'custom')
-    }
-    const normalizedProvider = normalizeProviderId(provider)
-    const nextProvider = list.some(item => item.id === normalizedProvider)
-      ? normalizedProvider
-      : list[0]?.id
-    if (nextProvider && nextProvider !== provider) {
-      setField('aiProvider', nextProvider)
-      await configService.setAiProvider(nextProvider)
+      await configService.setAiProvider('custom')
     }
   }
 
@@ -650,7 +643,7 @@ function AISummarySettings({ showMessage }: AISummarySettingsProps) {
 
   const handleSelectProvider = async (providerId: string) => {
     const normalizedProviderId = normalizeProviderId(providerId)
-    await persistProviderConfig()
+    await persistProviderConfig(provider, apiKey, model, baseURL, customProtocol)
     await configService.setActiveAiConfigPresetId('')
     setField('aiProvider', normalizedProviderId)
     await configService.setAiProvider(normalizedProviderId)
