@@ -109,9 +109,20 @@ export function isLoopbackAiHost(url?: string | null): boolean {
   return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0' || host.endsWith('.localhost')
 }
 
+export function isPrivateLanAiHost(url?: string | null): boolean {
+  const host = hostnameOf(String(url || ''))
+  if (isLoopbackAiHost(url)) return true
+  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host)
+  if (!ipv4) return false
+  const parts = ipv4.slice(1).map((item) => Number(item))
+  if (parts.some((part) => part > 255)) return false
+  const [a, b] = parts
+  return a === 10 || a === 192 && b === 168 || a === 172 && b >= 16 && b <= 31
+}
+
 export function shouldProxyAiRequest(baseURL?: string | null): boolean {
   const host = hostnameOf(String(baseURL || ''))
-  if (!host || isLoopbackAiHost(baseURL)) return false
+  if (!host || isPrivateLanAiHost(baseURL)) return false
   return /(^|\.)openai\.com$|(^|\.)anthropic\.com$|(^|\.)googleapis\.com$|(^|\.)google\.com$|(^|\.)openrouter\.ai$|(^|\.)x\.ai$/i.test(host)
 }
 
@@ -184,12 +195,12 @@ function createDirectChromiumFetch(): typeof globalThis.fetch | undefined {
 
 export function resolveAiFetch(baseURL?: string | null): typeof globalThis.fetch | undefined {
   const direct = createDirectFetch()
-  if (isLoopbackAiHost(baseURL)) return direct
+  if (isPrivateLanAiHost(baseURL)) return direct
   const proxied = createProxyFetch(getResolvedProxyUrl())
   if (proxied) {
     return ((input: any, init?: any) => {
       const url = requestUrlOf(input)
-      if (isLoopbackAiHost(url) || isLoopbackAiHost(baseURL)) return direct(input, init)
+      if (isPrivateLanAiHost(url) || isPrivateLanAiHost(baseURL)) return direct(input, init)
       return proxied(input, init)
     }) as typeof globalThis.fetch
   }
