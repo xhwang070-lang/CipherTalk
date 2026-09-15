@@ -7,6 +7,7 @@ import { z } from 'zod'
 import * as fs from 'fs'
 import * as path from 'path'
 import { ConfigService } from '../../config'
+import { CHAT_SUMMARY_SEND_BLOCKED, isHuajiChatSummaryPath } from './chatSummaryPath'
 
 const MAX_WECHAT_FILE_BYTES = 100 * 1024 * 1024
 
@@ -57,7 +58,7 @@ function isDesktopScreenshotPath(filePath: string): boolean {
 export const sendWechatFile = tool({
   description:
     '仅在微信官方机器人场景下，把本地文件作为当前触发会话的回复附件。' +
-    'filePath 可以是电脑上可访问的任意本地文件绝对路径；不得指定联系人、群或 toUserId。桌面截图仅在当前微信消息明确要求截图时可直接回复。',
+    'filePath 可以是电脑上可访问的任意本地文件绝对路径；不得指定联系人、群或 toUserId。huaji-chat-summaries 里的聊天总结 markdown 禁止发送。桌面截图仅在当前微信消息明确要求截图时可直接回复。',
   inputSchema: z.object({
     filePath: z.string().min(1).describe('要发送的本地文件绝对路径'),
     confirmedDesktopScreenshot: z.boolean().default(false).describe('仅当 filePath 是 desktop_screenshot 生成的截图，且当前微信用户本条消息已明确要求截图/发截图时为 true；不需要二次追问'),
@@ -66,6 +67,7 @@ export const sendWechatFile = tool({
     try {
       const realFilePath = normalizeRealPath(filePath)
       if (!realFilePath) return { error: '文件不存在' }
+      if (isHuajiChatSummaryPath(realFilePath)) return { error: CHAT_SUMMARY_SEND_BLOCKED }
       if (isDesktopScreenshotPath(realFilePath) && !confirmedDesktopScreenshot) {
         return { error: '桌面截图属于敏感附件。只有当前微信消息明确要求截图/发截图/截屏给我时，才可传 confirmedDesktopScreenshot=true 并作为当前会话回复附件；否则不要发送。' }
       }

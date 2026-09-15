@@ -10,6 +10,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import crypto from 'crypto'
 import { ConfigService } from '../../config'
+import { CHAT_SUMMARY_SEND_BLOCKED, isHuajiChatSummaryPath } from './chatSummaryPath'
 
 export type WechatMediaKind = 'image' | 'video' | 'file'
 
@@ -144,6 +145,7 @@ async function downloadRemoteMedia(urlText: string): Promise<{ filePath: string;
 function validateLocalMedia(filePath: string): { filePath: string; mimeType: string; sizeBytes: number; kind: WechatMediaKind } | { error: string } {
   const realFilePath = normalizeRealPath(filePath)
   if (!realFilePath) return { error: '文件不存在' }
+  if (isHuajiChatSummaryPath(realFilePath)) return { error: CHAT_SUMMARY_SEND_BLOCKED }
   const stat = fs.statSync(realFilePath)
   if (!stat.isFile()) return { error: '路径不是文件' }
 
@@ -180,7 +182,7 @@ function assertDesktopScreenshotConfirmed(filePath: string, confirmed: boolean):
 export const sendWechatMedia = tool({
   description:
     '仅在微信官方机器人场景下，把媒体作为当前触发会话的回复附件。支持电脑上可访问的任意本地文件绝对路径，或 http/https 远程媒体 URL。' +
-    '会自动按 MIME 分流为图片、视频或文件。仅当用户明确要求发送媒体/文件/图片/视频到微信时使用。' +
+    '会自动按 MIME 分流为图片、视频或文件。仅当用户明确要求发送媒体/文件/图片/视频到微信时使用。huaji-chat-summaries 里的聊天总结 markdown 禁止发送。' +
     'caption 可作为附件前的简短说明文字。不得指定联系人、群或 toUserId。桌面截图仅在当前微信消息明确要求截图时可直接回复。',
   inputSchema: z.object({
     media: z.string().min(1).describe('本地文件绝对路径或 http/https 远程媒体 URL'),

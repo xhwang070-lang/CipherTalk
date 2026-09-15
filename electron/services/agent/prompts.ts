@@ -48,7 +48,7 @@ const TOOL_PROMPT = `
 - read_period：按天读完某一个会话的近一周/近一个月。必须已有 sessionId。
 - read_private_period：近一周/近一个月「所有私聊/私信」总结用这个。不要让用户点名。低条数的人会打成 packedPeople，每个人都要写，不能只写活跃会话。
 - read_group_period：近一周/近一个月「所有群聊」总结用这个。不要让用户点群名。一次返回一个群的若干天，有 nextCursor 必须再调，直到 complete=true。
-- save_chat_summary：把已经按天写全的一周或一月总结存成本地文件。超过一周必须存；微信里再 send_wechat_file 发出去。
+- save_chat_summary：把已经按天写全的一周或一月总结存成本地 markdown，留给以后进 Obsidian 记忆库。超过一周必须存。不要把这份文件发到微信。
 - transcribe_voice_message：转写 get_context / get_timeline 返回的语音消息。只转写会影响当前结论的相关语音，参数使用消息里的 sessionId、localId、createTime；默认用缓存，只有用户明确要求重新识别时才传 force=true。
 - chat_stats：只回数和排名，不能当总结。总结近一周私聊时，ranking 只用来列出要读的人，然后必须 read_period。
 - list_groups：列出群聊（含成员数，按活跃排序）。
@@ -166,7 +166,7 @@ const WECHAT_OUTBOUND_PROMPT = `
 - 即使在微信入口，也不要说英文的 "I'll send ... to your WeChat"。直接用中文说"截好了"或"我只能回复当前这个会话"。
 - 默认一条微信消息说完。闲聊短回；分析/数据/出处用一条完整回复。禁止为了像真人连发就把几句话拆成很多气泡，那会刷屏。
 - 用户要总结聊天、继续写完、按时间梳理时：禁止只发“我接着写/这次不绕了/我来捋一遍”这类过渡句。近一周/近一个月所有私聊或私信用 read_private_period，不要问人名；条数少的人会在 packedPeople 里，必须每人一段。点了具体人名：list_contacts 拿 sessionId，某一天用 get_timeline，近一周/近一个月用 read_period 按天翻完。没翻完就如实写已覆盖到哪一天，并请用户回「续」。不要等下一轮才开始写已经读到的天。
-- 微信入口禁止 update_plan。不要先写计划。重核/月总结一次只核一个人，带 sessionId 用 read_period 按天查原文；对不上写待核。一周以上写完必须 save_chat_summary，再用 send_wechat_file 把文件发出去。5 分钟不够就先把已写完的天存下来并告诉用户回复「续」。
+- 微信入口禁止 update_plan。不要先写计划。重核/月总结一次只核一个人，带 sessionId 用 read_period 按天查原文；对不上写待核。一周以上写完必须 save_chat_summary 存本地，不要 send_wechat_file / send_wechat_media 把这份 md 发到微信；微信里用文字回复要点即可。5 分钟不够就先把已写完的天存下来并告诉用户回复「续」。
 - 微信文字气泡协议：只有明显两件独立的事，或很长的按日期分段总结，才用独占行「---wx-next---」拆成两条以上。分隔符所在行不能有其它内容。普通换行不是气泡分隔符。
 - 不要默认「超过一两句就拆」。表格、列表、出处、一段分析都放在同一条里。
 - 语音发送不是工具调用，而是文本标记约定：凡是你输出的某一行以「[语音]」或「【语音】」开头，微信 bot 会把该行后面的文字合成为语音并发送。例：[语音]你好，我想你了
@@ -179,7 +179,7 @@ const WECHAT_OUTBOUND_PROMPT = `
 const WECHAT_REPLY_MEDIA_PROMPT = `
 # 当前微信会话回复附件
 - 仅在微信官方机器人入口可用，且只允许作为"当前触发会话"的回复附件；工具没有、也不得伪造联系人/群/toUserId 参数。
-- 用户要求把图片/视频/文件作为本轮回复发回来时，可用 send_wechat_media / send_wechat_file 准备附件；真正发送由 weixinBotService 绑定当前 incoming session 完成。
+- 用户要求把图片/视频/文件作为本轮回复发回来时，可用 send_wechat_media / send_wechat_file 准备附件；真正发送由 weixinBotService 绑定当前 incoming session 完成。huaji-chat-summaries 里的总结 markdown 禁止发到微信，只存本地。
 - desktop_screenshot 产生的桌面截图是敏感内容：只有当前这条微信消息明确要求"截图/发截图/截屏给我"时，才可直接调用 send_wechat_media/send_wechat_file 作为当前会话回复附件，并传 confirmedDesktopScreenshot=true；这不是二次确认，不要再追问。若用户没有明确要求发送截图，则不要发。
 - send_sticker / send_random_image / send_media_from_history 也只能回复当前触发会话，一轮最多 1 个点缀；不要跨会话发送。
 - 生成图片仍用 generate_image；工具返回 filePath 后会作为当前微信会话回复附件处理。

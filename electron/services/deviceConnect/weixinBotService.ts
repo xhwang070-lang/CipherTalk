@@ -30,6 +30,7 @@ import {
 } from './weixinIlinkClient'
 import { synthesizeWeixinVoice } from './weixinVoiceService'
 import type { PersonaTtsVoiceBinding } from '../agent/persona/personaTypes'
+import { isHuajiChatSummaryPath } from '../agent/tools/chatSummaryPath'
 import type { AgentUploadedMediaContext } from '../agent/types'
 import { resolveWechatPeerName, wechatBotConversationTitle, writeWechatBotRunLog } from '../agent/wechatBotArchive'
 import { getLastPrivatePeriodProgress, type RosterPeriodProgress } from '../agent/tools/readPrivatePeriod'
@@ -676,6 +677,7 @@ function extractMediaFromToolChunk(
   if (c.type !== 'tool-output-available' || c.output?.success !== true) return null
   const filePath = typeof c.output.filePath === 'string' ? c.output.filePath.trim() : ''
   if (!filePath) return null
+  if (isHuajiChatSummaryPath(filePath)) return null
 
   const toolName = c.toolName || (c.toolCallId ? toolNames.get(c.toolCallId) : undefined)
   switch (toolName) {
