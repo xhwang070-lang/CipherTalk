@@ -62,7 +62,7 @@ export function createGenerateImage(uploadedMediaContext?: AgentUploadedMediaCon
     description:
       '生成或修改图片。从零画图时只传 prompt；用户发了图并要求改字/改日期/修图/局部替换时必须带上原图。' +
       '本轮或上一轮用户发来的图用 mediaId=upload-1，不要凭文字重画一张看起来像的新图。' +
-      'prompt 写具体画面或修改要求。必须按构图选择 size。生成后会自动展示，不要输出路径或链接。',
+      'prompt 写具体画面或修改要求。从零画图必须按构图选择 size；改图不要传 size，保持原图比例。生成后会自动展示，不要输出路径或链接。',
     inputSchema: z.object({
       prompt: z.string().min(1).describe('画图描述，或改图指令，例如：把图中的 2025 全部改成 2026，其它布局和颜色保持不变'),
       mediaId: z
@@ -81,7 +81,7 @@ export function createGenerateImage(uploadedMediaContext?: AgentUploadedMediaCon
       const resolved = await resolveSourceImage(mediaId, prompt, uploadedMediaContext)
       if (resolved.error) return { error: resolved.error }
       const res = await generateImageToFile(prompt, {
-        size,
+        size: resolved.sourceImage ? undefined : size,
         signal: abortSignal,
         sourceImage: resolved.sourceImage,
       })

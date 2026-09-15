@@ -65,6 +65,7 @@ function wechatToolLabel(name?: string): string {
     get_timeline: '\u804a\u5929\u8bb0\u5f55',
     inspect_chat_file: '\u804a\u5929\u6587\u4ef6',
     inspect_media_image: '\u56fe\u7247',
+    generate_image: '\u4f5c\u56fe',
     chat_stats: '\u7edf\u8ba1',
     transcribe_voice_message: '\u8bed\u97f3\u8f6c\u5199',
     search_media: '\u56fe\u7247\u68c0\u7d22',
@@ -551,6 +552,23 @@ function textFromUiMessage(message: UIMessage): string {
     })
     .filter(Boolean)
     .join('\n')
+}
+
+
+function stripImageFilePartsForModel(messages: UIMessage[] = []): UIMessage[] {
+  return messages.map((message) => {
+    const parts = Array.isArray(message.parts) ? message.parts : []
+    let changed = false
+    const next = parts.flatMap((part: any) => {
+      if (part && part.type === 'file' && String(part.mediaType || '').startsWith('image/')) {
+        changed = true
+        const name = typeof part.filename === 'string' && part.filename ? ` ${part.filename}` : ''
+        return [{ type: 'text' as const, text: `[图片${name}]` }]
+      }
+      return [part]
+    })
+    return changed ? { ...message, parts: next } : message
+  })
 }
 
 function extractUploadedMediaFromUiMessages(messages: UIMessage[] = []): AgentUploadedMediaContext | undefined {
@@ -1366,6 +1384,27 @@ class WeixinBotService {
       agentConversationStore.append(conv.id, [userMsg])
 
       const history = agentConversationStore.load(conv.id)?.messages ?? [userMsg]
+      if (!incoming.plainText.trim() && incoming.fileParts.length > 0) {
+        const ask = '这张图要我做什么？'
+        const live = this.session
+        if (live) await sendText(live, from, ask, contextToken)
+        agentConversationStore.append(conv.id, [{
+          id: `wx-a-ask-${Date.now()}`,
+          role: 'assistant',
+          parts: [{ type: 'text', text: ask }],
+        }])
+        writeWechatBotRunLog({
+          from,
+          peerName,
+          question: incoming.logText,
+          tools: usedTools,
+          ok: true,
+          result: ask,
+          durationMs: Date.now() - startedAt,
+        })
+        this.logger?.warn('WechatBot', '图片未附文字，先问要做什么', { from, history: history.length })
+        return
+      }
       typing = await this.startTypingIndicator(from, contextToken, () => lastTool)
       const forceVoice = wantsVoiceReply(commandText)
       const allowDesktopScreenshotReply = wantsDesktopScreenshotReply(commandText)
@@ -2262,7 +2301,9 @@ class WeixinBotService {
     }, TYPING_KEEPALIVE_MS)
     const ackTimer = setTimeout(() => {
       if (stopped || !this.session) return
-      void sendText(this.session, toUserId, wechatProgressText(getTool?.()), contextToken).catch(() => {})
+      const tool = getTool?.()
+      if (!tool) return
+      void sendText(this.session, toUserId, wechatProgressText(tool), contextToken).catch(() => {})
     }, 25_000)
 
     return {
@@ -2299,7 +2340,7 @@ class WeixinBotService {
       queryText: lastUserTextFromUiMessages(uiMessages),
     })
     const uploadedMediaContext = extractUploadedMediaFromUiMessages(uiMessages)
-    const messages = await convertToModelMessages(uiMessages)
+    const messages = await convertToModelMessages(stripImageFilePartsForModel(uiMessages))
     let reply = ''
     const textBlocks: string[] = []
     const textBlockIndexes = new Map<string, number>()
@@ -2411,7 +2452,7 @@ class WeixinBotService {
     } catch {
       // 无笔记照常聊
     }
-    const messages = await convertToModelMessages(uiMessages)
+    const messages = await convertToModelMessages(stripImageFilePartsForModel(uiMessages))
     const textBubbles: string[] = []
     const textBlocks: string[] = []
     const textBlockIndexes = new Map<string, number>()

@@ -136,6 +136,62 @@ export function resolveGoogleImageBaseURL(url?: string | null): string | undefin
   return trimmed
 }
 
+
+const GEMINI_ASPECT_RATIOS: Array<`${number}:${number}`> = [
+  '1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '21:9', '5:4', '4:5', '4:1', '1:4',
+]
+
+function readPngSize(data: Buffer): { width: number; height: number } | null {
+  if (data.length < 24 || data[0] !== 0x89 || data.toString('ascii', 1, 4) !== 'PNG') return null
+  return { width: data.readUInt32BE(16), height: data.readUInt32BE(20) }
+}
+
+function readJpegSize(data: Buffer): { width: number; height: number } | null {
+  if (data.length < 4 || data[0] !== 0xff || data[1] !== 0xd8) return null
+  let offset = 2
+  while (offset + 8 < data.length) {
+    if (data[offset] !== 0xff) {
+      offset += 1
+      continue
+    }
+    const marker = data[offset + 1]
+    if (marker === 0xc0 || marker === 0xc1 || marker === 0xc2) {
+      return { height: data.readUInt16BE(offset + 5), width: data.readUInt16BE(offset + 7) }
+    }
+    const length = data.readUInt16BE(offset + 2)
+    if (length < 2) break
+    offset += 2 + length
+  }
+  return null
+}
+
+function readImageSize(data: Uint8Array): { width: number; height: number } | null {
+  const buf = Buffer.from(data)
+  return readPngSize(buf) || readJpegSize(buf)
+}
+
+function nearestAspectRatio(width: number, height: number): `${number}:${number}` {
+  const value = width / height
+  let best: `${number}:${number}` = '16:9'
+  let bestDiff = Number.POSITIVE_INFINITY
+  for (const ratio of GEMINI_ASPECT_RATIOS) {
+    const [w, h] = ratio.split(':').map(Number)
+    const diff = Math.abs(value - w / h)
+    if (diff < bestDiff) {
+      best = ratio
+      bestDiff = diff
+    }
+  }
+  return best
+}
+
+function aspectRatioOf(source?: ImageGenSourceImage): `${number}:${number}` | undefined {
+  if (!source) return undefined
+  const size = readImageSize(source.data)
+  if (!size || size.width <= 0 || size.height <= 0) return undefined
+  return nearestAspectRatio(size.width, size.height)
+}
+
 /** openai / google: AI SDK generateImage. Pass sourceImage to edit an existing picture. */
 async function generateViaAiSdk(prompt: string, cfg: ImageGenConfig, size?: string, signal?: AbortSignal, sourceImage?: ImageGenSourceImage): Promise<ImageGenResult> {
   const baseURL = cfg.protocol === 'google'
@@ -146,13 +202,16 @@ async function generateViaAiSdk(prompt: string, cfg: ImageGenConfig, size?: stri
     ? createGoogle({ apiKey: cfg.apiKey, baseURL, name: 'image-gen', fetch }).imageModel(cfg.model)
     : createOpenAI({ apiKey: cfg.apiKey, baseURL, name: 'image-gen', fetch }).imageModel(cfg.model)
 
+  const editRatio = aspectRatioOf(sourceImage)
   const { image } = await generateImage({
     model,
     prompt: sourceImage
       ? { text: prompt, images: [sourceImage.data] }
       : prompt,
     n: 1,
-    size: normalizeSize(size || cfg.size),
+    ...(sourceImage
+      ? (editRatio ? { aspectRatio: editRatio } : {})
+      : { size: normalizeSize(size || cfg.size) }),
     maxRetries: 1,
     abortSignal: signal,
   })
