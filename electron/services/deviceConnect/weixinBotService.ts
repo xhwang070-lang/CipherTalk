@@ -426,14 +426,40 @@ function isBareSummarizeCommand(text: string): boolean {
   return /^(概括一下|概括合同|概括这个|概括文件|概括|总结一下|总结|读一下|看看这个|帮我看下这个文件)[!！。.]*/u.test(String(text || '').trim())
 }
 
-function lastHistoryFileParts(messages: UIMessage[] = []): FileUIPart[] {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    if (messages[i]?.role !== 'user') continue
-    const files = (Array.isArray(messages[i].parts) ? messages[i].parts : [])
+function filePartKey(part: FileUIPart): string {
+  return [String(part.filename || ''), String(part.mediaType || ''), String(part.url || '').slice(0, 96)].join('|')
+}
+
+function recentHistoryFileParts(messages: UIMessage[] = []): FileUIPart[] {
+  const collected: FileUIPart[] = []
+  const seen = new Set<string>()
+  for (let i = messages.length - 1; i >= 0 && collected.length < 6; i -= 1) {
+    const msg = messages[i]
+    if (!msg) continue
+    if (msg.role === 'assistant') {
+      const text = (Array.isArray(msg.parts) ? msg.parts : [])
+        .map((part) => (part && part.type === 'text' ? String((part as { text?: string }).text || '') : ''))
+        .join('\n')
+      if (/你想让我做什么/.test(text)) continue
+      if (collected.length > 0) break
+      continue
+    }
+    if (msg.role !== 'user') continue
+    const files = (Array.isArray(msg.parts) ? msg.parts : [])
       .filter((part): part is FileUIPart => Boolean(part && part.type === 'file' && typeof (part as FileUIPart).url === 'string'))
-    if (files.length > 0) return files
+    if (files.length === 0) {
+      if (collected.length > 0) break
+      continue
+    }
+    for (let j = files.length - 1; j >= 0; j -= 1) {
+      const file = files[j]
+      const key = filePartKey(file)
+      if (seen.has(key)) continue
+      seen.add(key)
+      collected.unshift(file)
+    }
   }
-  return []
+  return collected
 }
 
 function lastAssistantAskedWhatToDo(messages: UIMessage[] = []): boolean {
@@ -469,6 +495,9 @@ function buildAttachmentAsk(incoming: PreparedWechatIncomingMessage): string {
     && files.every(isImageFilePart)
     && names.every((name) => !isPdfName(name) && !isSpreadsheetName(name) && !isWordName(name))
   if (imageOnly) {
+    if (files.length > 1) {
+      return '收到 ' + files.length + ' 张图了。你想让我做什么？比如：都看一下、只看最后一张、读表格、改日期。直接回一句就行。'
+    }
     return '收到这张图了。你想让我做什么？比如：改字、改日期、读表格、描述画面。直接回一句就行。'
   }
   if (names.some(isSpreadsheetName)) {
@@ -761,7 +790,8 @@ function lastHistoryImage(messages: UIMessage[] = []): { data: Uint8Array; media
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     if (messages[i]?.role !== 'user') continue
     const parts = Array.isArray(messages[i].parts) ? messages[i].parts : []
-    for (const part of parts as any[]) {
+    for (let j = parts.length - 1; j >= 0; j -= 1) {
+      const part = parts[j] as any
       if (!part || part.type !== 'file' || !String(part.mediaType || '').startsWith('image/')) continue
       const decoded = decodeDataUrlImage(String(part.url || ''))
       if (decoded) return decoded
@@ -772,23 +802,34 @@ function lastHistoryImage(messages: UIMessage[] = []): { data: Uint8Array; media
 
 function extractUploadedMediaFromUiMessages(messages: UIMessage[] = []): AgentUploadedMediaContext | undefined {
   const images: NonNullable<AgentUploadedMediaContext>['images'] = []
+  const seen = new Set<string>()
   for (let i = messages.length - 1; i >= 0 && images.length < 6; i -= 1) {
     if (messages[i]?.role !== 'user') continue
     const parts = Array.isArray(messages[i]?.parts) ? messages[i].parts : []
+    const batch: typeof images = []
     for (const part of parts) {
       if (!part || part.type !== 'file' || typeof (part as FileUIPart).url !== 'string' || !String((part as FileUIPart).mediaType || '').startsWith('image/')) continue
       const file = part as FileUIPart
       const dataUrl = String(file.url || '')
       if (!dataUrl.startsWith('data:image/')) continue
-      images.push({
-        id: `upload-${images.length + 1}`,
+      const key = dataUrl.slice(0, 120)
+      if (seen.has(key)) continue
+      seen.add(key)
+      batch.push({
+        id: '',
         mediaType: String(file.mediaType || 'image/jpeg'),
         filename: file.filename,
         dataUrl,
       })
-      if (images.length >= 6) break
+    }
+    if (batch.length === 0) continue
+    images.unshift(...batch)
+    if (images.length >= 6) {
+      images.splice(0, images.length - 6)
+      break
     }
   }
+  images.forEach((item, index) => { item.id = 'upload-' + (index + 1) })
   return images.length > 0 ? { images } : undefined
 }
 
@@ -1721,14 +1762,25 @@ class WeixinBotService {
         return
       }
       if (incoming.plainText.trim() && incoming.fileParts.length === 0) {
-        const previousFiles = lastHistoryFileParts(history.slice(0, -1))
+        const previousFiles = recentHistoryFileParts(history.slice(0, -1))
         const followUpOnAsk = lastAssistantAskedWhatToDo(history.slice(0, -1))
           || isBareSummarizeCommand(incoming.plainText)
           || looksLikeImageEditCommand(incoming.plainText)
         if (previousFiles.length > 0 && followUpOnAsk) {
           parts.push(...previousFiles)
+          if (previousFiles.length > 1 && !looksLikeImageEditCommand(incoming.plainText)) {
+            parts.push({
+              type: 'text',
+              text: '刚才连续发了 ' + previousFiles.length + ' 张图。用户没指定看哪张时，必须每张都看（upload-1 到 upload-' + previousFiles.length + '），按发送顺序分别说明，不要只看第一张。',
+            })
+          }
           const last = history[history.length - 1]
           if (last && last.role === 'user') last.parts = parts
+          this.logger?.warn('WechatBot', '跟进上一批附件', {
+            from,
+            count: previousFiles.length,
+            names: previousFiles.map((item) => String(item.filename || '')),
+          })
         }
       }
       const editSource = lastHistoryImage(history)

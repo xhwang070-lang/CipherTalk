@@ -924,10 +924,12 @@ export function createInspectMediaImage(
     }),
     execute: async ({ mediaId, question }, { abortSignal }) => {
       if (mediaId.toLowerCase().startsWith('upload-')) {
-        const image = (uploadedMediaContext?.images || []).find((item) => item.id === mediaId)
-          || uploadedMediaContext?.images?.[0]
+        const uploaded = uploadedMediaContext?.images || []
+        const image = uploaded.find((item) => item.id === mediaId)
+          || (mediaId.toLowerCase() === 'upload-1' ? uploaded[0] : undefined)
         if (!image) {
-          return { error: '当前消息没有可识别的上传图片。如果是聊天记录里的旧图，请先 search_media 拿 mediaId。' }
+          const available = uploaded.map((item) => item.id).join('、') || '无'
+          return { error: '当前消息没有 ' + mediaId + '。可用：' + available + '。如果是聊天记录里的旧图，请先 search_media 拿 mediaId。' }
         }
         const decoded = decodeUploadedDataUrl(image.dataUrl)
         if (!decoded) return { error: '上传图片无法解码' }
