@@ -33,6 +33,7 @@ import type { PersonaTtsVoiceBinding } from '../agent/persona/personaTypes'
 import { isHuajiChatSummaryPath } from '../agent/tools/chatSummaryPath'
 import type { AgentUploadedMediaContext } from '../agent/types'
 import { extractJpegPagesFromPdf, parseDataUrlBuffer } from '../agent/pdfPageImages'
+import { isPdfEncrypted, unlockPdfBuffer, writeUnlockedPdfFile } from '../agent/pdfUnlock'
 import { extractOfficeBuffer, isOfficeFileName, officeMediaTypeFromName, officeResultForModel } from '../chat/officeExtract'
 import { resolveWechatPeerName, wechatBotConversationTitle, writeWechatBotRunLog } from '../agent/wechatBotArchive'
 import { getLastPrivatePeriodProgress, type RosterPeriodProgress } from '../agent/tools/readPrivatePeriod'
@@ -67,6 +68,7 @@ function wechatToolLabel(name?: string): string {
     get_context: '\u804a\u5929\u4e0a\u4e0b\u6587',
     get_timeline: '\u804a\u5929\u8bb0\u5f55',
     inspect_chat_file: '\u804a\u5929\u6587\u4ef6',
+    unlock_pdf: '\u89e3\u5bc6 PDF',
     inspect_media_image: '\u56fe\u7247',
     generate_image: '\u4f5c\u56fe',
     chat_stats: '\u7edf\u8ba1',
@@ -698,7 +700,12 @@ function replacePdfFilePartsWithPageImages(messages: UIMessage[] = []): UIMessag
       changed = true
       const name = String(part.filename || '合同.pdf')
       const parsed = parseDataUrlBuffer(part.url)
-      const pages = parsed ? extractJpegPagesFromPdf(parsed.buffer) : []
+      let pdfBuffer = parsed?.buffer
+      if (pdfBuffer && isPdfEncrypted(pdfBuffer)) {
+        const unlocked = unlockPdfBuffer(pdfBuffer)
+        if (unlocked.ok) pdfBuffer = unlocked.buffer
+      }
+      const pages = pdfBuffer ? extractJpegPagesFromPdf(pdfBuffer) : []
       if (pages.length === 0) {
         next.push({
           type: 'text',
@@ -781,6 +788,27 @@ function looksLikeImageEditCommand(text: string): boolean {
   const value = String(text || '').trim()
   if (!value) return false
   return /改成|改掉|修图|改图|替换|擦掉|不要改变尺寸|保持.{0,8}尺寸|把.{0,24}改/.test(value)
+}
+
+function looksLikePdfUnlockCommand(text: string): boolean {
+  const value = String(text || '').trim()
+  if (!value) return false
+  return /解密|解除密码|去掉密码|去掉加密|解锁|remove password|unprotect/i.test(value)
+}
+
+function lastHistoryPdf(messages: UIMessage[] = []): { buffer: Buffer; filename: string } | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const files = userFileParts(messages[i])
+    for (let j = files.length - 1; j >= 0; j -= 1) {
+      const file = files[j]
+      if (!isPdfFilePart(file)) continue
+      const parsed = parseDataUrlBuffer(file.url)
+      if (parsed?.buffer?.length) {
+        return { buffer: parsed.buffer, filename: String(file.filename || 'document.pdf') }
+      }
+    }
+  }
+  return null
 }
 
 function decodeDataUrlImage(dataUrl: string): { data: Uint8Array; mediaType: string } | null {
@@ -1770,6 +1798,7 @@ class WeixinBotService {
         const followUpOnAsk = lastAssistantAskedWhatToDo(prior)
           || isBareSummarizeCommand(incoming.plainText)
           || looksLikeImageEditCommand(incoming.plainText)
+          || looksLikePdfUnlockCommand(incoming.plainText)
         if (previousFiles.length > 0 && followUpOnAsk) {
           parts.push(...previousFiles)
           if (lastCompletedAssistantIndex(prior) >= 0) {
@@ -1800,6 +1829,66 @@ class WeixinBotService {
         })
         const last = history[history.length - 1]
         if (last && last.role === 'user') last.parts = parts
+      }
+      if (incoming.plainText.trim() && looksLikePdfUnlockCommand(incoming.plainText)) {
+        const pdf = lastHistoryPdf(history)
+        if (pdf) {
+          lastTool = 'unlock_pdf'
+          if (!usedTools.includes('unlock_pdf')) usedTools.push('unlock_pdf')
+          const unlocked = unlockPdfBuffer(pdf.buffer)
+          const live = this.session
+          if (!unlocked.ok) {
+            const fail = unlocked.needsPassword
+              ? '解不了。这是打开密码，没有密码去不掉，也不会去猜。'
+              : ('解不了。' + unlocked.error)
+            if (live) await sendText(live, from, fail, contextToken)
+            writeWechatBotRunLog({
+              from,
+              peerName,
+              question: incoming.logText,
+              tools: usedTools,
+              ok: false,
+              result: fail,
+              durationMs: Date.now() - startedAt,
+            })
+            this.logger?.warn('WechatBot', 'PDF 解密失败', { from, error: unlocked.error, needsPassword: unlocked.needsPassword })
+            return
+          }
+          if (!unlocked.changed) {
+            const same = '这份本来就没有打开密码，不用解。'
+            if (live) await sendText(live, from, same, contextToken)
+            writeWechatBotRunLog({
+              from,
+              peerName,
+              question: incoming.logText,
+              tools: usedTools,
+              ok: true,
+              result: same,
+              durationMs: Date.now() - startedAt,
+            })
+            return
+          }
+          const filePath = writeUnlockedPdfFile(unlocked.buffer, pdf.filename)
+          const done = '已经去掉密码了。这是限制编辑的加密，打开并不需要密码。'
+          if (live) await sendText(live, from, done, contextToken)
+          await this.sendReplyMedia(from, [{ kind: 'file', source: 'tool', filePath }], contextToken)
+          agentConversationStore.append(conv.id, [{
+            id: `wx-a-pdf-${Date.now()}`,
+            role: 'assistant',
+            parts: [{ type: 'text', text: done }],
+          }])
+          writeWechatBotRunLog({
+            from,
+            peerName,
+            question: incoming.logText,
+            tools: usedTools,
+            ok: true,
+            result: done,
+            durationMs: Date.now() - startedAt,
+          })
+          this.logger?.warn('WechatBot', '已发送无密码 PDF', { from, filePath })
+          return
+        }
       }
       const editSource = lastHistoryImage(history)
       if (incoming.plainText.trim() && incoming.fileParts.length === 0 && looksLikeImageEditCommand(incoming.plainText) && editSource) {

@@ -160,6 +160,12 @@ fs.rmSync(path.join(appDir, 'dist-electron'), { recursive: true, force: true })
 copyDir(dist, path.join(appDir, 'dist'))
 copyDir(distElectron, path.join(appDir, 'dist-electron'))
 fs.copyFileSync(path.join(root, 'package.json'), path.join(appDir, 'package.json'))
+const qpdfSrc = path.join(root, 'resources', 'qpdf')
+if (fs.existsSync(qpdfSrc)) {
+  console.log('copying resources/qpdf ...')
+  copyDir(qpdfSrc, path.join(appDir, 'resources', 'qpdf'))
+  copyDir(qpdfSrc, path.join(resourcesDir, 'resources', 'qpdf'))
+}
 copyNodeModules(appDir)
 run(process.execPath, [path.join(root, 'scripts', 'verify-installed-runtime.cjs'), appDir])
 

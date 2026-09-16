@@ -98,3 +98,6 @@ CipherTalk-Tauri-Lite/
 native/wcdb-rust/target/
 resources/wcdb_api.dll.pre_local
 resources/wcdb_api.dll.backup
+
+resources/qpdf/_extract/
+resources/qpdf/*.zip
