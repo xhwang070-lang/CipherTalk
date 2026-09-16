@@ -430,33 +430,42 @@ function filePartKey(part: FileUIPart): string {
   return [String(part.filename || ''), String(part.mediaType || ''), String(part.url || '').slice(0, 96)].join('|')
 }
 
+function assistantText(message: UIMessage | undefined): string {
+  if (!message || message.role !== 'assistant') return ''
+  return (Array.isArray(message.parts) ? message.parts : [])
+    .map((part) => (part && part.type === 'text' ? String((part as { text?: string }).text || '') : ''))
+    .join('\n')
+}
+
+function isWechatAskWhatToDo(message: UIMessage | undefined): boolean {
+  return /你想让我做什么/.test(assistantText(message))
+}
+
+function lastCompletedAssistantIndex(messages: UIMessage[] = []): number {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role !== 'assistant') continue
+    if (isWechatAskWhatToDo(messages[i])) continue
+    return i
+  }
+  return -1
+}
+
+function userFileParts(message: UIMessage | undefined): FileUIPart[] {
+  if (!message || message.role !== 'user') return []
+  return (Array.isArray(message.parts) ? message.parts : [])
+    .filter((part): part is FileUIPart => Boolean(part && part.type === 'file' && typeof (part as FileUIPart).url === 'string'))
+}
+
 function recentHistoryFileParts(messages: UIMessage[] = []): FileUIPart[] {
+  const cutoff = lastCompletedAssistantIndex(messages)
   const collected: FileUIPart[] = []
   const seen = new Set<string>()
-  for (let i = messages.length - 1; i >= 0 && collected.length < 6; i -= 1) {
-    const msg = messages[i]
-    if (!msg) continue
-    if (msg.role === 'assistant') {
-      const text = (Array.isArray(msg.parts) ? msg.parts : [])
-        .map((part) => (part && part.type === 'text' ? String((part as { text?: string }).text || '') : ''))
-        .join('\n')
-      if (/你想让我做什么/.test(text)) continue
-      if (collected.length > 0) break
-      continue
-    }
-    if (msg.role !== 'user') continue
-    const files = (Array.isArray(msg.parts) ? msg.parts : [])
-      .filter((part): part is FileUIPart => Boolean(part && part.type === 'file' && typeof (part as FileUIPart).url === 'string'))
-    if (files.length === 0) {
-      if (collected.length > 0) break
-      continue
-    }
-    for (let j = files.length - 1; j >= 0; j -= 1) {
-      const file = files[j]
+  for (let i = cutoff + 1; i < messages.length && collected.length < 6; i += 1) {
+    for (const file of userFileParts(messages[i])) {
       const key = filePartKey(file)
       if (seen.has(key)) continue
       seen.add(key)
-      collected.unshift(file)
+      collected.push(file)
     }
   }
   return collected
@@ -787,7 +796,8 @@ function decodeDataUrlImage(dataUrl: string): { data: Uint8Array; mediaType: str
 }
 
 function lastHistoryImage(messages: UIMessage[] = []): { data: Uint8Array; mediaType: string } | null {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
+  const cutoff = lastCompletedAssistantIndex(messages)
+  for (let i = messages.length - 1; i > cutoff; i -= 1) {
     if (messages[i]?.role !== 'user') continue
     const parts = Array.isArray(messages[i].parts) ? messages[i].parts : []
     for (let j = parts.length - 1; j >= 0; j -= 1) {
@@ -801,12 +811,12 @@ function lastHistoryImage(messages: UIMessage[] = []): { data: Uint8Array; media
 }
 
 function extractUploadedMediaFromUiMessages(messages: UIMessage[] = []): AgentUploadedMediaContext | undefined {
+  const cutoff = lastCompletedAssistantIndex(messages)
   const images: NonNullable<AgentUploadedMediaContext>['images'] = []
   const seen = new Set<string>()
-  for (let i = messages.length - 1; i >= 0 && images.length < 6; i -= 1) {
+  for (let i = cutoff + 1; i < messages.length && images.length < 6; i += 1) {
     if (messages[i]?.role !== 'user') continue
     const parts = Array.isArray(messages[i]?.parts) ? messages[i].parts : []
-    const batch: typeof images = []
     for (const part of parts) {
       if (!part || part.type !== 'file' || typeof (part as FileUIPart).url !== 'string' || !String((part as FileUIPart).mediaType || '').startsWith('image/')) continue
       const file = part as FileUIPart
@@ -815,21 +825,14 @@ function extractUploadedMediaFromUiMessages(messages: UIMessage[] = []): AgentUp
       const key = dataUrl.slice(0, 120)
       if (seen.has(key)) continue
       seen.add(key)
-      batch.push({
-        id: '',
+      images.push({
+        id: 'upload-' + (images.length + 1),
         mediaType: String(file.mediaType || 'image/jpeg'),
         filename: file.filename,
         dataUrl,
       })
     }
-    if (batch.length === 0) continue
-    images.unshift(...batch)
-    if (images.length >= 6) {
-      images.splice(0, images.length - 6)
-      break
-    }
   }
-  images.forEach((item, index) => { item.id = 'upload-' + (index + 1) })
   return images.length > 0 ? { images } : undefined
 }
 
@@ -1762,16 +1765,23 @@ class WeixinBotService {
         return
       }
       if (incoming.plainText.trim() && incoming.fileParts.length === 0) {
-        const previousFiles = recentHistoryFileParts(history.slice(0, -1))
-        const followUpOnAsk = lastAssistantAskedWhatToDo(history.slice(0, -1))
+        const prior = history.slice(0, -1)
+        const previousFiles = recentHistoryFileParts(prior)
+        const followUpOnAsk = lastAssistantAskedWhatToDo(prior)
           || isBareSummarizeCommand(incoming.plainText)
           || looksLikeImageEditCommand(incoming.plainText)
         if (previousFiles.length > 0 && followUpOnAsk) {
           parts.push(...previousFiles)
+          if (lastCompletedAssistantIndex(prior) >= 0) {
+            parts.push({
+              type: 'text',
+              text: '这是新发的图，上一张已经处理完。必须看当前这张（upload-1），不要沿用上一张图的结论。',
+            })
+          }
           if (previousFiles.length > 1 && !looksLikeImageEditCommand(incoming.plainText)) {
             parts.push({
               type: 'text',
-              text: '刚才连续发了 ' + previousFiles.length + ' 张图。用户没指定看哪张时，必须每张都看（upload-1 到 upload-' + previousFiles.length + '），按发送顺序分别说明，不要只看第一张。',
+              text: '当前有 ' + previousFiles.length + ' 张新图。用户没指定看哪张时，必须每张都看（upload-1 到 upload-' + previousFiles.length + '），按发送顺序分别说明。',
             })
           }
           const last = history[history.length - 1]
@@ -1780,8 +1790,16 @@ class WeixinBotService {
             from,
             count: previousFiles.length,
             names: previousFiles.map((item) => String(item.filename || '')),
+            freshAfterCompleted: lastCompletedAssistantIndex(prior) >= 0,
           })
         }
+      } else if (incoming.plainText.trim() && incoming.fileParts.length > 0 && lastCompletedAssistantIndex(history.slice(0, -1)) >= 0) {
+        parts.push({
+          type: 'text',
+          text: '这是新发的图，上一张已经处理完。必须看当前这张（upload-1），不要沿用上一张图的结论。',
+        })
+        const last = history[history.length - 1]
+        if (last && last.role === 'user') last.parts = parts
       }
       const editSource = lastHistoryImage(history)
       if (incoming.plainText.trim() && incoming.fileParts.length === 0 && looksLikeImageEditCommand(incoming.plainText) && editSource) {
