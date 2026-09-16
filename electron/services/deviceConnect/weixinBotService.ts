@@ -401,6 +401,26 @@ function isAgentReadableMediaType(mediaType: string): boolean {
     normalized === 'application/json'
 }
 
+function isImageFilePart(part: FileUIPart): boolean {
+  return String(part.mediaType || '').startsWith('image/')
+}
+
+function isBareSummarizeCommand(text: string): boolean {
+  return /^(概括|总结一下|总结|读一下|看看这个|帮我看下这个文件)[!！。.]*$/u.test(String(text || '').trim())
+}
+
+function lastHistoryFileParts(messages: UIMessage[] = []): FileUIPart[] {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role !== 'user') continue
+    const files = (Array.isArray(messages[i].parts) ? messages[i].parts : [])
+      .filter((part): part is FileUIPart => Boolean(part && part.type === 'file' && typeof (part as FileUIPart).url === 'string'))
+    if (files.length > 0) return files
+  }
+  return []
+}
+
+const DOCUMENT_SUMMARIZE_HINT = '概括这个文件。合同和 PDF 按条款、金额、日期、双方列要点，必须来自原文；看不清写待核，不要编。'
+
 function formatIncomingBytes(bytes?: number): string {
   if (!bytes || bytes <= 0) return ''
   if (bytes < 1024) return `${bytes}B`
@@ -1434,14 +1454,20 @@ class WeixinBotService {
       if (peerName && conv.title !== wantedTitle && (conv.title === '微信机器人' || conv.title.startsWith('微信 · ') || conv.title.startsWith('微信机器人 · '))) {
         agentConversationStore.rename(conv.id, wantedTitle)
       }
+      const imageOnly = incoming.fileParts.length > 0 && incoming.fileParts.every(isImageFilePart)
+      const hasDocument = incoming.fileParts.some((part) => !isImageFilePart(part))
       const parts: UIMessage['parts'] = []
-      if (text) parts.push({ type: 'text', text })
+      if (!incoming.plainText.trim() && hasDocument) {
+        parts.push({ type: 'text', text: DOCUMENT_SUMMARIZE_HINT })
+      } else if (text) {
+        parts.push({ type: 'text', text })
+      }
       parts.push(...incoming.fileParts)
       const userMsg: UIMessage = { id: `wx-u-${Date.now()}`, role: 'user', parts }
       agentConversationStore.append(conv.id, [userMsg])
 
       const history = agentConversationStore.load(conv.id)?.messages ?? [userMsg]
-      if (!incoming.plainText.trim() && incoming.fileParts.length > 0) {
+      if (!incoming.plainText.trim() && imageOnly) {
         const ask = '这张图要我做什么？'
         const live = this.session
         if (live) await sendText(live, from, ask, contextToken)
@@ -1461,6 +1487,14 @@ class WeixinBotService {
         })
         this.logger?.warn('WechatBot', '图片未附文字，先问要做什么', { from, history: history.length })
         return
+      }
+      if (isBareSummarizeCommand(incoming.plainText) && incoming.fileParts.length === 0) {
+        const previousFiles = lastHistoryFileParts(history.slice(0, -1))
+        if (previousFiles.length > 0) {
+          parts.push(...previousFiles)
+          const last = history[history.length - 1]
+          if (last && last.role === 'user') last.parts = parts
+        }
       }
       const editSource = lastHistoryImage(history)
       if (incoming.plainText.trim() && incoming.fileParts.length === 0 && looksLikeImageEditCommand(incoming.plainText) && editSource) {
