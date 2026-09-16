@@ -9,8 +9,8 @@
 
 ## [未发布]
 
-### 变更
-- 暂无
+### 暂缓
+- 文件格式转换先不做。以后用 anydoc 做读文件层（Office/PDF→本地 Markdown），再用 exceljs/docx 写出；禁止 Firecrawl 云 OCR。
 
 ## [2026.728.0] - 2026-07-28
 
