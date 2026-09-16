@@ -4,10 +4,11 @@
  */
 import { tool } from 'ai'
 import { z } from 'zod'
+import { loadCollapsedUsernames, shouldSkipFoldedChat } from '../foldedChats'
 
 export const listGroups = tool({
   description:
-    '列出群聊（按最近活跃排序），含成员数。用于"我有哪些群 / 最近活跃的群 / 人多的群"。' +
+    '列出群聊（按最近活跃排序），含成员数。用于"我有哪些群 / 最近活跃的群 / 人多的群"。不含微信「折叠的聊天」里的群。' +
     '返回的 username（以 @chatroom 结尾）可填进 group_members / group_member_ranking / get_timeline 的 sessionId。' +
     '要按名字找某个具体的群，也可以用 list_contacts。',
   inputSchema: z.object({
@@ -26,10 +27,13 @@ export const listGroups = tool({
         [limit],
       )
       if (sessions.length === 0) return { groups: [] }
+      const collapsed = await loadCollapsedUsernames()
+      const visible = sessions.filter((s) => !shouldSkipFoldedChat(s.username, collapsed))
+      if (visible.length === 0) return { groups: [] }
 
-      const names = await resolveContactNames(sessions.map((s) => s.username))
+      const names = await resolveContactNames(visible.map((s) => s.username))
       const groups = []
-      for (const s of sessions) {
+      for (const s of visible) {
         let memberCount = 0
         try {
           const row = await dbAdapter.get<{ count: number }>(

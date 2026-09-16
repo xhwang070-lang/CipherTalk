@@ -23,6 +23,7 @@ import {
   SYSTEM_USERNAME_PREFIXES,
   TEXT_LOCAL_TYPES,
 } from '../../statsConstants'
+import { loadCollapsedUsernames, shouldSkipFoldedChat } from '../foldedChats'
 
 const CHUNK = 200
 const WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
@@ -230,7 +231,11 @@ export async function listSessionRanking(range: TimeRangeSec, limit: number, kin
   let usernames: string[] = []
   try {
     const sessions = await dbAdapter.all<{ username: string }>('session', '', 'SELECT username FROM SessionTable')
-    usernames = sessions.map((s) => s.username).filter(kind === 'group' ? isGroupSession : isPrivateSession)
+    const collapsed = await loadCollapsedUsernames()
+    usernames = sessions
+      .map((s) => s.username)
+      .filter(kind === 'group' ? isGroupSession : isPrivateSession)
+      .filter((u) => !shouldSkipFoldedChat(u, collapsed))
   } catch (e) {
     return { error: `读取会话列表失败: ${e instanceof Error ? e.message : String(e)}` }
   }

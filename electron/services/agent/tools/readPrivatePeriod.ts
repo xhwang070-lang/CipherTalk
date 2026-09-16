@@ -294,7 +294,7 @@ const rosterInput = z.object({
 
 export const readPrivatePeriod = tool({
   description:
-    '读完近一周/近一个月里所有有消息的私聊原文。用户说「近一周私聊/私信总结」时必须用这个，不要让用户点名，也不要只用 chat_stats。' +
+    '读完近一周/近一个月里所有有消息的私聊原文。用户说「近一周私聊/私信总结」时必须用这个，不要让用户点名，也不要只用 chat_stats。折叠的聊天默认排除。' +
     '低条数的人会打成 packedPeople 一次返回多人，每个人都要写，不能只写活跃的几个。' +
     '有 nextCursor 就必须原样再调，直到 complete=true。全部写完后 save_chat_summary。',
   inputSchema: rosterInput,
@@ -309,7 +309,7 @@ export const readPrivatePeriod = tool({
 
 export const readGroupPeriod = tool({
   description:
-    '读完近一周/近一个月里所有有消息的群聊原文。用户说「近一周群聊总结」时必须用这个，不要让用户点群名，也不要只用 chat_stats。' +
+    '读完近一周/近一个月里所有有消息的群聊原文。用户说「近一周群聊总结」时必须用这个，不要让用户点群名，也不要只用 chat_stats。微信「折叠的聊天」里的群默认排除。' +
     '一次只返回当前这个群的若干天。有 nextCursor 就必须原样再调，直到 complete=true。全部写完后 save_chat_summary。',
   inputSchema: rosterInput,
   execute: async (input) => {

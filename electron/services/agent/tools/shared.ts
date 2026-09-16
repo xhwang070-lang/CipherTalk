@@ -188,8 +188,8 @@ export async function getRecentChatSessions(cap: number): Promise<string[]> {
   const { chatService } = await import('../../chatService')
   const res = await chatService.getSessions(0, cap)
   return (res.success ? res.sessions || [] : [])
+    .filter((s) => s.username && !s.isCollapsed && !s.isFoldGroup && !s.username.startsWith('@') && !s.username.startsWith('gh_') && s.username !== 'brandsessionholder')
     .map((s) => s.username)
-    .filter((u) => !!u && !u.startsWith('@') && !u.startsWith('gh_') && u !== 'brandsessionholder')
 }
 
 /**

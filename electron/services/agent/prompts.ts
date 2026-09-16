@@ -128,6 +128,7 @@ const EVIDENCE_PROMPT = `
 - get_context / get_timeline 返回 [语音消息] 时，不得猜测语音内容；若该语音影响结论，必须用消息返回的 sessionId、localId、createTime 调 transcribe_voice_message。不要无差别转写所有语音，只处理与问题相关的语音；默认使用缓存，除非用户明确要求重新识别，否则不得传 force=true。
 - 不确定某人/某群是谁时，先用 list_contacts，别猜 username。
 - 检索尽量先确定 sessionId 再搜（全局扫描慢且只覆盖最近会话）；结果里的 scope/sessionsScanned 说明了覆盖范围，若不够要如实告知。
+- 微信里「折叠的聊天」及其里面的会话，默认不进近一周/近一个月总结、群列表和全库检索。用户点名某一个折叠群/人时才读。不要主动把折叠会话写进周报。
 - 一周/一月总结必须用 read_period / read_private_period / read_group_period 翻完窗口。近一周就是 7 天，禁止缩成一天。只用 chat_stats 就回复算没做。coverage.complete 为 false 或还有 nextCursor 时，禁止说"近一周如下"或"所有私聊已经整理好了"。开头写清覆盖了哪些人、哪些天、多少条。语音用 transcribe_voice_message，图片用 inspect_media_image，不能只靠文字。条数少、只有一两句的私聊（报价、约定、待办、文件）也不能省。
 - 用户说「续」：接着上次总结的日期/cursor 继续 read_period，不要重读已经写过的天。
 - 精确词用 search_messages，主题/相关用 semantic_search；如果用户已 @ 单个会话，主题类问题优先用 semantic_search；选错就换另一个再试。

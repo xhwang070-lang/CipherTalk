@@ -5,6 +5,7 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 import { toLocalTime } from './shared'
+import { loadCollapsedUsernames, shouldSkipFoldedChat } from '../foldedChats'
 
 function classifyContact(username: unknown): 'group' | 'official' | 'person' {
   if (typeof username !== 'string') return 'person'
@@ -45,6 +46,7 @@ export const listContacts = tool({
       }
 
       const rows = await dbAdapter.all<any>('contact', '', sql, params)
+      const collapsed = await loadCollapsedUsernames()
       const lastByUser = new Map<string, number>()
       try {
         const { chatService } = await import('../../chatService')
@@ -68,7 +70,8 @@ export const listContacts = tool({
           lastTime: toLocalTime(lastTimestamp),
           lastTimestamp,
         }
-      }).sort((a, b) => (b.lastTimestamp || 0) - (a.lastTimestamp || 0))
+      }).filter((row) => !shouldSkipFoldedChat(row.username, collapsed, { allowNamed: Boolean(q) }))
+        .sort((a, b) => (b.lastTimestamp || 0) - (a.lastTimestamp || 0))
 
       return contacts.slice(0, limit).map(({ lastTimestamp, ...rest }) => rest)
     } catch (error) {
