@@ -37,6 +37,7 @@ function qpdfCandidates(): string[] {
     push(join(process.resourcesPath, 'resources', 'qpdf'))
     push(join(process.resourcesPath, 'qpdf', 'bin'))
     push(join(process.resourcesPath, 'qpdf'))
+    push(join(process.resourcesPath, 'assets', 'qpdf'))
     push(join(process.resourcesPath, 'app', 'resources', 'qpdf', 'bin'))
   }
   try {
@@ -44,6 +45,7 @@ function qpdfCandidates(): string[] {
     push(join(exeDir, 'resources', 'resources', 'qpdf', 'bin'))
     push(join(exeDir, 'resources', 'qpdf', 'bin'))
     push(join(exeDir, 'resources', 'qpdf'))
+    push(join(exeDir, 'resources', 'assets', 'qpdf'))
   } catch {
     // ignore
   }

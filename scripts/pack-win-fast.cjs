@@ -24,6 +24,7 @@ run(path.join(root, 'node_modules', '.bin', 'vite'), ['build'])
 run(process.execPath, ['scripts/run-electron-builder.cjs', 'win'])
 const qpdfPacked = [
   path.join(root, 'release', 'win-unpacked', 'resources', 'qpdf', 'qpdf.exe'),
+  path.join(root, 'release', 'win-unpacked', 'resources', 'assets', 'qpdf', 'qpdf.exe'),
   path.join(root, 'release', 'win-unpacked', 'resources', 'resources', 'qpdf', 'bin', 'qpdf.exe'),
 ]
 if (!qpdfPacked.some((item) => fs.existsSync(item))) {
