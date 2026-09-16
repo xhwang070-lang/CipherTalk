@@ -970,6 +970,51 @@ function splitVoiceMarkedReply(reply: WechatBotReply, forceVoice: boolean): Wech
   return { ...reply, text: textBubbles.join('\n'), textBubbles, savedText, savedTextBubbles, media: dedupeMedia(media), personaActions: reply.personaActions }
 }
 
+
+function unwrapLatexMath(expr: string): string {
+  let value = String(expr || '').trim()
+  const rules: Array<[RegExp, string]> = [
+    [/\\times/g, '\u00d7'],
+    [/\\cdot/g, '\u00b7'],
+    [/\\div/g, '\u00f7'],
+    [/\\pm/g, '\u00b1'],
+    [/\\leq/g, '\u2264'],
+    [/\\geq/g, '\u2265'],
+    [/\\neq/g, '\u2260'],
+    [/\\approx/g, '\u2248'],
+    [/\\infty/g, '\u221e'],
+    [/\\%/g, '%'],
+    [/\\$/g, '$'],
+    [/\\mathbf\{([^}]*)\}/g, '$1'],
+    [/\\mathrm\{([^}]*)\}/g, '$1'],
+    [/\\text\{([^}]*)\}/g, '$1'],
+    [/\\textbf\{([^}]*)\}/g, '$1'],
+    [/\\frac\{([^}]*)\}\{([^}]*)\}/g, '$1/$2'],
+    [/\\left|\\right/g, ''],
+    [/\\,/g, ''],
+    [/\\ /g, ' '],
+  ]
+  for (let i = 0; i < 3; i += 1) {
+    for (const [pattern, replacement] of rules) value = value.replace(pattern, replacement)
+  }
+  value = value.replace(/\\[a-zA-Z]+\{([^}]*)\}/g, '$1')
+  value = value.replace(/\\[a-zA-Z]+/g, '')
+  return value.replace(/[{}]/g, '').replace(/\s+/g, ' ').trim()
+}
+
+function plainWechatText(text: string): string {
+  let value = String(text || '')
+  value = value.replace(/\$\$([\s\S]+?)\$\$/g, (_: string, expr: string) => unwrapLatexMath(expr))
+  value = value.replace(/\$([^$\n]+?)\$/g, (_: string, expr: string) => unwrapLatexMath(expr))
+  value = value.replace(/\\times/g, '\u00d7')
+  value = value.replace(/\\mathbf\{([^}]*)\}/g, '$1')
+  value = value.replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, '$1/$2')
+  value = value.replace(/\\[a-zA-Z]+\{([^}]*)\}/g, '$1')
+  value = value.replace(/\*\*(.+?)\*\*/g, '$1')
+  value = value.replace(/__(.+?)__/g, '$1')
+  return value.replace(/[ \t]+\n/g, '\n').trim()
+}
+
 function splitWechatExplicitBubbles(text: string): string[] {
   return text
     .split(new RegExp(`^\\s*${escapeRegExp(WECHAT_TEXT_BUBBLE_SEPARATOR)}\\s*$`, 'm'))
@@ -978,7 +1023,11 @@ function splitWechatExplicitBubbles(text: string): string[] {
 }
 
 function normalizeWechatTextBubbles(bubbles: string[]): string[] {
-  return bubbles.flatMap(splitWechatExplicitBubbles)
+  return bubbles
+    .flatMap(splitWechatExplicitBubbles)
+    .map(plainWechatText)
+    .map((item) => item.trim())
+    .filter(Boolean)
 }
 
 function personaBubbleSendPauseMs(index: number): number {

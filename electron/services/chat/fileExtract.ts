@@ -5,6 +5,7 @@ import { ConfigService } from '../config'
 import { findAccountDir } from './accountUtils'
 import type { Message } from './types'
 import { extractOfficeBuffer } from './officeExtract'
+import { downloadWechatCdnAttach, parseWechatCdnAttachInfo } from '../wechatCdnAttach'
 
 export const SPREADSHEET_EXTS = new Set(['xlsx', 'xlsm', 'xls', 'csv'])
 const PREVIEWABLE_EXTS = new Set(['xlsx', 'xlsm', 'xls', 'csv', 'docx', 'doc', 'docm'])
@@ -271,7 +272,7 @@ function missingResult(fileName: string, kind: ChatFileKind, error?: string, hin
     kind: kind === 'unsupported' ? 'unsupported' : 'missing',
     sheetNames: [],
     error: error || '本地没有这个文件',
-    hint: hint || '请先在微信里点开下载，下载完成后再回Huaji预览。Huaji不会从微信服务器拉文件。',
+    hint: hint || '会先尝试自己下载。若消息里没有网址，就需要先在微信里点开一次。',
   }
 }
 
@@ -412,8 +413,21 @@ export async function previewChatFile(input: PreviewChatFileInput & { message?: 
     if (!dbPath || !wxid) {
       return missingResult(fileName, kind, '还没有配置微信数据目录或账号')
     }
-    const filePath = resolveChatFilePath({ dbPath, wxid, fileName, createTime })
-    if (!filePath) return missingResult(fileName, kind)
+    let filePath = resolveChatFilePath({ dbPath, wxid, fileName, createTime })
+    if (!filePath) {
+      const info = parseWechatCdnAttachInfo(String(input.message?.rawContent || ''))
+      if (!info.fileName) info.fileName = fileName
+      const cacheDir = path.join(config.getCacheBasePath(), 'chat-files')
+      filePath = await downloadWechatCdnAttach(info, cacheDir)
+    }
+    if (!filePath) {
+      return missingResult(
+        fileName,
+        kind,
+        '本地没有这个文件，也没有可下载的地址',
+        '会先尝试自己下载。若还是没有，请先在微信里点开一次这个文件。',
+      )
+    }
     return previewResolvedFile({
       filePath,
       fileName,
