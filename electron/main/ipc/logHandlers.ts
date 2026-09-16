@@ -1,6 +1,7 @@
 import { mkdirSync, existsSync } from 'fs'
 import { ipcMain, shell } from 'electron'
 import type { MainProcessContext } from '../context'
+import { exportDiagnosticPack } from '../../services/diagnosticPack'
 
 /**
  * 日志管理 IPC。
@@ -91,6 +92,14 @@ export function registerLogHandlers(ctx: MainProcessContext): void {
 
       logService.setLogLevel(logLevel)
       return { success: true }
+    } catch (e) {
+      return { success: false, error: String(e) }
+    }
+  })
+
+  ipcMain.handle('log:exportDiagnosticPack', async () => {
+    try {
+      return exportDiagnosticPack()
     } catch (e) {
       return { success: false, error: String(e) }
     }

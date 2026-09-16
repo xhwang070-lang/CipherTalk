@@ -235,6 +235,15 @@ function AboutTab({
               <FolderOpen width={16} height={16} />
               打开日志目录
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full justify-start"
+              onPress={() => { void window.electronAPI.log.exportDiagnosticPack() }}
+            >
+              <FolderOpen width={16} height={16} />
+              生成诊断包
+            </Button>
           </div>
         </div>
       </section>

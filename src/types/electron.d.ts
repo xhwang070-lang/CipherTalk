@@ -1466,6 +1466,12 @@ export interface ElectronAPI {
       error?: string;
       directory?: string
     }>
+    exportDiagnosticPack: () => Promise<{
+      success: boolean
+      error?: string
+      path?: string
+      files?: string[]
+    }>
     setLogLevel: (level: string) => Promise<{ success: boolean; error?: string }>
     getLogLevel: () => Promise<{
       success: boolean;

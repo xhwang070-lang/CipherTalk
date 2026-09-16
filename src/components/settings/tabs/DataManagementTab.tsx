@@ -124,6 +124,19 @@ function DataManagementTab({ showMessage, reloadConfig }: DataManagementTabProps
     loadLogContent(filename)
   }
 
+  const handleExportDiagnosticPack = async () => {
+    try {
+      const result = await window.electronAPI.log.exportDiagnosticPack()
+      if (result.success && result.path) {
+        showMessage(`诊断包已放到桌面：${result.path}`, true)
+      } else {
+        showMessage(result.error || '生成诊断包失败', false)
+      }
+    } catch (e) {
+      showMessage('生成诊断包失败', false)
+    }
+  }
+
   const handleOpenLogDirectory = async () => {
     try {
       const result = await window.electronAPI.log.openLogDirectory()

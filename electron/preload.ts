@@ -883,6 +883,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getLogSize: () => ipcRenderer.invoke('log:getLogSize'),
     getLogDirectory: () => ipcRenderer.invoke('log:getLogDirectory'),
     openLogDirectory: () => ipcRenderer.invoke('log:openLogDirectory'),
+    exportDiagnosticPack: () => ipcRenderer.invoke('log:exportDiagnosticPack'),
     setLogLevel: (level: string) => ipcRenderer.invoke('log:setLogLevel', level),
     getLogLevel: () => ipcRenderer.invoke('log:getLogLevel')
   },

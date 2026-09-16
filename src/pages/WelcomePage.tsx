@@ -66,6 +66,7 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
   const [isScanningWxid, setIsScanningWxid] = useState(false)
   const [isDetectingPath, setIsDetectingPath] = useState(false)
   const [isFetchingDbKey, setIsFetchingDbKey] = useState(false)
+  const [isExportingDiag, setIsExportingDiag] = useState(false)
   const [isFetchingImageKey, setIsFetchingImageKey] = useState(false)
   const [showDecryptKey, setShowDecryptKey] = useState(false)
   const [dbKeyStatus, setDbKeyStatus] = useState('')
@@ -623,6 +624,24 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
     }
   }, [])
 
+
+  const handleExportDiagnosticPack = async () => {
+    setIsExportingDiag(true)
+    try {
+      const result = await window.electronAPI.log.exportDiagnosticPack()
+      if (result.success && result.path) {
+        setError('')
+        setDbKeyStatus(`诊断包已放到桌面：${result.path}`)
+      } else {
+        setError(result.error || '生成诊断包失败')
+      }
+    } catch (e) {
+      setError(`生成诊断包失败: ${e}`)
+    } finally {
+      setIsExportingDiag(false)
+    }
+  }
+
   const handleSelectWechatPath = async () => {
     try {
       const result = await dialog.openFile({
@@ -1177,6 +1196,17 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
       >
         <FolderOpen width={16} height={16} />
         打开日志目录
+      </Button>
+      <Button
+        type="button"
+        variant="tertiary"
+        className="self-start"
+        onPress={() => { void handleExportDiagnosticPack() }}
+        isDisabled={isFetchingDbKey || isExportingDiag}
+        isPending={isExportingDiag}
+      >
+        {isExportingDiag ? <Spinner size="sm" color="current" /> : <FolderOpen width={16} height={16} />}
+        生成诊断包
       </Button>
       {needAdminRelaunch && (
         <Button
