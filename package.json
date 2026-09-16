@@ -1,6 +1,6 @@
 {
   "name": "huaji",
-  "version": "2026.916.22",
+  "version": "2026.916.23",
   "description": "Huaji - Huabo local WeChat archive",
   "author": "Huabo",
   "license": "CC-BY-NC-SA-4.0",
@@ -214,6 +214,14 @@
           "**/*",
           "!whisper/**"
         ]
+      },
+      {
+        "from": "resources/qpdf/bin/qpdf.exe",
+        "to": "qpdf/qpdf.exe"
+      },
+      {
+        "from": "resources/qpdf/bin/qpdf30.dll",
+        "to": "qpdf/qpdf30.dll"
       },
       {
         "from": "electron/assets/",

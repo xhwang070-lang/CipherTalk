@@ -22,6 +22,15 @@ run(process.execPath, ['scripts/clean-dist-electron.cjs'])
 run(process.execPath, [require.resolve('typescript/bin/tsc')])
 run(path.join(root, 'node_modules', '.bin', 'vite'), ['build'])
 run(process.execPath, ['scripts/run-electron-builder.cjs', 'win'])
+const qpdfPacked = [
+  path.join(root, 'release', 'win-unpacked', 'resources', 'qpdf', 'qpdf.exe'),
+  path.join(root, 'release', 'win-unpacked', 'resources', 'resources', 'qpdf', 'bin', 'qpdf.exe'),
+]
+if (!qpdfPacked.some((item) => fs.existsSync(item))) {
+  console.error('qpdf.exe missing from installer extraResources')
+  for (const item of qpdfPacked) console.error(' tried', item)
+  process.exit(1)
+}
 run(process.execPath, ['scripts/generate-update-manifest.js', 'win'])
 
 const setupName = `Huaji-${pkg.version}-Setup.exe`

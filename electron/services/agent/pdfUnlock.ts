@@ -1,7 +1,7 @@
-import { spawnSync } from 'child_process'
+import { execSync, spawnSync } from 'child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { dirname, join } from 'path'
 
 export type UnlockPdfResult =
   | { ok: true; buffer: Buffer; changed: boolean }
@@ -19,24 +19,51 @@ export function isPdfEncrypted(buffer: Buffer): boolean {
 function qpdfCandidates(): string[] {
   const exe = process.platform === 'win32' ? 'qpdf.exe' : 'qpdf'
   const roots: string[] = []
+  const push = (dir: string) => {
+    if (dir) roots.push(dir)
+  }
   try {
-    roots.push(join(__dirname, '..', '..', '..', 'resources', 'qpdf', 'bin'))
-    roots.push(join(__dirname, '..', '..', 'resources', 'qpdf', 'bin'))
-    roots.push(join(process.cwd(), 'resources', 'qpdf', 'bin'))
+    push(join(__dirname, '..', '..', '..', 'resources', 'qpdf', 'bin'))
+    push(join(__dirname, '..', '..', '..', 'resources', 'qpdf'))
+    push(join(__dirname, '..', '..', 'resources', 'qpdf', 'bin'))
+    push(join(__dirname, '..', '..', 'resources', 'qpdf'))
+    push(join(process.cwd(), 'resources', 'qpdf', 'bin'))
+    push(join(process.cwd(), 'resources', 'qpdf'))
   } catch {
     // ignore
   }
   if (process.resourcesPath) {
-    roots.push(join(process.resourcesPath, 'resources', 'qpdf', 'bin'))
-    roots.push(join(process.resourcesPath, 'qpdf', 'bin'))
-    roots.push(join(process.resourcesPath, 'app', 'resources', 'qpdf', 'bin'))
+    push(join(process.resourcesPath, 'resources', 'qpdf', 'bin'))
+    push(join(process.resourcesPath, 'resources', 'qpdf'))
+    push(join(process.resourcesPath, 'qpdf', 'bin'))
+    push(join(process.resourcesPath, 'qpdf'))
+    push(join(process.resourcesPath, 'app', 'resources', 'qpdf', 'bin'))
   }
-  return roots.map((root) => join(root, exe))
+  try {
+    const exeDir = dirname(process.execPath)
+    push(join(exeDir, 'resources', 'resources', 'qpdf', 'bin'))
+    push(join(exeDir, 'resources', 'qpdf', 'bin'))
+    push(join(exeDir, 'resources', 'qpdf'))
+  } catch {
+    // ignore
+  }
+  return [...new Set(roots.map((root) => join(root, exe)))]
 }
 
 export function resolveQpdfPath(): string | null {
   for (const candidate of qpdfCandidates()) {
     if (existsSync(candidate)) return candidate
+  }
+  if (process.platform === 'win32') {
+    try {
+      const found = String(execSync('where qpdf', { encoding: 'utf8', windowsHide: true }))
+        .split(/\r?\n/)
+        .map((item) => item.trim())
+        .find((item) => item && existsSync(item))
+      if (found) return found
+    } catch {
+      // not on PATH
+    }
   }
   return null
 }

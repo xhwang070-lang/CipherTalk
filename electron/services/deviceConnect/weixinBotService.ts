@@ -1874,7 +1874,9 @@ class WeixinBotService {
           if (!unlocked.ok) {
             const fail = unlocked.needsPassword
               ? '解不了。这是打开密码，没有密码去不掉，也不会去猜。'
-              : ('解不了。' + unlocked.error)
+              : unlocked.error === 'missing qpdf'
+                ? '解不了。这台华记安装包没带 PDF 工具，请换成新版安装包后再试。'
+                : ('解不了。' + unlocked.error)
             if (live) await sendText(live, from, fail, contextToken)
             writeWechatBotRunLog({
               from,
