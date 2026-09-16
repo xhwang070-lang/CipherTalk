@@ -313,6 +313,7 @@ export async function getImageData(state: ChatServiceState, sessionId: string, m
       imageMd5: msg.imageMd5 || undefined,
       imageDatName: msg.imageDatName || String(msg.localId),
       createTime: createTime || msg.createTime,
+      localId,
       force: true,
       quick: false
     }

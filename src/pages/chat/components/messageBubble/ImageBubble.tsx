@@ -167,6 +167,7 @@ function ImageBubble({ message, session, hasImageKey, onContextMenu, onImageRead
           imageMd5: message.imageMd5 || undefined,
           imageDatName: message.imageDatName,
           createTime: message.createTime,
+          localId: message.localId,
           force: forceUpdate,
           quick: !forceUpdate
         })
@@ -273,6 +274,7 @@ function ImageBubble({ message, session, hasImageKey, onContextMenu, onImageRead
             imageMd5: message.imageMd5 || undefined,
             imageDatName: message.imageDatName,
             createTime: message.createTime,
+            localId: message.localId,
             force: false,
             quick: true
           })
@@ -353,7 +355,8 @@ function ImageBubble({ message, session, hasImageKey, onContextMenu, onImageRead
         sessionId: session.username,
         imageMd5: message.imageMd5 || undefined,
         imageDatName: message.imageDatName,
-        createTime: message.createTime
+        createTime: message.createTime,
+        localId: message.localId
       }
 
       try {

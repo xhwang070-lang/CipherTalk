@@ -20,6 +20,7 @@ import {
   looksLikeNativeImagePayload as looksLikeNativeImagePayloadCore
 } from './datDecryptCore'
 import { imageDecryptWorkerPool } from './imageDecryptWorkerPool'
+import { downloadWechatCdnImage, parseWechatCdnImageInfo } from './wechatCdnImage'
 
 const execFileAsync = promisify(execFile)
 
@@ -66,6 +67,7 @@ type ImageLookupPayload = {
   imageMd5?: string
   imageDatName?: string
   createTime?: number
+  localId?: number
   force?: boolean
   quick?: boolean
 }
@@ -220,7 +222,7 @@ export class ImageDecryptService {
     // 即使 force=true，也先检查是否有高清图缓存
     if (payload.force) {
       if (this.hdNotFoundCache.has(lookupCacheKey)) {
-        return { success: false, error: '未找到高清图，请在微信中点开该图片查看后重试' }
+        return { success: false, error: '本地没有原图，消息里也没有可下载的地址。可在微信点开一次，或等华记从 CDN 拉取。' }
       }
       // 高清缓存放到 resolveDatPath 之后校验，避免把中图误当成 _hd.jpg
     } else {
@@ -498,6 +500,12 @@ export class ImageDecryptService {
       if (datPath) datPath = this.preferHdSibling(datPath)
       resolveDatMs = Date.now() - resolveDatStartedAt
 
+      const hasLocalHd = Boolean(datPath && this.isHdDat(basename(datPath)))
+      if (payload.force && !hasLocalHd) {
+        const cdnSaved = await this.trySaveCdnOriginal(payload, cacheKey, accountDir)
+        if (cdnSaved) return cdnSaved
+      }
+
       // 如果要求高清图但没找到，直接返回提示
       if (!datPath && payload.force) {
         this.hdNotFoundCache.add(lookupCacheKey)
@@ -523,7 +531,7 @@ export class ImageDecryptService {
           status: 'missing_hd',
           totalMs: Date.now() - totalStartedAt
         })
-        return { success: false, error: '未找到高清图，请在微信中点开该图片查看后重试' }
+        return { success: false, error: '本地没有原图，消息里也没有可下载的地址。可在微信点开一次，或等华记从 CDN 拉取。' }
       }
       if (!datPath) {
         const cacheLookupStartedAt = Date.now()
@@ -1780,6 +1788,46 @@ export class ImageDecryptService {
   private isHdDat(fileName: string): boolean {
     const lower = fileName.toLowerCase()
     return /[._]h(?:d)?(?:_[a-z]+)?\.dat$/.test(lower) || lower.includes('_hd.dat')
+  }
+
+  private async trySaveCdnOriginal(
+    payload: ImageLookupPayload,
+    cacheKey: string,
+    accountDir: string,
+  ): Promise<DecryptResult | null> {
+    try {
+      const localId = Number(payload.localId || payload.imageDatName)
+      if (!payload.sessionId || !Number.isFinite(localId) || localId <= 0) return null
+      const { chatService } = await import('./chatService')
+      const msgResult = await chatService.getMessageByLocalId(payload.sessionId, localId)
+      const rawContent = String(msgResult.message?.rawContent || '')
+      if (!rawContent) return null
+      const info = parseWechatCdnImageInfo(rawContent)
+      const downloaded = await downloadWechatCdnImage(info)
+      if (!downloaded || downloaded.length < 32) return null
+
+      let decoded = downloaded
+      const unwrap = await this.unwrapWxgf(decoded)
+      if (unwrap.data && unwrap.data.length) decoded = unwrap.data
+      const ext = this.detectImageExtension(decoded) || '.jpg'
+      if (ext === '.hevc') return null
+
+      const ts = Number(payload.createTime || 0)
+      const date = ts > 0 ? new Date(ts > 1e12 ? ts : ts * 1000) : new Date()
+      const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      const syntheticDat = join(accountDir, 'msg', 'attach', 'cdn', month, 'Img', `${this.normalizeDatBase(cacheKey)}_h.dat`)
+      const outputPath = this.getCacheOutputPathFromDat(syntheticDat, ext, payload.sessionId)
+      await writeFile(outputPath, decoded)
+      this.cacheResolvedPaths(cacheKey, payload.imageMd5, payload.imageDatName, outputPath)
+      this.clearUpdateFlags(cacheKey, payload.imageMd5, payload.imageDatName)
+      const localPath = this.filePathToUrl(outputPath)
+      this.emitCacheResolved(payload, cacheKey, localPath)
+      console.warn('[ImageDecrypt] 已从 CDN 拉取原图', { cacheKey, bytes: decoded.length })
+      return { success: true, localPath, isThumb: false }
+    } catch (error) {
+      console.warn('[ImageDecrypt] CDN 原图拉取失败', error instanceof Error ? error.message : String(error))
+      return null
+    }
   }
 
   private preferHdSibling(datPath: string): string {

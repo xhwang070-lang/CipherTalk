@@ -139,7 +139,7 @@ export function registerMediaHandlers(ctx: MainProcessContext): void {
   })
 
   // 新的图片解密 API（来自 WeFlow）
-  ipcMain.handle('image:decrypt', async (_, payload: { sessionId?: string; imageMd5?: string; imageDatName?: string; createTime?: number; force?: boolean; quick?: boolean }) => {
+  ipcMain.handle('image:decrypt', async (_, payload: { sessionId?: string; imageMd5?: string; imageDatName?: string; createTime?: number; localId?: number; force?: boolean; quick?: boolean }) => {
     const result = await imageDecryptService.decryptImage(payload)
     if (!result.success) {
       ctx.getLogService()?.error('ImageDecrypt', '图片解密失败', { payload, error: result.error })
