@@ -29,11 +29,6 @@ fn default_keys_path() -> String {
 }
 
 pub fn load_keys() {
-    if let Ok(flag) = LOADED.lock() {
-        if *flag {
-            return;
-        }
-    }
     let path = default_keys_path();
     let text = match fs::read_to_string(&path) {
         Ok(t) => t,

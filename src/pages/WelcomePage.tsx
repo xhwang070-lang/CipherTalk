@@ -1168,6 +1168,16 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
         {isFetchingDbKey ? <Spinner size="sm" color="current" /> : <Sparkles width={16} height={16} />}
         扫描微信内存获取密钥
       </Button>
+      <Button
+        type="button"
+        variant="tertiary"
+        className="self-start"
+        onPress={() => { void window.electronAPI.log.openLogDirectory() }}
+        isDisabled={isFetchingDbKey}
+      >
+        <FolderOpen width={16} height={16} />
+        打开日志目录
+      </Button>
       {needAdminRelaunch && (
         <Button
           type="button"

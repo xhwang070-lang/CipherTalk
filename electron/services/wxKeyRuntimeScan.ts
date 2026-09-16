@@ -19,8 +19,12 @@ const LITERAL_RE = /[xX]'([0-9a-fA-F]{64,192})'/g
 
 export type RuntimeScanProgress = (status: string) => void
 
+export type RuntimeKeyPack = Record<string, { enc_key: string; salt: string }>
+
 export type RuntimeScanResult = {
   key: string | null
+  keys: string[]
+  pack: RuntimeKeyPack
   stats: Record<string, number>
   error?: string
 }
@@ -113,8 +117,32 @@ function listMainWeixinPids(): number[] {
   return pids.length ? pids : helpers.slice(0, 2)
 }
 
+type DbPage = { path: string; kind: 'session' | 'contact' | 'other'; page: Buffer }
+
+function loadDbPages(paths: string[], kind: DbPage['kind']): DbPage[] {
+  const out: DbPage[] = []
+  for (const filePath of paths || []) {
+    if (!filePath || !existsSync(filePath)) continue
+    try {
+      const page = readFileSync(filePath).subarray(0, PAGE_SZ)
+      if (page.length >= PAGE_SZ) out.push({ path: filePath, kind, page })
+    } catch { /* ignore locked/partial files */ }
+  }
+  return out
+}
+
+function emptyResult(stats: Record<string, number>, error?: string): RuntimeScanResult {
+  return { key: null, keys: [], pack: {}, stats, error }
+}
+
+function deriveEncKey(pass: Buffer, page1: Buffer): Buffer {
+  return pbkdf2Sync(pass, page1.subarray(0, SALT_SZ), 256000, KEY_SZ, 'sha512')
+}
+
 export async function scanWeixinRuntimeKey(options: {
   contactDbPaths: string[]
+  sessionDbPaths?: string[]
+  extraDbPaths?: string[]
   onProgress?: RuntimeScanProgress
 }): Promise<RuntimeScanResult> {
   const stats = {
@@ -124,10 +152,18 @@ export async function scanWeixinRuntimeKey(options: {
     nodes: 0,
     candidates: 0,
     verified: 0,
+    sessionHits: 0,
+    contactHits: 0,
+    passphraseHits: 0,
   }
-  if (process.platform !== 'win32') return { key: null, stats, error: 'not-windows' }
-  const pages = (options.contactDbPaths || []).filter((item) => existsSync(item)).map((item) => readFileSync(item).subarray(0, PAGE_SZ)).filter((page) => page.length >= PAGE_SZ)
-  if (!pages.length) return { key: null, stats, error: 'no-contact-db' }
+  if (process.platform !== 'win32') return emptyResult(stats, 'not-windows')
+  const dbPages = [
+    ...loadDbPages(options.sessionDbPaths || [], 'session'),
+    ...loadDbPages(options.contactDbPaths || [], 'contact'),
+    ...loadDbPages(options.extraDbPaths || [], 'other'),
+  ]
+  if (!dbPages.length) return emptyResult(stats, 'no-contact-db')
+  const fileSalts = new Set(dbPages.map((item) => item.page.subarray(0, SALT_SZ).toString('hex')))
 
   const koffi = require('koffi')
   const kernel32 = koffi.load('kernel32.dll')
@@ -203,6 +239,7 @@ export async function scanWeixinRuntimeKey(options: {
       })
 
       const seen = new Set<string>()
+      const candidateKeys: string[] = []
       for (const region of regions) {
         let offset = 0
         while (offset < region.size) {
@@ -231,12 +268,8 @@ export async function scanWeixinRuntimeKey(options: {
                             if (seen.has(cand.encKeyHex)) continue
                             seen.add(cand.encKeyHex)
                             stats.candidates += 1
-                            const encKey = Buffer.from(cand.encKeyHex, 'hex')
-                            if (pages.some((page) => verifyEncKey(encKey, page))) {
-                              stats.verified += 1
-                              options.onProgress?.('runtime key matched')
-                              return { key: cand.encKeyHex, stats }
-                            }
+                            if (cand.saltHex && fileSalts.has(cand.saltHex)) candidateKeys.unshift(cand.encKeyHex)
+                            else candidateKeys.push(cand.encKeyHex)
                           }
                         }
                       }
@@ -251,13 +284,75 @@ export async function scanWeixinRuntimeKey(options: {
         }
         await yieldEventLoop()
       }
+
+      const pack: RuntimeKeyPack = {}
+      const matchedKeys: string[] = []
+      let sessionKey: string | null = null
+      let passphraseHex: string | null = null
+      const remember = (encKeyHex: string, item: DbPage) => {
+        const salt = item.page.subarray(0, SALT_SZ).toString('hex')
+        const name = `${item.kind}_${salt.slice(0, 8)}`
+        pack[name] = { enc_key: encKeyHex, salt }
+        if (!matchedKeys.includes(encKeyHex)) matchedKeys.push(encKeyHex)
+        stats.verified += 1
+        if (item.kind === 'session') {
+          stats.sessionHits += 1
+          if (!sessionKey) sessionKey = encKeyHex
+        }
+        if (item.kind === 'contact') stats.contactHits += 1
+      }
+
+      for (const encKeyHex of candidateKeys) {
+        const encKey = Buffer.from(encKeyHex, 'hex')
+        for (const item of dbPages) {
+          if (verifyEncKey(encKey, item.page)) remember(encKeyHex, item)
+        }
+      }
+
+      if (!sessionKey) {
+        options.onProgress?.('正在按 4.1 passphrase 派生 session 密钥...')
+        const sessionPages = dbPages.filter((item) => item.kind === 'session')
+        const pagesForPass = sessionPages.length ? sessionPages : dbPages.slice(0, 4)
+        for (const encKeyHex of candidateKeys.slice(0, 40)) {
+          const pass = Buffer.from(encKeyHex, 'hex')
+          let hit: Buffer | null = null
+          let hitPage: DbPage | null = null
+          for (const item of pagesForPass) {
+            const derived = deriveEncKey(pass, item.page)
+            if (verifyEncKey(derived, item.page)) {
+              hit = derived
+              hitPage = item
+              break
+            }
+          }
+          if (!hit || !hitPage) continue
+          stats.passphraseHits += 1
+          passphraseHex = encKeyHex
+          for (const item of dbPages) {
+            const derived = deriveEncKey(pass, item.page)
+            if (verifyEncKey(derived, item.page)) remember(derived.toString('hex'), item)
+          }
+          if (sessionKey) break
+        }
+      }
+
+      if (passphraseHex || sessionKey || matchedKeys.length) {
+        options.onProgress?.('runtime key matched')
+        const preferred = passphraseHex || sessionKey || matchedKeys[0]
+        const keys = [preferred, ...matchedKeys.filter((k) => k !== preferred)]
+        return { key: preferred, keys, pack, stats }
+      }
     } finally {
       CloseHandle(handle)
     }
   }
-  return { key: null, stats, error: `4.1 runtime scan miss needles=${stats.needles} nodes=${stats.nodes} candidates=${stats.candidates}` }
+  return emptyResult(stats, `4.1 runtime scan miss needles=${stats.needles} nodes=${stats.nodes} candidates=${stats.candidates} sessionHits=${stats.sessionHits}`)
 }
 
 export function contactDbPagePath(dbPath: string, wxid: string): string {
   return join(dbPath, wxid, 'db_storage', 'contact', 'contact.db')
+}
+
+export function sessionDbPagePath(dbPath: string, wxid: string): string {
+  return join(dbPath, wxid, 'db_storage', 'session', 'session.db')
 }

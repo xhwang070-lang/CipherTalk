@@ -136,3 +136,24 @@ export function upsertEncKey(encKey: string, dbRoot?: string, wxid?: string): st
   applyKeyPackEnv(target)
   return target
 }
+
+export function mergeKeyPack(entries: Record<string, { enc_key: string; salt: string }>, scanned?: string): string {
+  const target = userDataKeysPath()
+  let data: Record<string, any> = {}
+  const existing = resolveKeyPackPath()
+  if (existing && existsSync(existing)) {
+    try { data = JSON.parse(readFileSync(existing, 'utf8')) } catch { data = {} }
+  }
+  const scan = String(scanned || '').replace(/^0x/i, '').trim().toLowerCase()
+  if (scan.length === 64) data._scanned = { enc_key: scan, salt: '' }
+  for (const [name, item] of Object.entries(entries || {})) {
+    const enc = String(item?.enc_key || '').replace(/^0x/i, '').trim().toLowerCase()
+    const salt = String(item?.salt || '').trim().toLowerCase()
+    if (enc.length !== 64 || salt.length !== 32) continue
+    data[name || `db_${salt.slice(0, 8)}`] = { enc_key: enc, salt }
+  }
+  mkdirSync(dirname(target), { recursive: true })
+  writeFileSync(target, JSON.stringify(data, null, 2), 'utf8')
+  applyKeyPackEnv(target)
+  return target
+}

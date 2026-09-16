@@ -12,6 +12,12 @@
 ### 暂缓
 - 文件格式转换先不做。以后用 anydoc 做读文件层（Office/PDF→本地 Markdown），再用 exceljs/docx 写出；禁止 Firecrawl 云 OCR。
 
+## [2026.916.21] - 2026-09-16
+
+### 修复
+- 新机扫密钥：不再用 contact.db 的密钥去开 session.db。会把候选对 session/消息库做 HMAC，并尝试 4.1 passphrase 派生。
+- 密钥向导失败页带上 wxkey-scan.log 路径，并增加打开日志目录按钮。
+
 ## [2026.728.0] - 2026-07-28
 
 ### 新增

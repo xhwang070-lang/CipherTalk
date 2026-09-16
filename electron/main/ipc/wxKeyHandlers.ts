@@ -4,9 +4,9 @@ import { existsSync, readFileSync } from 'fs'
 import { dbPathService } from '../../services/dbPathService'
 import { wcdbService } from '../../services/wcdbService'
 import { wxKeyService } from '../../services/wxKeyService'
-import { scanWeixinRuntimeKey } from '../../services/wxKeyRuntimeScan'
+import { scanWeixinRuntimeKey, sessionDbPagePath } from '../../services/wxKeyRuntimeScan'
 import { wxKeyServiceMac } from '../../services/wxKeyServiceMac'
-import { applyKeyPackEnv, importKeyPack, parseKeyPack, pickEncKey, resolveKeyPackPath, upsertEncKey } from '../../services/localKeyPack'
+import { applyKeyPackEnv, importKeyPack, mergeKeyPack, parseKeyPack, pickEncKey, resolveKeyPackPath, upsertEncKey } from '../../services/localKeyPack'
 import type { MainProcessContext } from '../context'
 import { appendWxKeyScanLog, enableSeDebugPrivilege, getWxKeyScanLogPath, isProcessElevated } from '../elevation'
 
@@ -391,22 +391,51 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
       event.sender.send('wxkey:status', { status: '微信启动中，正在扫描内存获取密钥...', level: 1 })
       event.sender.send('wxkey:status', { status: '正在扫描微信 4.1 运行时密钥...', level: 1 })
       const contactDbs = wxids.map((id) => contactDbFor(id)).filter((item): item is string => Boolean(item))
+      const sessionDbs = wxids.map((id) => {
+        const hit = [
+          sessionDbPagePath(dbPath, id),
+          join(dbPath, id, 'session', 'session.db'),
+          join(dbPath, 'db_storage', 'session', 'session.db'),
+        ].find(existsSync)
+        return hit
+      }).filter((item): item is string => Boolean(item))
+      const extraDbs: string[] = []
+      try {
+        const newest = wxids[0]
+        if (newest) {
+          const msgDir = join(dbPath, newest, 'db_storage', 'message')
+          if (existsSync(msgDir)) {
+            const { readdirSync } = require('fs') as typeof import('fs')
+            for (const name of readdirSync(msgDir)) {
+              if (name.toLowerCase().endsWith('.db')) extraDbs.push(join(msgDir, name))
+            }
+          }
+        }
+      } catch { /* ignore */ }
       try {
         const runtime = await scanWeixinRuntimeKey({
           contactDbPaths: contactDbs,
+          sessionDbPaths: sessionDbs,
+          extraDbPaths: extraDbs.slice(0, 12),
           onProgress: (status) => event.sender.send('wxkey:status', { status, level: 1 }),
         })
-        appendWxKeyScanLog(`runtimeScan ${JSON.stringify(runtime.stats)} err=${runtime.error || ''} hasKey=${Boolean(runtime.key)}`)
-        if (runtime.key) {
-          for (const wxid of wxids) {
-            upsertEncKey(runtime.key, dbPath, wxid)
-            const testResult = await wcdbService.testConnection(dbPath, runtime.key, wxid)
-            if (testResult.success) {
-              return { success: true, key: runtime.key, validatedWxid: wxid, account: null }
-            }
-          }
-          appendWxKeyScanLog('runtime key hmac-ok but wcdb open failed')
+        appendWxKeyScanLog(`runtimeScan ${JSON.stringify(runtime.stats)} err=${runtime.error || ''} hasKey=${Boolean(runtime.key)} keys=${(runtime.keys || []).length} pack=${Object.keys(runtime.pack || {}).length} sessionDbs=${sessionDbs.length}`)
+        if (runtime.pack && Object.keys(runtime.pack).length) {
+          mergeKeyPack(runtime.pack, runtime.key || runtime.keys?.[0])
         }
+        const keysToTry = (runtime.keys && runtime.keys.length ? runtime.keys : (runtime.key ? [runtime.key] : []))
+        for (const hexKey of keysToTry) {
+          for (const wxid of wxids) {
+            upsertEncKey(hexKey, dbPath, wxid)
+            const testResult = await wcdbService.testConnection(dbPath, hexKey, wxid)
+            if (testResult.success) {
+              if (runtime.pack) mergeKeyPack(runtime.pack, hexKey)
+              return { success: true, key: hexKey, validatedWxid: wxid, account: null }
+            }
+            appendWxKeyScanLog(`runtime key open fail wxid=${wxid} err=${testResult.error || ''}`)
+          }
+        }
+        if (keysToTry.length) appendWxKeyScanLog(`runtime key hmac-ok but wcdb open failed keys=${keysToTry.length} sessionHits=${runtime.stats?.sessionHits || 0}`)
       } catch (error) {
         appendWxKeyScanLog(`runtimeScan error ${error instanceof Error ? error.message : String(error)}`)
       }
@@ -527,7 +556,7 @@ export function registerWxKeyHandlers(ctx: MainProcessContext): void {
         : '已读到微信内存，但没有得到可用密钥。'
       return {
         success: false,
-        error: `${detail}这是这台电脑自己的密钥，不能用别的电脑的 all_keys.json。请确认选中的是微信正在写入的 xwechat_files（看 contact.db-wal 是否刚更新过），完全退出微信后再登录，进入聊天后立刻扫描。`
+        error: `${detail}这是这台电脑自己的密钥，不能用别的电脑的 all_keys.json。请确认选中的是微信正在写入的 xwechat_files（看 contact.db-wal 是否刚更新过），完全退出微信后再登录，进入聊天后立刻扫描。密钥日志：${scanLogPath}`
       }
     } catch (e) {
       ctx.getLogService()?.error('WxKey', '获取密钥异常', { error: String(e) })
