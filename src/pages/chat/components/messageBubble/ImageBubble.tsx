@@ -94,6 +94,7 @@ function ImageBubble({ message, session, hasImageKey, onContextMenu, onImageRead
   const [isVisible, setIsVisible] = useState(false)
 
   const imageUpdateCheckedRef = useRef<string | null>(null)
+  const hdUpgradeTriedRef = useRef<string | null>(null)
   const imageClickTimerRef = useRef<number | null>(null)
   const imageRecoveringRef = useRef(false)
   const imageRecoverRetryCountRef = useRef(0)
@@ -174,7 +175,12 @@ function ImageBubble({ message, session, hasImageKey, onContextMenu, onImageRead
           imageDataUrlCache.set(imageCacheKey, result.localPath)
           setImageLocalPath(result.localPath)
           if ((result as any).liveVideoPath) setImageLiveVideoPath((result as any).liveVideoPath)
-          setImageHasUpdate(Boolean((result as { isThumb?: boolean }).isThumb))
+          const isThumb = Boolean((result as { isThumb?: boolean }).isThumb)
+          setImageHasUpdate(isThumb)
+          if (isThumb && !forceUpdate && hdUpgradeTriedRef.current !== imageCacheKey) {
+            hdUpgradeTriedRef.current = imageCacheKey
+            queueMicrotask(() => { void requestImageDecrypt(true) })
+          }
           return (result as any).liveVideoPath as string | undefined
         }
       }
@@ -249,8 +255,13 @@ function ImageBubble({ message, session, hasImageKey, onContextMenu, onImageRead
             imageDataUrlCache.set(imageCacheKey, result.localPath)
             setImageLocalPath(result.localPath)
             if ((result as any).liveVideoPath) setImageLiveVideoPath((result as any).liveVideoPath)
-            setImageHasUpdate(Boolean(result.hasUpdate))
+            const needsHd = Boolean(result.hasUpdate) || Boolean((result as { isThumb?: boolean }).isThumb)
+            setImageHasUpdate(needsHd)
             setImageError(false)
+            if (needsHd && hdUpgradeTriedRef.current !== imageCacheKey) {
+              hdUpgradeTriedRef.current = imageCacheKey
+              queueMicrotask(() => { void requestImageDecrypt(true) })
+            }
             return
           }
         } catch { /* continue */ }
@@ -315,11 +326,15 @@ function ImageBubble({ message, session, hasImageKey, onContextMenu, onImageRead
   ])
 
   const handleOpenImage = useCallback(() => {
-    if (!imageLocalPath) return
-    void window.electronAPI.window.openImageViewerWindow(imageLocalPath, imageLiveVideoPath).catch((error) => {
-      console.error('[ChatPage] 打开图片查看器失败:', error)
-    })
-  }, [imageLocalPath, imageLiveVideoPath])
+    void (async () => {
+      await requestImageDecrypt(true)
+      const path = imageDataUrlCache.get(imageCacheKey) || imageLocalPath
+      if (!path) return
+      await window.electronAPI.window.openImageViewerWindow(path, imageLiveVideoPath).catch((error) => {
+        console.error('[ChatPage] 打开图片查看器失败:', error)
+      })
+    })()
+  }, [imageCacheKey, imageLocalPath, imageLiveVideoPath, requestImageDecrypt])
 
   const recoverBrokenImagePath = useCallback(async () => {
     if (!session.username) return
@@ -404,6 +419,10 @@ function ImageBubble({ message, session, hasImageKey, onContextMenu, onImageRead
         (payload.imageDatName && payload.imageDatName === message.imageDatName)
       if (matchesCacheKey) {
         setImageHasUpdate(true)
+        if (hdUpgradeTriedRef.current !== imageCacheKey) {
+          hdUpgradeTriedRef.current = imageCacheKey
+          queueMicrotask(() => { void requestImageDecrypt(true) })
+        }
       }
     })
   }, [message.imageDatName, message.imageMd5])

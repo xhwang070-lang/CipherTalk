@@ -145,7 +145,7 @@ export class ImageDecryptService {
       const cached = this.resolvedCache.get(key)
       if (cached && this.validateCachedImageFile(cached)) {
         const localPath = this.filePathToUrl(cached)
-        const isThumb = this.isThumbnailPath(cached)
+        const isThumb = this.isPreviewPath(cached)
         const hasUpdate = isThumb ? (this.updateFlags.get(key) ?? false) : false
         if (isThumb) {
           this.triggerUpdateCheck(payload, key, cached)
@@ -167,7 +167,7 @@ export class ImageDecryptService {
       if (existing) {
         this.cacheResolvedPaths(key, payload.imageMd5, payload.imageDatName, existing)
         const localPath = this.filePathToUrl(existing)
-        const isThumb = this.isThumbnailPath(existing)
+        const isThumb = this.isPreviewPath(existing)
         const hasUpdate = isThumb ? (this.updateFlags.get(key) ?? false) : false
         if (isThumb) {
           this.triggerUpdateCheck(payload, key, existing)
@@ -185,7 +185,7 @@ export class ImageDecryptService {
       const { existing, key } = datCached
       this.cacheResolvedPaths(key, payload.imageMd5, payload.imageDatName, existing)
       const localPath = this.filePathToUrl(existing)
-      const isThumb = this.isThumbnailPath(existing)
+      const isThumb = this.isPreviewPath(existing)
       const hasUpdate = isThumb ? (this.updateFlags.get(key) ?? false) : false
       if (isThumb) {
         this.triggerUpdateCheck(payload, key, existing)
@@ -222,14 +222,7 @@ export class ImageDecryptService {
       if (this.hdNotFoundCache.has(lookupCacheKey)) {
         return { success: false, error: '未找到高清图，请在微信中点开该图片查看后重试' }
       }
-      // 快速查找高清图缓存
-      const hdCached = this.findCachedOutputFast(cacheKey, payload.sessionId, true, payload.createTime) ||
-        this.findCachedOutput(cacheKey, payload.sessionId, true)
-      if (hdCached && this.validateCachedImageFile(hdCached)) {
-        const localPath = this.filePathToUrl(hdCached)
-        const liveVideoPath = this.checkLiveVideoCache(hdCached)
-        return { success: true, localPath, isThumb: false, liveVideoPath }
-      }
+      // 高清缓存放到 resolveDatPath 之后校验，避免把中图误当成 _hd.jpg
     } else {
       // 常规缓存检查（可能返回缩略图）
       const cached = this.resolvedCache.get(cacheKey)
@@ -502,6 +495,7 @@ export class ImageDecryptService {
         { allowThumbnail: !payload.force, skipResolvedCache: Boolean(payload.force), skipSearchFallback: Boolean(payload.quick) },
         datDiagnostics
       )
+      if (datPath) datPath = this.preferHdSibling(datPath)
       resolveDatMs = Date.now() - resolveDatStartedAt
 
       // 如果要求高清图但没找到，直接返回提示
@@ -542,7 +536,7 @@ export class ImageDecryptService {
           if (!(payload.force && !isHd)) {
             this.cacheResolvedPaths(cacheKey, payload.imageMd5, payload.imageDatName, existing)
             const localPath = this.filePathToUrl(existing)
-            const isThumb = this.isThumbnailPath(existing)
+            const isThumb = this.isPreviewPath(existing)
             this.emitCacheResolved(payload, cacheKey, localPath)
             this.logDecryptTiming({
               cacheKey,
@@ -601,7 +595,7 @@ export class ImageDecryptService {
         this.cacheSessionDatRoot(accountDir, payload.sessionId, datPath)
         this.cacheResolvedPaths(cacheKey, payload.imageMd5, payload.imageDatName, datPath)
         const localPath = this.filePathToUrl(datPath)
-        const isThumb = this.isThumbnailPath(datPath)
+        const isThumb = !this.isHdDat(basename(datPath))
         this.emitCacheResolved(payload, cacheKey, localPath)
         this.logDecryptTiming({
           cacheKey,
@@ -629,9 +623,10 @@ export class ImageDecryptService {
 
       // 查找已缓存的解密文件
       const cacheLookupStartedAt = Date.now()
-      const existing = this.findCachedOutputFast(cacheKey, payload.sessionId, payload.force, payload.createTime) ||
+      let existing = this.findCachedOutputFast(cacheKey, payload.sessionId, payload.force, payload.createTime) ||
         this.findCachedOutputByDatPath(datPath, payload.sessionId, payload.force) ||
         (payload.quick ? null : this.findCachedOutput(cacheKey, payload.sessionId, payload.force))
+      if (existing && this.isStaleHdCache(existing, datPath)) existing = null
       cacheLookupMs = Date.now() - cacheLookupStartedAt
       if (existing) {
         usedCachedOutput = true
@@ -640,7 +635,7 @@ export class ImageDecryptService {
         if (!(payload.force && !isHd)) {
           this.cacheResolvedPaths(cacheKey, payload.imageMd5, payload.imageDatName, existing)
           const localPath = this.filePathToUrl(existing)
-          const isThumb = this.isThumbnailPath(existing)
+          const isThumb = this.isPreviewPath(existing)
           this.emitCacheResolved(payload, cacheKey, localPath)
           this.logDecryptTiming({
             cacheKey,
@@ -753,7 +748,7 @@ export class ImageDecryptService {
         if (vp) liveVideoPath = this.filePathToUrl(vp)
       }
 
-      const isThumb = this.isThumbnailPath(datPath)
+      const isThumb = !this.isHdDat(basename(datPath))
 
       // 如果图片是完整的，才缓存路径映射（不完整的下次重新解密）
       if (isImageComplete) {
@@ -1141,7 +1136,7 @@ export class ImageDecryptService {
     if (!skipResolvedCache) {
       const cached = this.resolvedCache.get(imageDatName)
       if (cached && existsSync(cached)) {
-        if (allowThumbnail || !this.isThumbnailPath(cached)) {
+        if (allowThumbnail || !this.isPreviewPath(cached)) {
           diagnostics && (diagnostics.source = 'resolved_cache')
           this.cacheSessionDatRoot(accountDir, sessionId, cached)
           return cached
@@ -1318,8 +1313,7 @@ export class ImageDecryptService {
     cachedPath: string
   ): Promise<boolean> {
     if (!cachedPath || !existsSync(cachedPath)) return false
-    const isThumbnail = this.isThumbnailPath(cachedPath)
-    if (!isThumbnail) return false
+    if (!this.isPreviewPath(cachedPath)) return false
     const wxid = this.configService.get('myWxid')
     const dbPath = this.configService.get('dbPath')
     if (!wxid || !dbPath) return false
@@ -1518,7 +1512,7 @@ export class ImageDecryptService {
     const key = `${accountDir}|${datName}`
     const cached = this.resolvedCache.get(key)
     if (cached && existsSync(cached)) {
-      if (allowThumbnail || !this.isThumbnailPath(cached)) return cached
+      if (allowThumbnail || !this.isPreviewPath(cached)) return cached
     }
 
     const root = join(accountDir, 'msg', 'attach')
@@ -1783,6 +1777,40 @@ export class ImageDecryptService {
     )
   }
 
+  private isHdDat(fileName: string): boolean {
+    const lower = fileName.toLowerCase()
+    return /[._]h(?:d)?(?:_[a-z]+)?\.dat$/.test(lower) || lower.includes('_hd.dat')
+  }
+
+  private preferHdSibling(datPath: string): string {
+    if (!datPath) return datPath
+    const fileName = basename(datPath)
+    if (this.isHdDat(fileName)) return datPath
+    const dir = dirname(datPath)
+    const base = this.normalizeDatBase(fileName)
+    const hdNames = [
+      `${base}_h.dat`,
+      `${base}_hd.dat`,
+      `${base}.h.dat`,
+      `${base}_h_w.dat`,
+      `${base}_h_nw.dat`,
+    ]
+    for (const name of hdNames) {
+      const candidate = join(dir, name)
+      if (existsSync(candidate)) return candidate
+    }
+    return datPath
+  }
+
+  private isStaleHdCache(cachePath: string, hdDatPath?: string | null): boolean {
+    if (!cachePath || !hdDatPath || !existsSync(cachePath) || !existsSync(hdDatPath)) return false
+    try {
+      return statSync(hdDatPath).mtimeMs > statSync(cachePath).mtimeMs + 500
+    } catch {
+      return false
+    }
+  }
+
   private hasXVariant(baseLower: string): boolean {
     return /[._][a-z]$/.test(baseLower)
   }
@@ -1805,6 +1833,14 @@ export class ImageDecryptService {
     const ext = extname(lower)
     const base = ext ? lower.slice(0, -ext.length) : lower
     return base.endsWith('_hd') || base.endsWith('_h')
+  }
+
+  private isPreviewPath(filePath: string): boolean {
+    if (this.isThumbnailPath(filePath)) return true
+    const lower = basename(filePath).toLowerCase()
+    const ext = extname(lower)
+    const base = ext ? lower.slice(0, -ext.length) : lower
+    return base.endsWith('_mid') || this.isHdDat(lower) === false && lower.endsWith('.dat') && !this.isThumbnailDat(lower)
   }
 
   private hasImageVariantSuffix(baseLower: string): boolean {
@@ -1955,21 +1991,10 @@ export class ImageDecryptService {
         // 批量构造所有可能的路径
         const candidates: string[] = []
 
-        if (preferHd) {
-          // 优先高清图
+        const suffixes = preferHd ? ['_hd'] : ['_hd', '_mid', '_thumb']
+        for (const suffix of suffixes) {
           for (const ext of extensions) {
-            candidates.push(join(imageDir, `${normalizedKey}_hd${ext}`))
-          }
-          for (const ext of extensions) {
-            candidates.push(join(imageDir, `${normalizedKey}_thumb${ext}`))
-          }
-        } else {
-          // 优先缩略图
-          for (const ext of extensions) {
-            candidates.push(join(imageDir, `${normalizedKey}_thumb${ext}`))
-          }
-          for (const ext of extensions) {
-            candidates.push(join(imageDir, `${normalizedKey}_hd${ext}`))
+            candidates.push(join(imageDir, `${normalizedKey}${suffix}${ext}`))
           }
         }
 
@@ -2187,9 +2212,7 @@ export class ImageDecryptService {
     // 提取基础名称（去掉 _t, _h 等后缀）
     const normalizedBase = this.normalizeDatBase(base)
 
-    // 判断是缩略图还是高清图
-    const isThumb = this.isThumbnailDat(lower)
-    const suffix = isThumb ? '_thumb' : '_hd'
+    const suffix = this.isThumbnailDat(lower) ? '_thumb' : this.isHdDat(lower) ? '_hd' : '_mid'
 
     // 提取日期
     const dateDir = this.extractDateFromPath(datPath)
@@ -2303,7 +2326,7 @@ export class ImageDecryptService {
           removedStale = true
           continue
         }
-        if (allowThumbnail || !this.isThumbnailPath(cached)) return cached
+        if (allowThumbnail || !this.isPreviewPath(cached)) return cached
 
         const hdPath = this.findHdVariantInSameDir(cached)
         if (hdPath) return hdPath
@@ -2420,11 +2443,13 @@ export class ImageDecryptService {
     const lower = datName.toLowerCase()
     const normalized = this.normalizeDatBase(lower)
     const names = [
+      `${normalized}_h.dat`,
+      `${normalized}_hd.dat`,
+      `${normalized}.h.dat`,
+      `${normalized}_h_w.dat`,
+      `${normalized}_h_nw.dat`,
       lower.endsWith('.dat') ? lower : `${lower}.dat`,
       `${normalized}.dat`,
-      `${normalized}_h.dat`,
-      `${normalized}.h.dat`,
-      `${normalized}_hd.dat`
     ]
     if (allowThumbnail) {
       names.push(`${normalized}_t.dat`, `${normalized}.t.dat`, `${normalized}_thumb.dat`)
@@ -2439,7 +2464,7 @@ export class ImageDecryptService {
       const candidatePath = join(dirPath, candidateName)
       if (!existsSync(candidatePath)) continue
       if (!allowThumbnail && this.isThumbnailPath(candidatePath)) continue
-      return candidatePath
+      return this.preferHdSibling(candidatePath)
     }
     return null
   }
@@ -2739,7 +2764,7 @@ export class ImageDecryptService {
     const normalizedKey = key.toLowerCase()
     const existing = this.resolvedCache.get(normalizedKey)
     if (existing) {
-      const existingIsThumb = this.isThumbnailPath(existing)
+      const existingIsThumb = this.isPreviewPath(existing)
       const candidateIsThumb = this.isThumbnailPath(path)
       if (!existingIsThumb && candidateIsThumb) return
     }

@@ -313,13 +313,13 @@ export async function getImageData(state: ChatServiceState, sessionId: string, m
       imageMd5: msg.imageMd5 || undefined,
       imageDatName: msg.imageDatName || String(msg.localId),
       createTime: createTime || msg.createTime,
-      force: false,
-      quick: true
+      force: true,
+      quick: false
     }
 
-    let result = await imageDecryptService.resolveCachedImage(payload)
+    let result = await imageDecryptService.decryptImage(payload)
     if (!result.success || !result.localPath) {
-      result = await imageDecryptService.decryptImage(payload)
+      result = await imageDecryptService.decryptImage({ ...payload, force: false, quick: true })
     }
 
     if (!result.success || !result.localPath) {
