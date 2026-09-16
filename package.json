@@ -1,6 +1,6 @@
 {
   "name": "huaji",
-  "version": "2026.916.7",
+  "version": "2026.916.8",
   "description": "Huaji - Huabo local WeChat archive",
   "author": "Huabo",
   "license": "CC-BY-NC-SA-4.0",
@@ -313,3 +313,4 @@
     "forceCodeSigning": false
   }
 }
+
