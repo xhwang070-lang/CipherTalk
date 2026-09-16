@@ -97,6 +97,29 @@ export function listHuajiTodos(when?: HuajiTodoWhen | 'all'): HuajiTodoItem[] {
   return items.sort((a, b) => Number(a.done) - Number(b.done) || b.createdAt - a.createdAt)
 }
 
+export function importHuajiTodos(items: Array<Partial<HuajiTodoItem>>): number {
+  const data = readFile()
+  const today = localDateKey()
+  let added = 0
+  for (const row of items || []) {
+    const title = String(row.title || '').replace(/\s+/g, ' ').trim()
+    if (!title) continue
+    const due = /^\d{4}-\d{2}-\d{2}$/.test(String(row.due || '')) ? String(row.due) : today
+    data.items.unshift({
+      id: newId(),
+      title: title.slice(0, 80),
+      due,
+      done: Boolean(row.done),
+      source: 'user',
+      person: row.person ? String(row.person).trim().slice(0, 40) : undefined,
+      createdAt: Date.now(),
+    })
+    added += 1
+  }
+  if (added) writeFile(data)
+  return added
+}
+
 export function addHuajiTodo(input: {
   title: string
   when?: HuajiTodoWhen

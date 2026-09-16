@@ -78,6 +78,8 @@ export function summarizeWorkQuestion(raw: string): string {
   if (text.indexOf('请总结我们这次对话') === 0) return ''
   const summary = text.match(/^请总结(.+?)的聊天记录/)
   if (summary && summary[1]) return compactText('总结' + summary[1], 32)
+  const period = text.match(/总结.{0,24}(近一周|最近一周|近一个月|最近一个月|这一周|本月)/)
+  if (period) return compactText(text.slice(0, 40), 32)
   const first = (text.split(/[。！？\n]/)[0] || text).trim()
   return compactText(first, 32)
 }

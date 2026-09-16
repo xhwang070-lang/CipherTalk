@@ -67,7 +67,8 @@ function mergeRefreshedSessions(prev: ChatSession[], page: ChatSession[]): ChatS
 }
 
 function ChatPage(_props: ChatPageProps) {
-  const isPopupWindow = useLocation().pathname === '/chat-window'
+  const location = useLocation()
+  const isPopupWindow = location.pathname === '/chat-window'
   const [quoteStyle, setQuoteStyle] = useState<QuoteStyleConfig>('default')
 
   const refreshQuoteStyle = useCallback(() => {
@@ -440,6 +441,14 @@ function ChatPage(_props: ChatPageProps) {
       setLoadingSessions(false)
     }
   }
+
+  useEffect(() => {
+    const session = new URLSearchParams(location.search).get('session')
+    if (!session) return
+    currentSessionIdRef.current = session
+    setCurrentSession(session)
+    void loadMessages(session, 0)
+  }, [location.search, setCurrentSession])
 
   // 会话列表滚动到底部时加载下一页（搜索模式下由 SessionSidebar 不触发）
   const loadMoreSessions = useCallback(async () => {

@@ -48,6 +48,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   config: {
     get: (key: string) => ipcRenderer.invoke('config:get', key),
     set: (key: string, value: any) => ipcRenderer.invoke('config:set', key, value),
+    exportHuajiBackup: () => ipcRenderer.invoke('config:exportHuajiBackup'),
+    importHuajiBackup: (bundle: unknown) => ipcRenderer.invoke('config:importHuajiBackup', bundle),
     getTldCache: () => ipcRenderer.invoke('config:getTldCache'),
     setTldCache: (tlds: string[]) => ipcRenderer.invoke('config:setTldCache', tlds),
     onChanged: (callback: (payload: { key: string; value: unknown }) => void) => {
@@ -355,6 +357,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('memory:readHuajiWorkLog', date) as Promise<{ success: boolean; log?: { date: string; content: string; path: string } | null; error?: string }>,
     rebuildHuajiWorkLog: (date?: string) =>
       ipcRenderer.invoke('memory:rebuildHuajiWorkLog', date) as Promise<{ success: boolean; log?: { date: string; content: string; path: string }; error?: string }>,
+    listHuajiWorkLogs: (limit?: number) =>
+      ipcRenderer.invoke('memory:listHuajiWorkLogs', limit) as Promise<{ success: boolean; logs?: unknown[]; error?: string }>,
+    listChatSummaries: (limit?: number) =>
+      ipcRenderer.invoke('memory:listChatSummaries', limit) as Promise<{ success: boolean; summaries?: unknown[]; error?: string }>,
+    listMemos: (limit?: number) =>
+      ipcRenderer.invoke('memory:listMemos', limit) as Promise<{ success: boolean; memos?: unknown[]; directory?: string; error?: string }>,
+    writeMemo: (payload: { title: string; body: string; person?: string; orderNo?: string; id?: string }) =>
+      ipcRenderer.invoke('memory:writeMemo', payload) as Promise<{ success: boolean; memo?: unknown; error?: string }>,
+    deleteMemo: (id: string) =>
+      ipcRenderer.invoke('memory:deleteMemo', id) as Promise<{ success: boolean; deleted?: boolean; error?: string }>,
     create: (payload: {
       memoryUid?: string
       sourceType?: string
@@ -748,6 +760,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     connect: () => ipcRenderer.invoke('chat:connect'),
     getSessions: (offset?: number, limit?: number) => ipcRenderer.invoke('chat:getSessions', offset, limit),
     searchSessions: (keyword: string) => ipcRenderer.invoke('chat:searchSessions', keyword),
+    searchHuaji: (keyword: string) => ipcRenderer.invoke('chat:searchHuaji', keyword),
     getMentionTargets: (offset?: number, limit?: number, keyword?: string) => ipcRenderer.invoke('chat:getMentionTargets', offset, limit, keyword),
     getContacts: () => ipcRenderer.invoke('chat:getContacts'),
     getMessages: (sessionId: string, offset?: number, limit?: number) =>

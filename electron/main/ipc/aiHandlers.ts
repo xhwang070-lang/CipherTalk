@@ -877,6 +877,7 @@ export function registerAiHandlers(ctx: MainProcessContext): void {
           turnContextMode: historyTurnContext.mode,
           allowWechatReplyMedia: false,
           canvasContext,
+          conversationId: storedConversation?.id,
         },
         (chunk) => {
           chunkCount += 1
@@ -1505,6 +1506,51 @@ export function registerAiHandlers(ctx: MainProcessContext): void {
       return log ? { success: true, log } : { success: true, log: null }
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+
+  ipcMain.handle('memory:listHuajiWorkLogs', async (_event, limit?: number) => {
+    try {
+      const { listHuajiWorkLogs } = await import('../../services/agent/huajiWorkLog')
+      return { success: true, logs: listHuajiWorkLogs(Number(limit) || 14) }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  })
+
+  ipcMain.handle('memory:listChatSummaries', async (_event, limit?: number) => {
+    try {
+      const { listHuajiChatSummaries } = await import('../../services/agent/tools/chatSummaryPath')
+      return { success: true, summaries: listHuajiChatSummaries(Number(limit) || 30) }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  })
+
+  ipcMain.handle('memory:listMemos', async (_event, limit?: number) => {
+    try {
+      const { listHuajiMemos, memosDirectory } = await import('../../services/huajiMemos')
+      return { success: true, memos: listHuajiMemos(Number(limit) || 50), directory: memosDirectory() }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  })
+
+  ipcMain.handle('memory:writeMemo', async (_event, payload: { title: string; body: string; person?: string; orderNo?: string; id?: string }) => {
+    try {
+      const { writeHuajiMemo } = await import('../../services/huajiMemos')
+      return { success: true, memo: writeHuajiMemo(payload || { title: '', body: '' }) }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  })
+
+  ipcMain.handle('memory:deleteMemo', async (_event, id: string) => {
+    try {
+      const { deleteHuajiMemo } = await import('../../services/huajiMemos')
+      return { success: true, deleted: deleteHuajiMemo(String(id || '')) }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
     }
   })
 

@@ -1981,7 +1981,7 @@ class WeixinBotService {
       console.log(`[WechatBot] 开始调用普通 Agent history=${history.length} forceVoice=${forceVoice}`)
       this.logger?.warn('WechatBot', '开始调用普通 Agent', { from, history: history.length, forceVoice })
       let rawReply = await Promise.race([
-        this.runAgent(history, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name); this.setActivity('working', name) } }),
+        this.runAgent(history, { conversationId: conv.id, allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name); this.setActivity('working', name) } }),
         new Promise<never>((_, reject) => {
           setTimeout(() => reject(new Error('处理超时（12分钟）。聊天总结还没写完')), WECHAT_AGENT_DEADLINE_MS)
         }),
@@ -1993,7 +1993,7 @@ class WeixinBotService {
           { id: `wx-a-preamble-${Date.now()}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: rawReply.text }] },
           { id: `wx-u-continue-${Date.now()}`, role: 'user' as const, parts: [{ type: 'text' as const, text: '不要过渡句。立刻从上次停下的地方写出完整正文，按日期分段。' }] },
         ]
-        const continued = await this.runAgent(followHistory, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name); this.setActivity('working', name) } })
+        const continued = await this.runAgent(followHistory, { conversationId: conv.id, allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name); this.setActivity('working', name) } })
         if (continued.text.trim() && continued.text.replace(/\s+/g, '').length > rawReply.text.replace(/\s+/g, '').length) {
           rawReply = continued
         }
@@ -2006,7 +2006,7 @@ class WeixinBotService {
           { id: `wx-a-skip-${Date.now()}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: rawReply.text || '（未读原文）' }] },
           { id: `wx-u-force-read-${Date.now()}`, role: 'user' as const, parts: [{ type: 'text' as const, text: forcePeriodReadText(commandText) }] },
         ]
-        const reread = await this.runAgent(followHistory, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name); this.setActivity('working', name) } })
+        const reread = await this.runAgent(followHistory, { conversationId: conv.id, allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name); this.setActivity('working', name) } })
         if (usedPeriodRead(usedTools, commandText) && reread.text.trim()) {
           rawReply = reread
         } else if (!usedPeriodRead(usedTools, commandText)) {
@@ -2026,7 +2026,7 @@ class WeixinBotService {
           { id: `wx-a-skip-todo-${Date.now()}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: rawReply.text || '（未提取待办）' }] },
           { id: `wx-u-force-todo-${Date.now()}`, role: 'user' as const, parts: [{ type: 'text' as const, text: forceTodoExtractText() }] },
         ]
-        const reread = await this.runAgent(followHistory, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name); this.setActivity('working', name) } })
+        const reread = await this.runAgent(followHistory, { conversationId: conv.id, allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name); this.setActivity('working', name) } })
         if (usedTools.includes('extract_chat_todos') && reread.text.trim()) {
           rawReply = reread
         } else if (!usedTools.includes('extract_chat_todos')) {
@@ -2054,7 +2054,7 @@ class WeixinBotService {
             { id: `wx-a-priv-${Date.now()}-${hops}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: rawReply.text || '' }] },
             { id: `wx-u-priv-${Date.now()}-${hops}`, role: 'user' as const, parts: [{ type: 'text' as const, text: `继续 ${tool}，nextCursor 原样传入：${JSON.stringify(progress.nextCursor)}。把这次返回的${unit}都写上；packedPeople 里条数少、只有几句的也要写（报价、约定、待办、文件）。写过的不要重复。不要问名字。complete 为 false 时不要说已经全部整理好了。` }] },
           ]
-          const more = await this.runAgent(followHistory, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name); this.setActivity('working', name) } })
+          const more = await this.runAgent(followHistory, { conversationId: conv.id, allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name); this.setActivity('working', name) } })
           if (more.text.trim()) {
             rawReply = {
               ...more,
@@ -2920,7 +2920,7 @@ class WeixinBotService {
   /** 把对话（历史 + 本轮）交给项目内 Agent，收集流式文本作为当前微信机器人会话的回复。 */
   private async runAgent(
     uiMessages: UIMessage[],
-    options: { allowDesktopScreenshotReply?: boolean; onTool?: (name: string) => void } = {},
+    options: { allowDesktopScreenshotReply?: boolean; onTool?: (name: string) => void; conversationId?: number } = {},
   ): Promise<WechatBotReply> {
     const { convertToModelMessages } = await import('ai')
     const { agentProcessService } = await import('../agent/agentProcessService')
@@ -2960,6 +2960,8 @@ class WeixinBotService {
         planMode: false,
         toolProfile: profile.toolProfile,
         codeWorkspace: profile.codeWorkspace,
+        conversationId: options.conversationId,
+        canvasContext: options.conversationId ? { conversationId: options.conversationId } : undefined,
       },
       (chunk) => {
         rememberToolNameFromChunk(chunk, toolNames)

@@ -1,7 +1,7 @@
 ﻿import { useEffect, useState, type ReactElement, type CSSProperties, type Key } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Avatar, Button, ScrollShadow, Separator, Tabs, Tooltip } from '@heroui/react'
-import { Comment, Database, Gear, ChevronLeft, ChevronRight, ArrowDownToLine, Aperture, FaceRobot, BookOpen, LogoMcp, PersonGear, Code } from '@gravity-ui/icons'
+import { Comment, Database, Gear, ChevronLeft, ChevronRight, ArrowDownToLine, Aperture, FaceRobot, BookOpen, LogoMcp, PersonGear, Code, Magnifier, FileText } from '@gravity-ui/icons'
 import packageJson from '../../package.json'
 import { useAppStore } from '../stores/appStore'
 import { usePluginStore, ensurePluginStoreSubscribed, selectEnabledPlugins } from '../stores/pluginStore'
@@ -72,6 +72,8 @@ function Sidebar({ autoCollapse = false }: { autoCollapse?: boolean }) {
     { key: 'agent', label: '助手', icon: <FaceRobot width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/agent' },
     { key: 'personas', label: 'AI 克隆', icon: <PersonGear width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/personas' },
     { key: 'diary', label: '日记', icon: <BookOpen width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/diary' },
+    { key: 'search', label: '搜索', icon: <Magnifier width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/search' },
+    { key: 'notes', label: '备忘', icon: <FileText width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/notes' },
     { key: 'chat', label: '聊天查看', icon: <Comment width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/chat' },
     { key: 'moments', label: '朋友圈', icon: <Aperture width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/moments' },
     { key: 'export', label: '导出数据', icon: <ArrowDownToLine width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />, type: 'route', path: '/export' },

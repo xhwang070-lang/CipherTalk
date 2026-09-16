@@ -1185,7 +1185,61 @@ export class ChatSearchIndexService {
    * 方案 A：在 message_index 上全量均匀随机（仅已索引行）。
    * 条件：私聊、非己发、文本(1) / 图片(3) / 语音(34) / 表情(47)。
    */
-  pickRandomIndexedMoment(): { sessionId: string; localId: number } | null {
+
+  /** 在已经建好的本地索引里搜全部会话，不现场扫微信库。适合华记搜索页。 */
+  searchIndexed(query: string, limit = 40): ChatSearchIndexHit[] {
+    const q = normalizeSearchText(query)
+    if (!q) return []
+    try {
+    const db = this.getDb()
+    const cap = Math.min(200, Math.max(limit * 6, limit + 20))
+    const rowsById = new Map<number, MessageIndexRow>()
+    const ftsQuery = buildFtsQuery(q)
+    if (ftsQuery) {
+      try {
+        const ftsRows = db.prepare(`
+          SELECT m.*, bm25(message_index_fts) AS rank
+          FROM message_index_fts
+          JOIN message_index m ON m.id = message_index_fts.rowid
+          WHERE message_index_fts MATCH @ftsQuery
+          ORDER BY rank ASC, m.sort_seq DESC, m.create_time DESC, m.local_id DESC
+          LIMIT @limit
+        `).all({ ftsQuery, limit: cap }) as MessageIndexRow[]
+        for (const row of ftsRows) rowsById.set(row.id, row)
+      } catch {
+        // FTS 语法失败时走 LIKE
+      }
+    }
+    const likeRows = db.prepare(`
+      SELECT m.*
+      FROM message_index m
+      WHERE m.search_text LIKE @likeQuery
+         OR replace(m.search_text, ' ', '') LIKE @compactLikeQuery
+      ORDER BY m.sort_seq DESC, m.create_time DESC, m.local_id DESC
+      LIMIT @limit
+    `).all({
+      likeQuery: `%${q}%`,
+      compactLikeQuery: `%${q.replace(/\s+/g, '') || q}%`,
+      limit: cap,
+    }) as MessageIndexRow[]
+    for (const row of likeRows) rowsById.set(row.id, row)
+    return Array.from(rowsById.values()).map((row) => {
+      const match = findMatchInIndexedText(row, query)
+      return {
+        sessionId: row.session_id,
+        message: rowToMessage(row),
+        excerpt: match.excerpt,
+        matchedField: match.matchedField,
+        score: match.score,
+      } satisfies ChatSearchIndexHit
+    }).sort((a, b) => b.score - a.score || compareCursorAsc(b.message, a.message)).slice(0, limit)
+    } catch (e) {
+      console.error('[ChatSearchIndex] searchIndexed failed:', e)
+      return []
+    }
+  }
+
+    pickRandomIndexedMoment(): { sessionId: string; localId: number } | null {
     try {
       const db = this.getDb()
       const row = db

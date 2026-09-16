@@ -18,7 +18,7 @@ interface AboutTabProps {
 }
 
 const projectLinks = [
-  { label: 'CipherTalk (upstream, CC BY-NC-SA)', url: 'https://github.com/ILoveBingLu/miyu' }
+  { label: '开源上游（CC BY-NC-SA）', url: 'https://github.com/ILoveBingLu/miyu' }
 ]
 
 const relatedLinks: Array<{ label: string; url: string }> = []
@@ -98,7 +98,7 @@ function AboutTab({
     return (
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Typography.Paragraph size="sm" color="muted">
-          点检查更新，会向华记私有仓库要 latest.yml。有新版本可以在本机下载安装，不会连密语官方。
+          点检查更新，会向华记私有仓库要 latest.yml。有新版本可以在本机下载安装，不会连上游官方更新。
         </Typography.Paragraph>
         <Button
           type="button"

@@ -167,6 +167,7 @@ export interface AgentRunInput {
   turnContextMode?: 'tail' | 'history'
   /** 会话 Canvas 上下文（主进程校验归属后注入）；存在时挂载 canvas_* 工具。 */
   canvasContext?: AgentCanvasRunContext
+  conversationId?: number
 }
 
 export interface AgentUploadedMediaItem {

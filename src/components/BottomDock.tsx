@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { House, Comment, Database, Gear, ArrowDownToLine, Aperture, FaceRobot, LogoMcp, PersonGear, BookOpen, Code } from '@gravity-ui/icons'
+import { House, Comment, Database, Gear, ArrowDownToLine, Aperture, FaceRobot, LogoMcp, PersonGear, BookOpen, Magnifier, FileText, Code } from '@gravity-ui/icons'
 import type { IconComponent } from '@/types/icon'
 import MacOSDock, { type DockApp } from '@/components/ui/mac-os-dock'
 import { useThemeStore } from '@/stores/themeStore'
@@ -106,9 +106,11 @@ function BottomDock() {
   // 顺序与侧边栏导航一致（Sidebar.tsx navItems + 底部 ClawLink/设置）
   const allApps: DockApp[] = [
     { id: 'home', name: '首页', icon: makeIcon(House) },
-    { id: 'agent', name: 'CT-Agent', icon: makeIcon(FaceRobot) },
+    { id: 'agent', name: '助手', icon: makeIcon(FaceRobot) },
     { id: 'personas', name: 'AI 克隆', icon: makeIcon(PersonGear) },
     { id: 'diary', name: '日记', icon: makeIcon(BookOpen) },
+    { id: 'search', name: '搜索', icon: makeIcon(Magnifier) },
+    { id: 'notes', name: '备忘', icon: makeIcon(FileText) },
     { id: 'chat', name: '聊天查看', icon: makeIcon(Comment) },
     { id: 'moments', name: '朋友圈', icon: makeIcon(Aperture) },
     { id: 'export', name: '导出数据', icon: makeIcon(ArrowDownToLine) },
@@ -131,6 +133,8 @@ function BottomDock() {
       case 'agent': navigate('/agent'); break
       case 'personas': navigate('/personas'); break
       case 'diary': navigate('/diary'); break
+      case 'search': navigate('/search'); break
+      case 'notes': navigate('/notes'); break
       case 'chat': navigate('/chat'); break
       case 'moments': navigate('/moments'); break
       case 'device-connect': setDeviceConnectOpen(true); break

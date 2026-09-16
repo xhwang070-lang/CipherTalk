@@ -688,6 +688,8 @@ export interface ElectronAPI {
   config: {
     get: (key: string) => Promise<unknown>
     set: (key: string, value: unknown) => Promise<void>
+    exportHuajiBackup: () => Promise<{ success: boolean; bundle?: unknown; error?: string }>
+    importHuajiBackup: (bundle: unknown) => Promise<{ success: boolean; result?: { importedTodos: number; settings: boolean }; error?: string }>
     getTldCache: () => Promise<{ tlds: string[]; updatedAt: number } | null>
     setTldCache: (tlds: string[]) => Promise<void>
     onChanged: (callback: (payload: { key: string; value: unknown }) => void) => () => void
@@ -1139,6 +1141,7 @@ export interface ElectronAPI {
     connect: () => Promise<{ success: boolean; error?: string }>
     getSessions: (offset?: number, limit?: number) => Promise<{ success: boolean; sessions?: ChatSession[]; hasMore?: boolean; error?: string }>
     searchSessions: (keyword: string) => Promise<{ success: boolean; sessions?: ChatSession[]; error?: string }>
+    searchHuaji: (keyword: string) => Promise<{ success: boolean; result?: { query: string; contacts: Array<{ username: string; displayName: string; kind: 'person' | 'group' | 'official' }>; messages: Array<{ sessionId: string; localId: number; excerpt: string; time: number; fileName?: string }>; files: Array<{ sessionId: string; localId: number; excerpt: string; time: number; fileName?: string }> }; error?: string }>
     getMentionTargets: (offset?: number, limit?: number, keyword?: string) => Promise<{ success: boolean; sessions?: ChatSession[]; hasMore?: boolean; error?: string }>
     getContacts: () => Promise<{ success: boolean; contacts?: ContactInfo[]; error?: string }>
     getMessages: (sessionId: string, offset?: number, limit?: number) => Promise<{
@@ -1730,6 +1733,11 @@ export interface ElectronAPI {
     summarizeTodayDiary: () => Promise<{ success: boolean; alreadyExists?: boolean; diary?: MemoryDiaryEntryInfo; error?: string }>
     readHuajiWorkLog: (date?: string) => Promise<{ success: boolean; log?: { date: string; content: string; path: string } | null; error?: string }>
     rebuildHuajiWorkLog: (date?: string) => Promise<{ success: boolean; log?: { date: string; content: string; path: string }; error?: string }>
+    listHuajiWorkLogs: (limit?: number) => Promise<{ success: boolean; logs?: Array<{ date: string; content: string; path: string }>; error?: string }>
+    listChatSummaries: (limit?: number) => Promise<{ success: boolean; summaries?: Array<{ fileName: string; title: string; sessionId?: string; conversationId?: number; created?: string; path: string }>; error?: string }>
+    listMemos: (limit?: number) => Promise<{ success: boolean; memos?: Array<{ id: string; title: string; body: string; person?: string; orderNo?: string; updatedAt: string; path: string }>; directory?: string; error?: string }>
+    writeMemo: (payload: { title: string; body: string; person?: string; orderNo?: string; id?: string }) => Promise<{ success: boolean; memo?: { id: string; title: string; body: string; person?: string; orderNo?: string; updatedAt: string; path: string }; error?: string }>
+    deleteMemo: (id: string) => Promise<{ success: boolean; deleted?: boolean; error?: string }>
     create: (payload: { memoryUid?: string; sourceType?: AgentMemorySourceType; content?: string; title?: string; importance?: number; confidence?: number; tags?: string[] }) => Promise<{ success: boolean; item?: AgentMemoryItem; error?: string }>
     delete: (id: number) => Promise<{ success: boolean; error?: string }>
     update: (payload: { id: number; sourceType?: AgentMemorySourceType; content?: string; importance?: number; confidence?: number; tags?: string[] }) => Promise<{ success: boolean; item?: AgentMemoryItem; error?: string }>

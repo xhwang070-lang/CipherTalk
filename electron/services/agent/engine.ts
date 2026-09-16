@@ -389,6 +389,7 @@ async function injectAutoMemories(
       providerConfig: input.providerConfig,
       userText,
       assistantText,
+      conversationId: input.conversationId || input.canvasContext?.conversationId,
       signal,
     })
     if (auto.length === 0) return

@@ -17,6 +17,8 @@ import LocalApiPage from './pages/LocalApiPage'
 import AgentPage from './pages/agent/AgentPage'
 import PersonasPage from './pages/PersonasPage'
 import DiaryPage from './pages/DiaryPage'
+import SearchPage from './pages/SearchPage'
+import NotesPage from './pages/NotesPage'
 import ExportPage from './pages/export/ExportPage'
 import ImageWindow from './pages/ImageWindow'
 import VideoWindow from './pages/VideoWindow'
@@ -233,7 +235,7 @@ function App() {
     window.electronAPI.window.close()
   }
 
-  // 监听启动时的更新通知（华记私有源，不接密语官方）
+  // 监听启动时的更新通知（华记私有源，不接上游官方更新）
   useEffect(() => {
     let mounted = true
     window.electronAPI.app.getUpdateState?.().then((info) => {
@@ -349,7 +351,7 @@ function App() {
       description: (
         <>
           <div>{formatDisplayVersion(updateInfo.version)} 已发布</div>
-          <div>更新来自华记私有仓库，不会连密语官方。</div>
+          <div>更新来自华记私有仓库，不会连上游官方更新。</div>
         </>
       ),
       onClose: () => {
@@ -836,6 +838,8 @@ function App() {
               <Route path="/agent" element={<AgentPage />} />
               <Route path="/personas" element={<PersonasPage />} />
               <Route path="/diary" element={<DiaryPage />} />
+              <Route path="/search" element={<SearchPage />} />
+              <Route path="/notes" element={<NotesPage />} />
               <Route path="/export" element={<ExportPage />} />
               <Route path="/chat" element={<ChatPage />} />
               <Route path="/moments" element={<MomentsWindow />} />

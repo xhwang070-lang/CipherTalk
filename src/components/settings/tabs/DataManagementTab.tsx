@@ -11,7 +11,7 @@ interface DataManagementTabProps {
   onClearCurrentAccountConfig: (deleteLocalData?: boolean) => void
 }
 
-type DataManagementTabKey = 'export' | 'cache' | 'logs'
+type DataManagementTabKey = 'export' | 'backup' | 'cache' | 'logs'
 type ClearDialogType = 'images' | 'emojis' | 'aiData' | 'all' | 'currentAccount' | 'currentAccountWithData' | 'allAccounts' | 'logs'
 
 interface ClearDialogState {
@@ -257,6 +257,49 @@ function DataManagementTab({ showMessage, reloadConfig }: DataManagementTabProps
       showMessage(`${currentDialog.title}失败: ${e}`, false)
     }
   }
+
+
+  const renderBackupPanel = () => (
+    <Card>
+      <Card.Header>
+        <Card.Title>配置备份</Card.Title>
+        <Card.Description>导出待办、模型预设、看图模型。不含解密密钥、微信 token、all_keys。换电脑密钥必须在那台机子上重新取。</Card.Description>
+      </Card.Header>
+      <Card.Content className="flex flex-wrap gap-2">
+        <Button type="button" variant="secondary" onPress={() => void (async () => {
+          const res = await window.electronAPI.config.exportHuajiBackup()
+          if (!res.success || !res.bundle) { showMessage(res.error || '导出失败', false); return }
+          const blob = new Blob([JSON.stringify(res.bundle, null, 2)], { type: 'application/json' })
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = 'huaji-backup.json'
+          a.click()
+          URL.revokeObjectURL(url)
+          showMessage('已导出配置（不含密钥）', true)
+        })()}>导出配置</Button>
+        <Button type="button" variant="secondary" onPress={() => {
+          const input = document.createElement('input')
+          input.type = 'file'
+          input.accept = 'application/json,.json'
+          input.onchange = () => {
+            const file = input.files?.[0]
+            if (!file) return
+            void file.text().then(async (text) => {
+              try {
+                const res = await window.electronAPI.config.importHuajiBackup(JSON.parse(text))
+                if (!res.success) { showMessage(res.error || '导入失败', false); return }
+                showMessage('已导入待办 ' + (res.result?.importedTodos || 0) + ' 条，模型预设已合并（密钥未覆盖）', true)
+              } catch (error) {
+                showMessage(error instanceof Error ? error.message : String(error), false)
+              }
+            })
+          }
+          input.click()
+        }}>导入配置</Button>
+      </Card.Content>
+    </Card>
+  )
 
   const renderExportPanel = () => (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -622,6 +665,7 @@ function DataManagementTab({ showMessage, reloadConfig }: DataManagementTabProps
         <Tabs.ListContainer>
           <Tabs.List aria-label="数据管理分类" className="w-full *:flex-1 *:gap-2">
             <Tabs.Tab id="export"><FolderOpen width={16} height={16} aria-hidden />导出设置<Tabs.Indicator /></Tabs.Tab>
+            <Tabs.Tab id="backup"><ArrowRotateLeft width={16} height={16} aria-hidden />配置备份<Tabs.Indicator /></Tabs.Tab>
             <Tabs.Tab id="cache"><Database width={16} height={16} aria-hidden />缓存管理<Tabs.Indicator /></Tabs.Tab>
             <Tabs.Tab id="logs"><ArrowsRotateLeft width={16} height={16} aria-hidden />日志管理<Tabs.Indicator /></Tabs.Tab>
           </Tabs.List>
@@ -629,6 +673,9 @@ function DataManagementTab({ showMessage, reloadConfig }: DataManagementTabProps
 
         <Tabs.Panel id="export" className="pt-5">
           {renderExportPanel()}
+        </Tabs.Panel>
+        <Tabs.Panel id="backup" className="pt-5">
+          {renderBackupPanel()}
         </Tabs.Panel>
         <Tabs.Panel id="cache" className="pt-5">
           {renderCachePanel()}

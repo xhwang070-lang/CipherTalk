@@ -46,4 +46,22 @@ export function registerConfigHandlers(ctx: MainProcessContext): void {
   ipcMain.handle('config:setTldCache', async (_, tlds: string[]) => {
     return ctx.getConfigService()?.setTldCache(tlds)
   })
+
+  ipcMain.handle('config:exportHuajiBackup', async () => {
+    try {
+      const { exportHuajiBackup } = await import('../../services/huajiBackup')
+      return { success: true, bundle: exportHuajiBackup() }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  })
+
+  ipcMain.handle('config:importHuajiBackup', async (_event, bundle: unknown) => {
+    try {
+      const { importHuajiBackup } = await import('../../services/huajiBackup')
+      return { success: true, result: importHuajiBackup(bundle as any) }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  })
 }

@@ -94,7 +94,7 @@ export class LogService {
    */
   private getCurrentLogFile(): string {
     const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
-    return join(this.logDir, `ciphertalk-${today}.log`)
+    return join(this.logDir, `huaji-${today}.log`)
   }
 
   /**

@@ -57,6 +57,17 @@ export function registerChatHandlers(ctx: MainProcessContext): void {
     return result
   })
 
+  ipcMain.handle('chat:searchHuaji', async (_, keyword: string) => {
+    try {
+      const { searchHuaji } = await import('../../services/huajiLocalSearch')
+      return { success: true, result: await searchHuaji(String(keyword || '')) }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      ctx.getLogService()?.warn('Chat', '华记搜索失败', { error: message })
+      return { success: false, error: message }
+    }
+  })
+
   ipcMain.handle('chat:getMentionTargets', async (_, offset?: number, limit?: number, keyword?: string) => {
     const startedAt = Date.now()
     const logData = {

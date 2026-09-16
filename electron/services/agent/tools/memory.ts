@@ -377,9 +377,10 @@ export async function afterTurnMemory(opts: {
   providerConfig: AgentProviderConfig
   userText: string
   assistantText: string
+  conversationId?: number
   signal?: AbortSignal
 }): Promise<AutoMemoryResult[]> {
-  const { scope, providerConfig, userText, assistantText, signal } = opts
+  const { scope, providerConfig, userText, assistantText, conversationId, signal } = opts
   memoryDatabase.appendConversationTurn(userText, assistantText)
   try {
     const question = String(userText || '').trim()
@@ -390,6 +391,7 @@ export async function afterTurnMemory(opts: {
         question: question,
         result: assistantText,
         ok: true,
+        conversationId,
       })
     }
   } catch {
