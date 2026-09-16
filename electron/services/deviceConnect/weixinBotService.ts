@@ -74,6 +74,9 @@ function wechatToolLabel(name?: string): string {
     search_media: '\u56fe\u7247\u68c0\u7d22',
     search_moment_media: '\u670b\u53cb\u5708',
     desktop_screenshot: '\u684c\u9762\u622a\u56fe',
+    read_period: '\u804a\u5929\u8bb0\u5f55',
+    read_private_period: '\u79c1\u804a',
+    read_group_period: '\u7fa4\u804a',
   }
   return map[key] || key
 }
@@ -177,6 +180,8 @@ export interface WechatBotStatusPayload {
   botId: string | null
   userId: string | null
   error: string | null
+  activity: 'idle' | 'working'
+  activityLabel: string
 }
 
 interface StoredToken extends IlinkSession {
@@ -1226,6 +1231,9 @@ class WeixinBotService {
   private session: IlinkSession | null = null
   private status: WechatBotStatus = 'disconnected'
   private error: string | null = null
+  private activity: 'idle' | 'working' = 'idle'
+  private activityLabel = '\u672a\u8fde\u63a5'
+  private activityTool = ''
   private loopRunning = false
   private loopAbort: AbortController | null = null
   private connectAbort: AbortController | null = null
@@ -1257,6 +1265,8 @@ class WeixinBotService {
       botId: this.session?.botId ?? null,
       userId: this.session?.userId ?? null,
       error: this.error,
+      activity: this.activity,
+      activityLabel: this.activityLabel,
     }
   }
 
@@ -1641,6 +1651,7 @@ class WeixinBotService {
       attachedFileCount: incoming.attachedFileCount,
     })
     console.log(`[WechatBot] 收到消息 from=${from} text="${incoming.logText}" attachments=${incoming.attachmentCount} files=${incoming.attachedFileCount} 开始调用 Agent...`)
+    this.setActivity('working')
     let typing: TypingIndicator | null = null
     let lastTool = ""
     const usedTools: string[] = []
@@ -1777,7 +1788,7 @@ class WeixinBotService {
       console.log(`[WechatBot] 开始调用普通 Agent history=${history.length} forceVoice=${forceVoice}`)
       this.logger?.warn('WechatBot', '开始调用普通 Agent', { from, history: history.length, forceVoice })
       let rawReply = await Promise.race([
-        this.runAgent(history, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name) } }),
+        this.runAgent(history, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name); this.setActivity('working', name) } }),
         new Promise<never>((_, reject) => {
           setTimeout(() => reject(new Error('处理超时（12分钟）。聊天总结还没写完')), WECHAT_AGENT_DEADLINE_MS)
         }),
@@ -1789,7 +1800,7 @@ class WeixinBotService {
           { id: `wx-a-preamble-${Date.now()}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: rawReply.text }] },
           { id: `wx-u-continue-${Date.now()}`, role: 'user' as const, parts: [{ type: 'text' as const, text: '不要过渡句。立刻从上次停下的地方写出完整正文，按日期分段。' }] },
         ]
-        const continued = await this.runAgent(followHistory, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name) } })
+        const continued = await this.runAgent(followHistory, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name); this.setActivity('working', name) } })
         if (continued.text.trim() && continued.text.replace(/\s+/g, '').length > rawReply.text.replace(/\s+/g, '').length) {
           rawReply = continued
         }
@@ -1802,7 +1813,7 @@ class WeixinBotService {
           { id: `wx-a-skip-${Date.now()}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: rawReply.text || '（未读原文）' }] },
           { id: `wx-u-force-read-${Date.now()}`, role: 'user' as const, parts: [{ type: 'text' as const, text: forcePeriodReadText(commandText) }] },
         ]
-        const reread = await this.runAgent(followHistory, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name) } })
+        const reread = await this.runAgent(followHistory, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name); this.setActivity('working', name) } })
         if (usedPeriodRead(usedTools, commandText) && reread.text.trim()) {
           rawReply = reread
         } else if (!usedPeriodRead(usedTools, commandText)) {
@@ -1830,7 +1841,7 @@ class WeixinBotService {
             { id: `wx-a-priv-${Date.now()}-${hops}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: rawReply.text || '' }] },
             { id: `wx-u-priv-${Date.now()}-${hops}`, role: 'user' as const, parts: [{ type: 'text' as const, text: `继续 ${tool}，nextCursor 原样传入：${JSON.stringify(progress.nextCursor)}。把这次返回的${unit}都写上；packedPeople 里条数少、只有几句的也要写（报价、约定、待办、文件）。写过的不要重复。不要问名字。complete 为 false 时不要说已经全部整理好了。` }] },
           ]
-          const more = await this.runAgent(followHistory, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name) } })
+          const more = await this.runAgent(followHistory, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name); this.setActivity('working', name) } })
           if (more.text.trim()) {
             rawReply = {
               ...more,
@@ -1947,6 +1958,7 @@ class WeixinBotService {
       }
     } finally {
       await typing?.stop()
+      this.setActivity('idle')
       void import('../agent/huajiWorkLog').then((mod) => mod.rebuildHuajiWorkLog()).catch(() => undefined)
     }
   }
@@ -2659,6 +2671,8 @@ class WeixinBotService {
     let stopped = false
     const timer: ReturnType<typeof setInterval> = setInterval(() => {
       if (stopped) return
+      const tool = getTool?.() || ''
+      if (tool) this.setActivity('working', tool)
       void sendTyping(session, toUserId, ticket, 1).catch((e) => {
         this.logger?.warn('WechatBot', '微信正在输入状态保活失败', { to: toUserId, error: String(e) })
       })
@@ -3065,7 +3079,44 @@ class WeixinBotService {
   // ── 工具 ──
   private setStatus(status: WechatBotStatus): void {
     this.status = status
+    if (status !== 'connected') {
+      this.activity = 'idle'
+      this.activityTool = ''
+    }
+    this.activityLabel = this.buildActivityLabel()
     this.broadcast('status', this.getStatus())
+  }
+
+  private buildActivityLabel(): string {
+    if (this.status === 'disconnected') return '\u672a\u8fde\u63a5'
+    if (this.status === 'connecting') return '\u6b63\u5728\u8fde\u63a5'
+    if (this.status === 'error') return this.error || '\u51fa\u9519\u4e86'
+    if (this.activity === 'working') {
+      const tool = wechatToolLabel(this.activityTool)
+      return tool ? ('\u6b63\u5728\u67e5\u300c' + tool + '\u300d') : '\u6b63\u5728\u5904\u7406'
+    }
+    return '\u5728\u7ebf \u00b7 \u7a7a\u95f2'
+  }
+
+  private setActivity(activity: 'idle' | 'working', tool?: string): void {
+    const nextTool = activity === 'working' ? String(tool || this.activityTool || '') : ''
+    const nextLabel = this.labelFor(activity, nextTool)
+    if (this.activity === activity && this.activityTool === nextTool && this.activityLabel === nextLabel) return
+    this.activity = activity
+    this.activityTool = nextTool
+    this.activityLabel = nextLabel
+    this.broadcast('status', this.getStatus())
+  }
+
+  private labelFor(activity: 'idle' | 'working', tool: string): string {
+    if (this.status === 'disconnected') return '\u672a\u8fde\u63a5'
+    if (this.status === 'connecting') return '\u6b63\u5728\u8fde\u63a5'
+    if (this.status === 'error') return this.error || '\u51fa\u9519\u4e86'
+    if (activity === 'working') {
+      const name = wechatToolLabel(tool)
+      return name ? ('\u6b63\u5728\u67e5\u300c' + name + '\u300d') : '\u6b63\u5728\u5904\u7406'
+    }
+    return '\u5728\u7ebf \u00b7 \u7a7a\u95f2'
   }
 
   private broadcast(event: string, payload: unknown): void {

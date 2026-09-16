@@ -92,11 +92,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 设备连接（微信 iLink 直连）
   deviceConnect: {
     wechat: {
-      getStatus: () => ipcRenderer.invoke('deviceConnect:wechat:getStatus') as Promise<{ status: 'disconnected' | 'connecting' | 'connected' | 'error'; botId: string | null; userId: string | null; error: string | null }>,
+      getStatus: () => ipcRenderer.invoke('deviceConnect:wechat:getStatus') as Promise<{ status: 'disconnected' | 'connecting' | 'connected' | 'error'; botId: string | null; userId: string | null; error: string | null; activity?: 'idle' | 'working'; activityLabel?: string }>,
       connect: () => ipcRenderer.invoke('deviceConnect:wechat:connect') as Promise<{ success: boolean; qrcodeImage?: string; error?: string }>,
       cancel: () => ipcRenderer.invoke('deviceConnect:wechat:cancel') as Promise<{ success: boolean }>,
       disconnect: () => ipcRenderer.invoke('deviceConnect:wechat:disconnect') as Promise<{ success: boolean }>,
-      onStatus: (callback: (payload: { status: 'disconnected' | 'connecting' | 'connected' | 'error'; botId: string | null; userId: string | null; error: string | null }) => void) => {
+      onStatus: (callback: (payload: { status: 'disconnected' | 'connecting' | 'connected' | 'error'; botId: string | null; userId: string | null; error: string | null; activity?: 'idle' | 'working'; activityLabel?: string }) => void) => {
         const listener = (_: any, payload: any) => callback(payload)
         ipcRenderer.on('deviceConnect:wechat:status', listener)
         return () => { ipcRenderer.removeListener('deviceConnect:wechat:status', listener) }

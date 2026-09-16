@@ -2,19 +2,42 @@ import { useEffect, useState } from 'react'
 
 export type DeviceConnectStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
-/**
- * 订阅设备连接（当前为微信 bot 通道）的连接状态，供侧边栏/底部 Dock 常驻展示。
- * 复用 deviceConnect.wechat 的 getStatus + onStatus 广播，不额外开后端。
- */
-export function useDeviceConnectStatus(): DeviceConnectStatus {
-  const [status, setStatus] = useState<DeviceConnectStatus>('disconnected')
+export type WechatBotLiveStatus = {
+  status: DeviceConnectStatus
+  activity: 'idle' | 'working'
+  activityLabel: string
+  error: string | null
+}
+
+const EMPTY: WechatBotLiveStatus = {
+  status: 'disconnected',
+  activity: 'idle',
+  activityLabel: '\u672a\u8fde\u63a5',
+  error: null,
+}
+
+export function useWechatBotLiveStatus(): WechatBotLiveStatus {
+  const [live, setLive] = useState<WechatBotLiveStatus>(EMPTY)
 
   useEffect(() => {
     const api = window.electronAPI?.deviceConnect?.wechat
     if (!api) return
-    api.getStatus().then((s) => setStatus(s.status)).catch(() => undefined)
-    return api.onStatus((s) => setStatus(s.status))
+    const apply = (s: any) => {
+      const status = s?.status || 'disconnected'
+      setLive({
+        status,
+        activity: s?.activity === 'working' ? 'working' : 'idle',
+        activityLabel: String(s?.activityLabel || (status === 'connected' ? '\u5728\u7ebf \u00b7 \u7a7a\u95f2' : '\u672a\u8fde\u63a5')),
+        error: s?.error || null,
+      })
+    }
+    api.getStatus().then(apply).catch(() => undefined)
+    return api.onStatus(apply)
   }, [])
 
-  return status
+  return live
+}
+
+export function useDeviceConnectStatus(): DeviceConnectStatus {
+  return useWechatBotLiveStatus().status
 }

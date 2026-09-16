@@ -714,11 +714,11 @@ export interface ElectronAPI {
   }
   deviceConnect: {
     wechat: {
-      getStatus: () => Promise<{ status: 'disconnected' | 'connecting' | 'connected' | 'error'; botId: string | null; userId: string | null; error: string | null }>
+      getStatus: () => Promise<{ status: 'disconnected' | 'connecting' | 'connected' | 'error'; botId: string | null; userId: string | null; error: string | null; activity?: 'idle' | 'working'; activityLabel?: string }>
       connect: () => Promise<{ success: boolean; qrcodeImage?: string; error?: string }>
       cancel: () => Promise<{ success: boolean }>
       disconnect: () => Promise<{ success: boolean }>
-      onStatus: (callback: (payload: { status: 'disconnected' | 'connecting' | 'connected' | 'error'; botId: string | null; userId: string | null; error: string | null }) => void) => () => void
+      onStatus: (callback: (payload: { status: 'disconnected' | 'connecting' | 'connected' | 'error'; botId: string | null; userId: string | null; error: string | null; activity?: 'idle' | 'working'; activityLabel?: string }) => void) => () => void
       onQrcode: (callback: (payload: { qrcodeImage: string }) => void) => () => void
       onScanState: (callback: (payload: { state: 'scaned' | 'failed'; error?: string }) => void) => () => void
     }

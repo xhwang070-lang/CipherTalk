@@ -41,6 +41,39 @@
   margin-top: 2px;
 }
 
+.message-header .header-info .header-subtitle.bot-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.message-header .header-info .bot-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  flex-shrink: 0;
+}
+
+.message-header .header-info .bot-status.offline .bot-status-dot {
+  background: #9ca3af;
+}
+
+.message-header .header-info .bot-status.working .bot-status-dot {
+  background: #f59e0b;
+  animation: bot-status-pulse 1.2s ease-in-out infinite;
+}
+
+.message-header .header-info .bot-status.error .bot-status-dot {
+  background: #ef4444;
+  animation: none;
+}
+
+@keyframes bot-status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.85); }
+}
+
 .message-header .update-indicator-header {
   display: flex;
   align-items: center;

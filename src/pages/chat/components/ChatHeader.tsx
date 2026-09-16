@@ -7,6 +7,7 @@ import { DateJumpPicker } from './DateJumpPicker'
 import type { ChatSession } from '../../../types/models'
 import type { EmbeddingBuildProgress, EmbeddingBuildTarget, EmbeddingVectorStoreInfo } from '../../../types/electron'
 import { isGroupChat } from '../utils/messageGuards'
+import { useWechatBotLiveStatus } from '../../../hooks/useDeviceConnectStatus'
 import {
   DEFAULT_REPLY_SUGGEST_SETTINGS,
   REPLY_SUGGEST_CONFIG_KEY,
@@ -39,6 +40,19 @@ type SessionDetail = {
   firstMessageTime?: number
   latestMessageTime?: number
   messageTables: { dbName: string; tableName: string; count: number }[]
+}
+
+function isWechatBotSession(session: ChatSession): boolean {
+  const name = String(session.displayName || '').trim()
+  const user = String(session.username || '').trim()
+  return /clawbot|ciphertalk|微信机器人|华记助手|微信华记/i.test(name + ' ' + user) || name === '华记'
+}
+
+function botStatusTone(live: { status: string; activity: string }): 'offline' | 'working' | 'idle' | 'error' {
+  if (live.status === 'error') return 'error'
+  if (live.status === 'disconnected') return 'offline'
+  if (live.status === 'connecting' || live.activity === 'working') return 'working'
+  return 'idle'
 }
 
 function formatVectorProgress(progress: EmbeddingBuildProgress | null): string {
@@ -140,6 +154,8 @@ export function ChatHeader({
   onBatchDecrypt
 }: ChatHeaderProps) {
   const navigate = useNavigate()
+  const botLive = useWechatBotLiveStatus()
+  const isBotChat = isWechatBotSession(currentSession)
 
   // 向量化（语义索引）状态：null=未知/未启用嵌入，count=已建片段数
   const [vecBuilding, setVecBuilding] = useState(false)
@@ -495,7 +511,13 @@ export function ChatHeader({
               : <span className="wecom-badge" title="企业微信">企</span>
           )}
         </h3>
-        {isGroupChat(currentSession.username) && (
+        {isBotChat && (
+          <div className={`header-subtitle bot-status ${botStatusTone(botLive)}`}>
+            <span className="bot-status-dot" aria-hidden="true" />
+            <span>{botLive.activityLabel}</span>
+          </div>
+        )}
+        {isGroupChat(currentSession.username) && !isBotChat && (
           <div className="header-subtitle">群聊</div>
         )}
         {vecBuilding && (
