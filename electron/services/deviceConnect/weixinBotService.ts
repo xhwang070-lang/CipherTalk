@@ -220,6 +220,7 @@ type PreparedWechatIncomingMessage = {
   agentText: string
   logText: string
   fileParts: FileUIPart[]
+  attachmentNames: string[]
   attachmentCount: number
   attachedFileCount: number
 }
@@ -419,7 +420,45 @@ function lastHistoryFileParts(messages: UIMessage[] = []): FileUIPart[] {
   return []
 }
 
-const DOCUMENT_SUMMARIZE_HINT = '概括这个文件。合同和 PDF 按条款、金额、日期、双方列要点，必须来自原文；看不清写待核，不要编。'
+function lastAssistantAskedWhatToDo(messages: UIMessage[] = []): boolean {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === 'assistant') {
+      const text = (Array.isArray(messages[i].parts) ? messages[i].parts : [])
+        .map((part) => (part && part.type === 'text' ? String((part as { text?: string }).text || '') : ''))
+        .join('\n')
+      return /你想让我做什么/.test(text)
+    }
+    if (messages[i]?.role === 'user') break
+  }
+  return false
+}
+
+function isSpreadsheetName(name: string): boolean {
+  return /\.(xlsx|xls|xlsm|csv)$/i.test(name)
+}
+
+function isPdfName(name: string, mediaType = ''): boolean {
+  return /\.pdf$/i.test(name) || String(mediaType).toLowerCase().includes('pdf')
+}
+
+function buildAttachmentAsk(incoming: PreparedWechatIncomingMessage): string {
+  const names = (incoming.attachmentNames || []).filter(Boolean)
+  const joined = names.length ? `「${names.join('、')}」` : ''
+  const files = incoming.fileParts || []
+  const imageOnly = files.length > 0
+    && files.every(isImageFilePart)
+    && names.every((name) => !isPdfName(name) && !isSpreadsheetName(name))
+  if (imageOnly) {
+    return '收到这张图了。你想让我做什么？比如：改字、改日期、读表格、描述画面。直接回一句就行。'
+  }
+  if (names.some(isSpreadsheetName)) {
+    return `收到表格${joined}了。你想让我做什么？比如：读价格、汇总、找某个规格。直接回一句就行。`
+  }
+  if (names.some((name) => isPdfName(name)) || files.some((part) => isPdfName(String(part.filename || ''), String(part.mediaType || '')))) {
+    return `收到文件${joined}了。你想让我做什么？比如：概括合同、提取金额和日期、核对条款。直接回一句就行。`
+  }
+  return `收到${joined || '附件'}了。你想让我做什么？比如：概括文件、读表格、改图。直接回一句就行。`
+}
 
 function formatIncomingBytes(bytes?: number): string {
   if (!bytes || bytes <= 0) return ''
@@ -1281,6 +1320,7 @@ class WeixinBotService {
       agentText,
       logText,
       fileParts,
+      attachmentNames: parsed.attachments.map((item) => String(item.filename || item.label || '').trim()).filter(Boolean),
       attachmentCount: parsed.attachments.length,
       attachedFileCount: fileParts.length,
     }
@@ -1454,11 +1494,13 @@ class WeixinBotService {
       if (peerName && conv.title !== wantedTitle && (conv.title === '微信机器人' || conv.title.startsWith('微信 · ') || conv.title.startsWith('微信机器人 · '))) {
         agentConversationStore.rename(conv.id, wantedTitle)
       }
-      const imageOnly = incoming.fileParts.length > 0 && incoming.fileParts.every(isImageFilePart)
-      const hasDocument = incoming.fileParts.some((part) => !isImageFilePart(part))
+      const hasIncomingAttachment = incoming.attachmentCount > 0 || incoming.fileParts.length > 0
       const parts: UIMessage['parts'] = []
-      if (!incoming.plainText.trim() && hasDocument) {
-        parts.push({ type: 'text', text: DOCUMENT_SUMMARIZE_HINT })
+      if (incoming.plainText.trim()) {
+        parts.push({ type: 'text', text })
+      } else if (hasIncomingAttachment) {
+        const names = incoming.attachmentNames.filter(Boolean)
+        parts.push({ type: 'text', text: names.length ? `发来了：${names.join('、')}` : '发来了附件' })
       } else if (text) {
         parts.push({ type: 'text', text })
       }
@@ -1467,8 +1509,8 @@ class WeixinBotService {
       agentConversationStore.append(conv.id, [userMsg])
 
       const history = agentConversationStore.load(conv.id)?.messages ?? [userMsg]
-      if (!incoming.plainText.trim() && imageOnly) {
-        const ask = '这张图要我做什么？'
+      if (!incoming.plainText.trim() && hasIncomingAttachment) {
+        const ask = buildAttachmentAsk(incoming)
         const live = this.session
         if (live) await sendText(live, from, ask, contextToken)
         agentConversationStore.append(conv.id, [{
@@ -1485,12 +1527,15 @@ class WeixinBotService {
           result: ask,
           durationMs: Date.now() - startedAt,
         })
-        this.logger?.warn('WechatBot', '图片未附文字，先问要做什么', { from, history: history.length })
+        this.logger?.warn('WechatBot', '附件未附文字，先问要做什么', { from, history: history.length, names: incoming.attachmentNames })
         return
       }
-      if (isBareSummarizeCommand(incoming.plainText) && incoming.fileParts.length === 0) {
+      if (incoming.plainText.trim() && incoming.fileParts.length === 0) {
         const previousFiles = lastHistoryFileParts(history.slice(0, -1))
-        if (previousFiles.length > 0) {
+        const followUpOnAsk = lastAssistantAskedWhatToDo(history.slice(0, -1))
+          || isBareSummarizeCommand(incoming.plainText)
+          || looksLikeImageEditCommand(incoming.plainText)
+        if (previousFiles.length > 0 && followUpOnAsk) {
           parts.push(...previousFiles)
           const last = history[history.length - 1]
           if (last && last.role === 'user') last.parts = parts
