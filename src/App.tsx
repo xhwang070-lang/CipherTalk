@@ -233,21 +233,20 @@ function App() {
     window.electronAPI.window.close()
   }
 
-  // 监听启动时的更新通知 - 已禁用
+  // 监听启动时的更新通知（华记私有源，不接密语官方）
   useEffect(() => {
     let mounted = true
-    // 注释掉更新检查逻辑
-    // window.electronAPI.app.getUpdateState?.().then((info) => {
-    //   if (mounted && info?.hasUpdate) {
-    //     setUpdateInfo(info)
-    //   }
-    // }).catch((error) => {
-    //   console.error('获取更新状态失败:', error)
-    // })
+    window.electronAPI.app.getUpdateState?.().then((info) => {
+      if (mounted && info?.hasUpdate) {
+        setUpdateInfo(info)
+      }
+    }).catch((error) => {
+      console.error('获取更新状态失败:', error)
+    })
 
-    // const removeUpdateListener = window.electronAPI.app.onUpdateAvailable?.((info) => {
-    //   setUpdateInfo(info)
-    // })
+    const removeUpdateListener = window.electronAPI.app.onUpdateAvailable?.((info) => {
+      setUpdateInfo(info)
+    })
 
     // 监听数据库是否有更新（正在解密同步）
     const removeUpdateAvailableListener = window.electronAPI.dataManagement.onUpdateAvailable?.((hasUpdate) => {
@@ -272,39 +271,37 @@ function App() {
 
     return () => {
       mounted = false
-      // removeUpdateListener?.()
+      removeUpdateListener?.()
       removeSessionsListener?.()
       removeUpdateAvailableListener?.()
     }
   }, [])
 
-  // 监听下载进度 - 已禁用
   useEffect(() => {
-    // 注释掉下载进度监听
-    // const removeDownloadListener = window.electronAPI.app.onDownloadProgress?.((progress) => {
-    //   setDownloadProgress(progress)
-    //   setUpdateInfo((current) => {
-    //     if (!current) return current
-    //     return {
-    //       ...current,
-    //       diagnostics: {
-    //         phase: 'downloading',
-    //         strategy: current.diagnostics?.strategy || 'unknown',
-    //         fallbackToFull: current.diagnostics?.fallbackToFull || false,
-    //         lastError: current.diagnostics?.lastError,
-    //         lastEvent: current.diagnostics?.lastEvent,
-    //         progressPercent: progress.percent,
-    //         downloadedBytes: progress.transferred,
-    //         totalBytes: progress.total,
-    //         targetVersion: current.version || current.diagnostics?.targetVersion,
-    //         lastUpdatedAt: Date.now()
-    //       }
-    //     }
-    //   })
-    // })
-    // return () => {
-    //   removeDownloadListener?.()
-    // }
+    const removeDownloadListener = window.electronAPI.app.onDownloadProgress?.((progress) => {
+      setDownloadProgress(progress)
+      setUpdateInfo((current) => {
+        if (!current) return current
+        return {
+          ...current,
+          diagnostics: {
+            phase: 'downloading',
+            strategy: current.diagnostics?.strategy || 'unknown',
+            fallbackToFull: current.diagnostics?.fallbackToFull || false,
+            lastError: current.diagnostics?.lastError,
+            lastEvent: current.diagnostics?.lastEvent,
+            progressPercent: progress.percent,
+            downloadedBytes: progress.transferred,
+            totalBytes: progress.total,
+            targetVersion: current.version || current.diagnostics?.targetVersion,
+            lastUpdatedAt: Date.now()
+          }
+        }
+      })
+    })
+    return () => {
+      removeDownloadListener?.()
+    }
   }, [])
 
   const closeUpdateToast = useCallback(() => {
@@ -335,36 +332,34 @@ function App() {
     window.electronAPI.app.downloadAndInstall()
   }, [closeUpdateToast, isUpdateDownloading])
 
-  // 更新 Toast 提示 - 已禁用
   useEffect(() => {
-    // 注释掉更新 Toast
-    // if (!updateInfo || updateInfo.forceUpdate || isUpdateDownloading) {
-    //   closeUpdateToast()
-    //   return
-    // }
+    if (!updateInfo || updateInfo.forceUpdate || isUpdateDownloading) {
+      closeUpdateToast()
+      return
+    }
+    if (!updateInfo.hasUpdate) return
+    if (updateToastIdRef.current) return
 
-    // if (updateToastIdRef.current) return
-
-    // updateToastIdRef.current = toast.info('发现新版本', {
-    //   actionProps: {
-    //     children: '立即更新',
-    //     onPress: handleStartUpdate,
-    //     variant: 'secondary',
-    //   },
-    //   description: (
-    //     <>
-    //       <div>{formatDisplayVersion(updateInfo.version)} 已发布</div>
-    //       <div>更新源：{updateInfo.updateSource === 'r2' ? 'R2 镜像' : updateInfo.updateSource === 'github' ? 'GitHub Release' : '未知'}</div>
-    //     </>
-    //   ),
-    //   onClose: () => {
-    //     const suppressed = suppressUpdateToastCloseRef.current
-    //     suppressUpdateToastCloseRef.current = false
-    //     updateToastIdRef.current = null
-    //     if (!suppressed) setUpdateInfo(null)
-    //   },
-    //   timeout: 0,
-    // })
+    updateToastIdRef.current = toast.info('发现新版本', {
+      actionProps: {
+        children: '立即更新',
+        onPress: handleStartUpdate,
+        variant: 'secondary',
+      },
+      description: (
+        <>
+          <div>{formatDisplayVersion(updateInfo.version)} 已发布</div>
+          <div>更新来自华记私有仓库，不会连密语官方。</div>
+        </>
+      ),
+      onClose: () => {
+        const suppressed = suppressUpdateToastCloseRef.current
+        suppressUpdateToastCloseRef.current = false
+        updateToastIdRef.current = null
+        if (!suppressed) setUpdateInfo(null)
+      },
+      timeout: 0,
+    })
   }, [closeUpdateToast, handleStartUpdate, isUpdateDownloading, updateInfo])
 
   // 检查是否是独立聊天窗口
@@ -854,8 +849,7 @@ function App() {
       </div>
       {navLayout === 'dock' && <BottomDock />}
       <DecryptProgressOverlay />
-      {/* 下载进度胶囊 - 已禁用 */}
-      {/* {progressPercent !== null && (
+      {progressPercent !== null && isUpdateDownloading && (
         <div className="download-progress-capsule">
           <div className="capsule-compact">
             <CircleDashed className="spin" width={14} height={14} />
@@ -878,7 +872,7 @@ function App() {
             </div>
           </div>
         </div>
-      )} */}
+      )}
       {isLocked && <LockScreen />}
     </div>
   )

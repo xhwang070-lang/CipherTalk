@@ -55,7 +55,9 @@ const PERSONA_PENDING_AFTER_BUSY_MS = 1_200
 const WECHAT_TEXT_BUBBLE_SEPARATOR = '---wx-next---'
 const WECHAT_REPLY_FALLBACK_TEXT = '不好意思，我有点嘎了，等一会儿哈！'
 const WECHAT_AGENT_DEADLINE_MS = 720_000
-const WECHAT_STILL_WORKING_TEXT = '还在查，可能要一两分钟。有结果或失败我会说原因。'
+const WECHAT_STILL_WORKING_TEXT = '还在处理，可能要一两分钟。有结果或失败我会说原因。'
+const WECHAT_PROGRESS_FIRST_MS = 15_000
+const WECHAT_PROGRESS_AGAIN_MS = 90_000
 const WECHAT_EMPTY_REPLY_TEXT = '这次模型没有返回内容。可能是没查到记录，或接口空响应。'
 
 function wechatToolLabel(name?: string): string {
@@ -2839,9 +2841,12 @@ class WeixinBotService {
     const ackTimer = setTimeout(() => {
       if (stopped || !this.session) return
       const tool = getTool?.()
-      if (!tool) return
       void sendText(this.session, toUserId, wechatProgressText(tool), contextToken).catch(() => {})
-    }, 25_000)
+    }, WECHAT_PROGRESS_FIRST_MS)
+    const againTimer = setTimeout(() => {
+      if (stopped || !this.session) return
+      void sendText(this.session, toUserId, '还在处理，还没写完。写好或失败我会发原因。', contextToken).catch(() => {})
+    }, WECHAT_PROGRESS_AGAIN_MS)
 
     return {
       stop: async () => {
@@ -2849,6 +2854,7 @@ class WeixinBotService {
         stopped = true
         clearInterval(timer)
         clearTimeout(ackTimer)
+        clearTimeout(againTimer)
         try {
           await sendTyping(session, toUserId, ticket, 2)
           this.logger?.warn('WechatBot', '已取消微信正在输入状态', { to: toUserId })

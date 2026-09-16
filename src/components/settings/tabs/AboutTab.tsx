@@ -98,7 +98,7 @@ function AboutTab({
     return (
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Typography.Paragraph size="sm" color="muted">
-          This version is installed. Updates come from the Huaji private repo only; no network check if no update URL is set.
+          点检查更新，会向华记私有仓库要 latest.yml。有新版本可以在本机下载安装，不会连密语官方。
         </Typography.Paragraph>
         <Button
           type="button"
@@ -158,7 +158,7 @@ function AboutTab({
         <div className="space-y-4">
           <div className="space-y-1">
             <Typography.Heading level={3} className="text-lg font-semibold text-foreground">软件更新</Typography.Heading>
-            <Typography.Paragraph size="sm" color="muted">检查更新、下载新版本，并查看当前更新状态。</Typography.Paragraph>
+            <Typography.Paragraph size="sm" color="muted">启动后会检查华记私有更新。有新版本会弹提示，也可以在这里手动检查。</Typography.Paragraph>
           </div>
           {renderUpdateContent()}
         </div>
