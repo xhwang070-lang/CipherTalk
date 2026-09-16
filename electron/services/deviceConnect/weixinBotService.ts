@@ -1188,8 +1188,31 @@ function isNewConversationCommand(text: string): boolean {
   return /^(?:\/new|#new|新会话|开启新会话|开始新会话|重新开始)$/i.test(text.trim())
 }
 
+const WECHAT_HELP_TEXT = [
+  '华记可以这么用：',
+  '',
+  '1. 发文件（合同 PDF、Word、Excel、图）',
+  '先等我问「要做什么」，你回一句就行。',
+  '比如：概括合同 / 提取金额和日期 / 读价格 / 改字',
+  '',
+  '2. 翻聊天',
+  '「总结我和某某近一周」',
+  '「某群里那张表读出来」',
+  '',
+  '3. 待办',
+  '「记一下，明天给某某发报价」',
+  '「今天待办」',
+  '「完成待办 报价已发」',
+  '',
+  '4. 其它',
+  '重新开始：发「新会话」',
+  '看这条说明：发「菜单」或「帮助」',
+  '',
+  '直接说事也行，不必先点菜单。',
+].join('\n')
+
 function isHelpCommand(text: string): boolean {
-  return /^(?:#|\/)?(?:帮助|help|命令)$/i.test(text.trim())
+  return /^(?:#|\/)?(?:帮助|help|菜单|怎么用|命令)$/i.test(text.trim())
 }
 
 function classifyContact(username: string): WechatContactCandidate['kind'] {
@@ -2002,9 +2025,7 @@ class WeixinBotService {
     }
 
     if (isHelpCommand(trimmed)) {
-      await sendText(session, from,
-        '可用命令：\n今天待办\n明天待办\n记一下，明天给xxx发报价\n把我和xxx今天的待办记下来\n把我和xxx这7天的待办记下来\n完成待办 报价已发\n/new\n打开XXX的数字分身\n退出数字分身',
-        contextToken)
+      await sendText(session, from, WECHAT_HELP_TEXT, contextToken)
       return true
     }
 
