@@ -105,6 +105,8 @@ interface ConfigSchema {
  diarySummaryHour: number
  diaryCustomPrompt: string
   diaryEnabled: boolean
+  morningTodoPushEnabled: boolean
+  morningTodoPushHour: number
 
  // 性能相关
   hardwareAccelerationEnabled: boolean
@@ -216,6 +218,8 @@ interface ConfigSchema {
   aiResolvedProxyUrl: string
   // Anthropic prompt cache 断点 TTL：1h 档写入计价 2×（5m 档 1.25×），稀疏流量才划算
   anthropicCacheTtl: '5m' | '1h'
+  // 看图模型：空=用对话模型；与对话走同一中转，只换 model id
+  aiVisionModel: string
   // AI 宠物（petdex 宠物包格式，用户宠物包存放在 cachePath/pets/<slug>/）
   petCurrent: string         // 当前宠物 slug，空 = 不展示
   petDesktopEnabled: boolean  // 桌面悬浮桌宠开关
@@ -346,6 +350,8 @@ const defaults: ConfigSchema = {
  diarySummaryHour: 2,
  diaryCustomPrompt: '',
   diaryEnabled: true,
+  morningTodoPushEnabled: true,
+  morningTodoPushHour: 8,
  hardwareAccelerationEnabled: true,
   // AI 默认配置
   aiCurrentProvider: 'custom',
@@ -428,6 +434,7 @@ const defaults: ConfigSchema = {
   },
   aiResolvedProxyUrl: '',
   anthropicCacheTtl: '5m',
+  aiVisionModel: '',
   petCurrent: '',
   petDesktopEnabled: false,
   petDefaultInitialized: false,

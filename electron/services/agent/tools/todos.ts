@@ -12,10 +12,10 @@ import { extractChatTodos, formatExtractChatTodos, type ExtractTodoRange } from 
 export function createAddTodo() {
   return tool({
     description:
-      '记下一条待办。用户说「记一下明天给张俊博发报价」「今天待办加上核对公差」时用。' +
+      '记下一条待办。用户说「记一下明天给某某发报价」「今天待办加上核对公差」时用。' +
       '只记用户明确要办的事。从某一场聊天提取待办请用 extract_chat_todos，不要自己扫全库。when=today 今天，tomorrow 明天。',
     inputSchema: z.object({
-      title: z.string().min(1).describe('待办短句，例如 给张俊博发法兰报价'),
+      title: z.string().min(1).describe('待办短句，例如 给某某发报价'),
       when: z.enum(['today', 'tomorrow']).default('today').describe('today=今天，tomorrow=明天'),
       person: z.string().optional().describe('相关的人，没有就空'),
     }),
@@ -59,7 +59,7 @@ export function createListTodos() {
 export function createCompleteTodo() {
   return tool({
     description:
-      '勾掉一条待办。用户说「张俊博报价已发」「完成待办 核对公差」时用。用标题关键词或 id。',
+      '勾掉一条待办。用户说「某某报价已发」「完成待办 核对公差」时用。用标题关键词或 id。',
     inputSchema: z.object({
       query: z.string().min(1).describe('待办 id 或标题里的关键词'),
     }),
@@ -87,11 +87,11 @@ export function createRemoveTodo() {
 export function createExtractChatTodos() {
   return tool({
     description:
-      '从指定一场微信聊天里提取今天/明天待办并记到华记待办本。用户说「把我和张俊博今天的待办记下来」时用。' +
-      '必须先用 list_contacts 拿到那一个人/群的 username，只看这一场，禁止扫别人的聊天。' +
-      '人名、金额、货期必须能对上该场原文；对不上的会标待核。语音会本地转写，图片用当前能看图的模型识别。不要夜间全库自动挖。',
+      '从指定一场微信聊天里提取今天/明天待办并记到华记待办本。用户说「把我和某某今天的待办记下来」时用。' +
+      '必须先用 list_contacts 拿到那一个人/群的 username，只看这一场，禁止 search_messages 扫全库。' +
+      '人名、金额、货期必须能对上该场原文；对不上的会标待核。语音会本地转写，图片用看图模型识别。不要夜间全库自动挖。',
     inputSchema: z.object({
-      person: z.string().min(1).describe('人名或群名，例如 张俊博'),
+      person: z.string().min(1).describe('人名或群名，例如 某某、某群'),
       sessionId: z.string().optional().describe('该场聊天 username。能确定时必填，避免同名串人'),
       range: z.enum(['today', 'tomorrow', 'days7']).default('today').describe('today=近3天，days7=近7天，tomorrow=记到明天'),
     }),

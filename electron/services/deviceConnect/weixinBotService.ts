@@ -160,10 +160,25 @@ function usedPeriodRead(usedTools: string[], commandText = ''): boolean {
 }
 
 function forcePeriodReadText(commandText: string): string {
+  const media = '语音用 transcribe_voice_message，图片用 inspect_media_image。近一周就是 7 天，禁止缩成一天。人名、金额必须对原文，对不上写待核。'
   if (wantsAllGroupSummary(commandText)) {
-    return "上一轮没有读群聊原文，作废。所有群聊总结必须立刻调用 read_group_period({period:'近一周'或'近一个月'})，不要问用户要群名，不要只用统计。有 nextCursor 就继续调，直到 complete=true。"
+    return "上一轮没有读群聊原文，作废。所有群聊总结必须立刻调用 read_group_period({period:'近一周'或'近一个月'})，不要问用户要群名，不要只用统计。有 nextCursor 就继续调，直到 complete=true。" + media
   }
-  return "上一轮没有读聊天原文，作废。所有私聊总结必须立刻调用 read_private_period({period:'近一周'或'近一个月'})，不要问用户要人名，不要只用统计。有 nextCursor 就继续调，直到 complete=true。"
+  if (wantsAllPrivateSummary(commandText)) {
+    return "上一轮没有读聊天原文，作废。所有私聊总结必须立刻调用 read_private_period({period:'近一周'或'近一个月'})，不要问用户要人名，不要只用统计。有 nextCursor 就继续调，直到 complete=true。" + media
+  }
+  return "上一轮没有读聊天原文，作废。必须先 list_contacts 拿到那一个人/群的 sessionId，立刻调用 read_period({sessionId, period:'近一周'或'近一个月'}) 按天翻完。不要问用户要不要读。不要只用统计。" + media
+}
+
+function wantsNamedTodoExtract(text: string): boolean {
+  const compact = String(text || '').replace(/\s+/g, '')
+  if (!compact.includes('待办')) return false
+  if (/^(今天待办|今日待办|明天待办|明日待办)$/.test(compact)) return false
+  return /(?:把我和|把我跟|提取|记下来|记一下)/.test(compact)
+}
+
+function forceTodoExtractText(): string {
+  return "上一轮没有从指定聊天提取待办，作废。必须先 list_contacts 找到那一个人或群的 username，立刻调用 extract_chat_todos({person, sessionId, range})。只看这一场，禁止 search_messages 扫全库。人名用某某/某群，不要编具体人名。"
 }
 
 function isPreambleOnlyWechatReply(text: string): boolean {
@@ -1315,6 +1330,7 @@ class WeixinBotService {
   private pendingPersonaSelections = new Map<string, PendingPersonaSelection>()
   private pendingPersonaQueues = new Map<string, PendingPersonaQueue>()
   private sentConversationReplyMessageIds = new Set<string>()
+  private todoPushTimer: ReturnType<typeof setInterval> | null = null
 
   // logger 实时从 ctx 取，不缓存：init 在建窗(setLogService)之前注册，缓存会永久拿到 null
   private get logger(): BotLogger | null {
@@ -1515,16 +1531,32 @@ class WeixinBotService {
     if (this.loopRunning || !this.session) return
     this.loopRunning = true
     this.loopAbort = new AbortController()
+    this.startMorningTodoPushTimer()
     void this.runLoop(this.loopAbort.signal)
   }
 
   private stopLoop(): void {
     this.loopRunning = false
     this.clearAllPersonaQueues()
+    this.stopMorningTodoPushTimer()
     if (this.loopAbort) {
       this.loopAbort.abort()
       this.loopAbort = null
     }
+  }
+
+  private startMorningTodoPushTimer(): void {
+    this.stopMorningTodoPushTimer()
+    void this.pushMorningTodosIfDue()
+    this.todoPushTimer = setInterval(() => {
+      void this.pushMorningTodosIfDue()
+    }, 60_000)
+  }
+
+  private stopMorningTodoPushTimer(): void {
+    if (!this.todoPushTimer) return
+    clearInterval(this.todoPushTimer)
+    this.todoPushTimer = null
   }
 
   private async prepareIncomingMessage(msg: IlinkMessage): Promise<PreparedWechatIncomingMessage> {
@@ -1981,6 +2013,26 @@ class WeixinBotService {
           rawReply = {
             ...rawReply,
             text: wantsAllGroupSummary(commandText) ? '这次还没读到群聊原文。请再发一遍：把近一周的群聊总结一下。不用点群名。' : '这次还没读到聊天原文。请再发一遍：把近一周的私聊总结一下。不用点名。',
+            textBubbles: undefined,
+            media: [],
+          }
+        }
+      }
+      if (wantsNamedTodoExtract(commandText) && !usedTools.includes('extract_chat_todos') && rawReply.media.length === 0) {
+        console.warn('[WechatBot] 点名待办未调用 extract_chat_todos，强制重跑', { usedTools })
+        this.logger?.warn('WechatBot', '点名待办未提取指定聊天，强制重跑', { usedTools })
+        const followHistory = [
+          ...history,
+          { id: `wx-a-skip-todo-${Date.now()}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: rawReply.text || '（未提取待办）' }] },
+          { id: `wx-u-force-todo-${Date.now()}`, role: 'user' as const, parts: [{ type: 'text' as const, text: forceTodoExtractText() }] },
+        ]
+        const reread = await this.runAgent(followHistory, { allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name); this.setActivity('working', name) } })
+        if (usedTools.includes('extract_chat_todos') && reread.text.trim()) {
+          rawReply = reread
+        } else if (!usedTools.includes('extract_chat_todos')) {
+          rawReply = {
+            ...rawReply,
+            text: '这次还没从指定聊天提取待办。请再说一遍：把我和某某今天的待办记下来。不要扫全库。',
             textBubbles: undefined,
             media: [],
           }
@@ -3073,7 +3125,12 @@ class WeixinBotService {
   }
 
   async pushMorningTodosIfDue(now = new Date()): Promise<{ pushed: boolean; reason: string }> {
-    if (now.getHours() < TODO_PUSH_HOUR) return { pushed: false, reason: '未到早上' }
+    const config = this.ctx?.getConfigService()
+    const enabled = config ? config.get('morningTodoPushEnabled') !== false : true
+    if (!enabled) return { pushed: false, reason: '早上待办推送已关闭' }
+    const configuredHour = Number(config?.get('morningTodoPushHour'))
+    const hour = Number.isFinite(configuredHour) && configuredHour >= 0 && configuredHour <= 23 ? configuredHour : TODO_PUSH_HOUR
+    if (now.getHours() < hour) return { pushed: false, reason: '未到早上' }
     const session = this.session
     if (!session || this.status !== 'connected') return { pushed: false, reason: '微信未连接' }
     const { formatHuajiTodos, listHuajiTodos, peekMorningTodoPush, consumeMorningTodoPush } = await import('../agent/huajiTodos')

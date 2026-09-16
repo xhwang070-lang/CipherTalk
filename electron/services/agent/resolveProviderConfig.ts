@@ -55,3 +55,16 @@ export function resolveProviderConfig(override?: AgentProviderConfigOverride | n
     config.close()
   }
 }
+
+export function resolveVisionProviderConfig(override?: AgentProviderConfigOverride | null): AgentProviderConfig {
+  const chat = resolveProviderConfig(override)
+  const config = new ConfigService()
+  try {
+    const visionModel = String(config.get('aiVisionModel') || '').trim()
+    if (!visionModel || visionModel === chat.model) return chat
+    return { ...chat, model: visionModel }
+  } finally {
+    config.close()
+  }
+}
+

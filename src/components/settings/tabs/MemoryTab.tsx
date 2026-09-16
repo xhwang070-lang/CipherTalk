@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   AlertDialog,
   Button,
@@ -138,6 +138,8 @@ function bankNoteKindLabel(kind: MemoryBankNoteKind) {
 export default function MemoryTab({ showMessage }: MemoryTabProps) {
   const diaryEnabled = useSettingsStore(s => s.config.diaryEnabled)
   const setField = useSettingsStore(s => s.setField)
+  const [morningEnabled, setMorningEnabled] = useState(true)
+  const [morningHour, setMorningHour] = useState(8)
  const [items, setItems] = useState<AgentMemoryItem[]>([])
   const [count, setCount] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -205,6 +207,16 @@ export default function MemoryTab({ showMessage }: MemoryTabProps) {
   }
 
   useEffect(() => { void load() }, [])
+  useEffect(() => {
+    void Promise.all([
+      window.electronAPI.config.get('morningTodoPushEnabled'),
+      window.electronAPI.config.get('morningTodoPushHour'),
+    ]).then(([enabled, hour]) => {
+      setMorningEnabled(enabled !== false)
+      const value = Number(hour)
+      if (Number.isFinite(value) && value >= 0 && value <= 23) setMorningHour(value)
+    })
+  }, [])
 
   useEffect(() => { void loadBankNotes(bankNoteKind) }, [bankNoteKind])
 
@@ -616,6 +628,48 @@ export default function MemoryTab({ showMessage }: MemoryTabProps) {
             <Description>默认开启。关闭后不再自动生成日记，已有日记仍可查看。</Description>
           </Switch.Content>
         </Switch>
+      </Card.Content>
+    </Card>
+    <Card>
+      <Card.Header className="flex-col items-start gap-1">
+        <Card.Title>早上待办</Card.Title>
+        <Card.Description>微信助手连上后，到点把今天待办发到最近聊过的微信。没有待办就不发。</Card.Description>
+      </Card.Header>
+      <Card.Content className="space-y-4">
+        <Switch
+          className="max-w-2xl"
+          isSelected={morningEnabled}
+          onChange={(enabled) => {
+            setMorningEnabled(enabled)
+            void window.electronAPI.config.set('morningTodoPushEnabled', enabled)
+          }}
+        >
+          <Switch.Control>
+            <Switch.Thumb />
+          </Switch.Control>
+          <Switch.Content>
+            <Label>上班发今日待办</Label>
+            <Description>默认开启。关掉后安静，不会每天早上推送。</Description>
+          </Switch.Content>
+        </Switch>
+        <NumberField
+          className="max-w-xs"
+          minValue={0}
+          maxValue={23}
+          value={morningHour}
+          onChange={(value) => {
+            const hour = Math.max(0, Math.min(23, Math.floor(Number(value) || 8)))
+            setMorningHour(hour)
+            void window.electronAPI.config.set('morningTodoPushHour', hour)
+          }}
+        >
+          <Label>推送小时</Label>
+          <InputGroup variant="secondary">
+            <InputGroup.Input />
+            <InputGroup.Suffix>点</InputGroup.Suffix>
+          </InputGroup>
+          <Description>按本机时间，默认 8 点。过了这个点才连上微信，也会补发一次。</Description>
+        </NumberField>
       </Card.Content>
     </Card>
     <Card>

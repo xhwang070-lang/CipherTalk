@@ -34,11 +34,16 @@ export default function ImageGenTab() {
   const [previewPath, setPreviewPath] = useState('')
   const [remoteModels, setRemoteModels] = useState<string[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
+  const [visionModel, setVisionModel] = useState('')
+  const [visionStatus, setVisionStatus] = useState<{ ok: boolean; text: string } | null>(null)
 
   useEffect(() => {
     void window.electronAPI.imageGen.getConfig().then((res) => {
       if (res.success && res.config) setCfg({ ...DEFAULT_CFG, ...res.config })
       setLoaded(true)
+    })
+    void window.electronAPI.config.get('aiVisionModel').then((value) => {
+      setVisionModel(String(value || '').trim())
     })
   }, [])
 
@@ -99,9 +104,17 @@ export default function ImageGenTab() {
     }
   }
 
+  const saveVisionModel = async () => {
+    const model = visionModel.trim()
+    await window.electronAPI.config.set('aiVisionModel', model)
+    setVisionModel(model)
+    setVisionStatus({ ok: true, text: model ? `已保存看图模型 ${model}` : '已清空，看图改用对话模型' })
+  }
+
   if (!loaded) return null
 
   return (
+    <div className="space-y-4">
     <Card>
       <Card.Header className="flex-row items-start justify-between gap-3">
         <div>
@@ -285,5 +298,38 @@ export default function ImageGenTab() {
         </Button>
       </Card.Footer>
     </Card>
+    <Card>
+      <Card.Header>
+        <div>
+          <Card.Title>看图模型</Card.Title>
+          <Card.Description>
+            识别聊天图片、读表格图、朋友圈图时用这个型号。和对话走同一个中转，只换模型名。留空就用当前对话模型。
+          </Card.Description>
+        </div>
+      </Card.Header>
+      <Card.Content className="space-y-3">
+        <TextField fullWidth onChange={(v) => setVisionModel(v)} value={visionModel}>
+          <Label>看图模型</Label>
+          <InputGroup fullWidth variant="secondary">
+            <InputGroup.Input placeholder="留空=对话模型，例如 gemini-3.1-flash" />
+          </InputGroup>
+          <Description>
+            DeepSeek 文本模型看不了图。建议填 Gemini / Grok / GPT 等带图像输入的型号。看不了会如实说，不会编画面。
+          </Description>
+        </TextField>
+        {visionStatus && (
+          <p className={`flex items-center gap-1.5 text-sm ${visionStatus.ok ? 'text-green-600' : 'text-red-600'}`}>
+            {visionStatus.ok ? <CircleCheck width={16} height={16} /> : <CircleExclamation width={16} height={16} />}
+            {visionStatus.text}
+          </p>
+        )}
+      </Card.Content>
+      <Card.Footer>
+        <Button onPress={() => void saveVisionModel()} type="button" variant="primary">
+          保存看图模型
+        </Button>
+      </Card.Footer>
+    </Card>
+    </div>
   )
 }

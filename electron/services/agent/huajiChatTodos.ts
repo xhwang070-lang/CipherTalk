@@ -56,20 +56,23 @@ const COMMAND_SUFFIX_RE = /(?:记下来|记一下|整理一下|提取一下)$/
 
 export function parseTodoExtractCommand(text: string): { person: string; range: ExtractTodoRange } | null {
   let value = String(text || '').replace(/\s+/g, '').trim()
-  if (!value) return null
-  if (!COMMAND_PREFIX_RE.test(value) || !value.includes('的待办')) return null
-  value = value.replace(COMMAND_PREFIX_RE, '').replace(COMMAND_SUFFIX_RE, '')
+  if (!value || !value.includes('\u5f85\u529e')) return null
+  if (!/(?:\u8bb0\u4e0b\u6765|\u8bb0\u4e00\u4e0b|\u63d0\u53d6|\u6574\u7406\u4e00\u4e0b|\u628a\u6211\u548c|\u628a\u6211\u8ddf)/.test(value)) return null
+  value = value.replace(/^(?:\u5e2e\u6211)?(?:\u628a\u6211\u548c|\u628a\u6211\u8ddf|\u8bb0\u4e00\u4e0b\u6211\u548c|\u8bb0\u4e00\u4e0b\u6211\u8ddf|\u63d0\u53d6|\u8bb0\u4e00\u4e0b|\u628a)/, '')
+  value = value.replace(/(?:\u8bb0\u4e0b\u6765|\u8bb0\u4e00\u4e0b|\u6574\u7406\u4e00\u4e0b|\u63d0\u53d6\u4e00\u4e0b)$/, '')
   let range: ExtractTodoRange = 'today'
-  const ranged = value.match(/^(.*?)(今天|今日|明天|明日|这7天|近7天|最近7天|近一周|最近一周|这一周|本周|这几天|最近)的待办$/)
+  const ranged = value.match(/^(.*?)(\u4eca\u5929|\u4eca\u65e5|\u660e\u5929|\u660e\u65e5|\u8fd97\u5929|\u8fd17\u5929|\u6700\u8fd17\u5929|\u8fd1\u4e00\u5468|\u6700\u8fd1\u4e00\u5468|\u8fd9\u4e00\u5468|\u672c\u5468|\u8fd9\u51e0\u5929|\u6700\u8fd1)\u7684\u5f85\u529e$/)
   if (ranged && ranged[1] !== undefined) {
     value = ranged[1]
     range = normalizeExtractRange(ranged[2])
-  } else if (value.endsWith('的待办')) {
+  } else if (value.endsWith('\u7684\u5f85\u529e')) {
     value = value.slice(0, -3)
+  } else if (value.endsWith('\u5f85\u529e')) {
+    value = value.slice(0, -2)
   } else {
     return null
   }
-  const person = value.replace(/^(?:和|与)/, '').replace(RANGE_RE, '').trim()
+  const person = value.replace(/^(?:\u548c|\u4e0e)/, '').replace(RANGE_RE, '').trim()
   if (!person || person.length > 40) return null
   if (RANGE_RE.test(person)) return null
   return { person, range }
@@ -238,14 +241,14 @@ async function describeImage(sessionId: string, message: Message): Promise<strin
   if (!image.success || !image.data) return ''
   const buffer = Buffer.from(image.data, 'base64')
   if (!buffer.length) return ''
-  const [{ resolveProviderConfig }, { currentModelVisionSupport }, { createLanguageModel }, { generateText }, { detectImageMime }] = await Promise.all([
+  const [{ resolveVisionProviderConfig }, { currentModelVisionSupport }, { createLanguageModel }, { generateText }, { detectImageMime }] = await Promise.all([
     import('./resolveProviderConfig'),
     import('./tools/mediaHistory'),
     import('./provider'),
     import('ai'),
     import('../media/mediaResolver'),
   ])
-  const providerConfig = resolveProviderConfig()
+  const providerConfig = resolveVisionProviderConfig()
   if (currentModelVisionSupport(providerConfig) === false) return ''
   const mediaType = detectImageMime(buffer) || 'image/jpeg'
   const description = (await generateText({

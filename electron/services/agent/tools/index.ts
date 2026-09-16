@@ -32,6 +32,7 @@ import { createGenerateImage, generateImage } from './generateImage'
 import { searchStickers, sendSticker } from './stickers'
 import { sendRandomImage } from './sendRandomImage'
 import { createInspectMediaImage, createSearchSimilarMedia, searchMedia, searchMomentMedia, sendMediaFromHistory } from './mediaHistory'
+import { resolveVisionProviderConfig } from '../resolveProviderConfig'
 import { sendWechatFile } from './sendWechatFile'
 import { personaControl } from './personaControl'
 import { sendWechatMedia } from './wechatMedia'
@@ -131,9 +132,15 @@ export function buildChatTools(
   enableImageGen = false,
   options: BuildChatToolsOptions = {},
 ): ToolSet {
+  let visionConfig = providerConfig
+  try {
+    visionConfig = resolveVisionProviderConfig()
+  } catch {
+    visionConfig = providerConfig
+  }
   return {
     ...buildBaseTools(scope),
-    inspect_media_image: createInspectMediaImage(providerConfig, options.uploadedMediaContext),
+    inspect_media_image: createInspectMediaImage(visionConfig, options.uploadedMediaContext),
     search_similar_media: createSearchSimilarMedia(options.uploadedMediaContext),
     ...createAgentCapabilityTools(),
     ...createCanvasTools(options.canvasContext, options.emitChunk),
