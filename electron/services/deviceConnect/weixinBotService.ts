@@ -32,6 +32,7 @@ import { synthesizeWeixinVoice } from './weixinVoiceService'
 import type { PersonaTtsVoiceBinding } from '../agent/persona/personaTypes'
 import { isHuajiChatSummaryPath } from '../agent/tools/chatSummaryPath'
 import type { AgentUploadedMediaContext } from '../agent/types'
+import { extractJpegPagesFromPdf, parseDataUrlBuffer } from '../agent/pdfPageImages'
 import { resolveWechatPeerName, wechatBotConversationTitle, writeWechatBotRunLog } from '../agent/wechatBotArchive'
 import { getLastPrivatePeriodProgress, type RosterPeriodProgress } from '../agent/tools/readPrivatePeriod'
 
@@ -93,8 +94,11 @@ function wechatBotFailText(error: unknown, lastTool?: string): string {
   if (/finish|\u54cd\u5e94\u6d41|\u4e0d\u5b8c\u6574\u56de\u590d|\u8fde\u63a5\u4e2d\u65ad/i.test(msg)) {
     return '\u6ca1\u56de\u6210\u3002\u539f\u56e0\uff1a' + stuckText + '\u6a21\u578b\u8fde\u63a5\u65ad\u4e86\u3002\u8bf7\u628a\u91cd\u6838\u7f29\u6210\u4e00\u4e2a\u4eba\u6216\u66f4\u77ed\u65f6\u95f4\u518d\u95ee\u3002'
   }
-  if (/401|unauthorized|invalid.*key|api.?key|No output generated|\u9274\u6743\u5931\u8d25/i.test(msg)) {
+  if (/401|unauthorized|invalid api key|invalid.*api.?key|incorrect api key|\u9274\u6743\u5931\u8d25/i.test(msg) && !/No output generated/i.test(msg)) {
     return '\u6ca1\u56de\u6210\u3002\u539f\u56e0\uff1aAI \u63a5\u53e3\u5bc6\u94a5\u65e0\u6548\u6216\u6ca1\u914d\u597d\u3002'
+  }
+  if (/No output generated|Bad Request|context.*(too large|overflow)|payload too large/i.test(msg)) {
+    return '\u6ca1\u56de\u6210\u3002\u539f\u56e0\uff1a\u8fd9\u4efd\u6587\u4ef6\u5f53\u524d\u63a5\u53e3\u8bfb\u4e0d\u4e86\uff08\u592a\u5927\u6216\u626b\u63cf\u4ef6\uff09\u3002\u8bf7\u628a\u6587\u4ef6\u518d\u53d1\u4e00\u904d\u3002'
   }
   if (/429|rate.?limit/i.test(msg)) {
     return '\u6ca1\u56de\u6210\u3002\u539f\u56e0\uff1a\u63a5\u53e3\u9650\u6d41\uff0c\u7a0d\u540e\u518d\u8bd5\u3002'
@@ -407,7 +411,7 @@ function isImageFilePart(part: FileUIPart): boolean {
 }
 
 function isBareSummarizeCommand(text: string): boolean {
-  return /^(概括|总结一下|总结|读一下|看看这个|帮我看下这个文件)[!！。.]*$/u.test(String(text || '').trim())
+  return /^(概括一下|概括合同|概括这个|概括文件|概括|总结一下|总结|读一下|看看这个|帮我看下这个文件)[!！。.]*/u.test(String(text || '').trim())
 }
 
 function lastHistoryFileParts(messages: UIMessage[] = []): FileUIPart[] {
@@ -615,6 +619,53 @@ function textFromUiMessage(message: UIMessage): string {
 }
 
 
+function isPdfFilePart(part: unknown): part is FileUIPart {
+  if (!part || typeof part !== 'object') return false
+  const file = part as FileUIPart
+  if (file.type !== 'file' || typeof file.url !== 'string') return false
+  const mediaType = String(file.mediaType || '').toLowerCase()
+  const name = String(file.filename || '')
+  return mediaType.includes('pdf') || /\.pdf$/i.test(name) || file.url.startsWith('data:application/pdf')
+}
+
+function replacePdfFilePartsWithPageImages(messages: UIMessage[] = []): UIMessage[] {
+  return messages.map((message) => {
+    const parts = Array.isArray(message.parts) ? message.parts : []
+    let changed = false
+    const next: typeof parts = []
+    for (const part of parts) {
+      if (!isPdfFilePart(part)) {
+        next.push(part)
+        continue
+      }
+      changed = true
+      const name = String(part.filename || '合同.pdf')
+      const parsed = parseDataUrlBuffer(part.url)
+      const pages = parsed ? extractJpegPagesFromPdf(parsed.buffer) : []
+      if (pages.length === 0) {
+        next.push({
+          type: 'text',
+          text: `用户发来 PDF「${name}」，但没法转成可看的页面图。不要编条款，请让用户把文件再发一次或改发图片。`,
+        })
+        continue
+      }
+      next.push({
+        type: 'text',
+        text: `用户发来 PDF「${name}」，共 ${pages.length} 页扫描图，已作为图片附上。请 inspect_media_image({mediaId:"upload-1"}) 逐页阅读。数字、日期、双方、条款必须来自图上原文；看不清写待核。`,
+      })
+      pages.forEach((data, index) => {
+        next.push({
+          type: 'file',
+          mediaType: 'image/jpeg',
+          filename: `${name}-p${index + 1}.jpg`,
+          url: `data:image/jpeg;base64,${data.toString('base64')}`,
+        } as FileUIPart)
+      })
+    }
+    return changed ? { ...message, parts: next } : message
+  })
+}
+
 function stripImageFilePartsForModel(messages: UIMessage[] = []): UIMessage[] {
   return messages.map((message) => {
     const parts = Array.isArray(message.parts) ? message.parts : []
@@ -624,6 +675,11 @@ function stripImageFilePartsForModel(messages: UIMessage[] = []): UIMessage[] {
         changed = true
         const name = typeof part.filename === 'string' && part.filename ? ` ${part.filename}` : ''
         return [{ type: 'text' as const, text: `[图片${name}]` }]
+      }
+      if (part && part.type === 'file') {
+        changed = true
+        const name = typeof part.filename === 'string' && part.filename ? ` ${part.filename}` : ''
+        return [{ type: 'text' as const, text: `[文件${name}]` }]
       }
       return [part]
     })
@@ -2526,8 +2582,9 @@ class WeixinBotService {
       toolProfile: 'chat',
       queryText: lastUserTextFromUiMessages(uiMessages),
     })
-    const uploadedMediaContext = extractUploadedMediaFromUiMessages(uiMessages)
-    const messages = await convertToModelMessages(stripImageFilePartsForModel(uiMessages))
+    const preparedUiMessages = replacePdfFilePartsWithPageImages(uiMessages)
+    const uploadedMediaContext = extractUploadedMediaFromUiMessages(preparedUiMessages)
+    const messages = await convertToModelMessages(stripImageFilePartsForModel(preparedUiMessages))
     let reply = ''
     const textBlocks: string[] = []
     const textBlockIndexes = new Map<string, number>()
@@ -2640,7 +2697,7 @@ class WeixinBotService {
     } catch {
       // 无笔记照常聊
     }
-    const messages = await convertToModelMessages(stripImageFilePartsForModel(uiMessages))
+    const messages = await convertToModelMessages(stripImageFilePartsForModel(replacePdfFilePartsWithPageImages(uiMessages)))
     const textBubbles: string[] = []
     const textBlocks: string[] = []
     const textBlockIndexes = new Map<string, number>()
