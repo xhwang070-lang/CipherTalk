@@ -1,6 +1,6 @@
 {
   "name": "huaji",
-  "version": "2026.916.10",
+  "version": "2026.916.11",
   "description": "Huaji - Huabo local WeChat archive",
   "author": "Huabo",
   "license": "CC-BY-NC-SA-4.0",
@@ -280,6 +280,7 @@
       "!node_modules/**/build/!(Release)/**/*",
       "node_modules/@opentelemetry/**/build/**/*",
       "node_modules/@fast-csv/**/*",
+      "node_modules/{xlsx,adler-32,cfb,codepage,ssf,wmf,word,word-extractor,saxes,yauzl,fd-slicer,pend}/**/*",
       "node_modules/{exceljs,archiver,archiver-utils,async,base64-js,big-integer,binary,bl,buffer,buffer-crc32,buffer-indexof-polyfill,buffers,chainsaw,compress-commons,concat-map,core-util-is,crc-32,crc32-stream,dayjs,duplexer2,end-of-stream,fast-csv,fs-constants,fs.realpath,fstream,glob,graceful-fs,ieee754,immediate,inflight,inherits,isarray,jszip,lazystream,lie,listenercount,lodash.defaults,lodash.difference,lodash.escaperegexp,lodash.flatten,lodash.groupby,lodash.isboolean,lodash.isequal,lodash.isfunction,lodash.isnil,lodash.isplainobject,lodash.isundefined,lodash.union,lodash.uniq,minimist,normalize-path,once,pako,path-is-absolute,process-nextick-args,readable-stream,readdir-glob,safe-buffer,saxes,setimmediate,string_decoder,tar-stream,tmp,traverse,unzipper,util-deprecate,uuid,wrappy,xmlchars,zip-stream}/**/*",
       "node_modules/@fast-csv/*/build/**/*",
       "node_modules/fast-csv/build/**/*",
@@ -307,6 +308,7 @@
       "node_modules/@standard-schema/spec/**/*",
       "node_modules/eventsource-parser/**/*",
       "node_modules/@fast-csv/**/*",
+      "node_modules/{xlsx,adler-32,cfb,codepage,ssf,wmf,word,word-extractor,saxes,yauzl,fd-slicer,pend}/**/*",
       "node_modules/{exceljs,archiver,archiver-utils,async,base64-js,big-integer,binary,bl,buffer,buffer-crc32,buffer-indexof-polyfill,buffers,chainsaw,compress-commons,concat-map,core-util-is,crc-32,crc32-stream,dayjs,duplexer2,end-of-stream,fast-csv,fs-constants,fs.realpath,fstream,glob,graceful-fs,ieee754,immediate,inflight,inherits,isarray,jszip,lazystream,lie,listenercount,lodash.defaults,lodash.difference,lodash.escaperegexp,lodash.flatten,lodash.groupby,lodash.isboolean,lodash.isequal,lodash.isfunction,lodash.isnil,lodash.isplainobject,lodash.isundefined,lodash.union,lodash.uniq,minimist,normalize-path,once,pako,path-is-absolute,process-nextick-args,readable-stream,readdir-glob,safe-buffer,saxes,setimmediate,string_decoder,tar-stream,tmp,traverse,unzipper,util-deprecate,uuid,wrappy,xmlchars,zip-stream}/**/*",
       "dist-electron/**/*",
       "resources/wedecrypt/*.node",

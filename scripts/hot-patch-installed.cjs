@@ -80,6 +80,27 @@ function copyDir(from, to) {
   fs.cpSync(from, to, { recursive: true, force: true })
 }
 
+const HOT_PATCH_NODE_MODULES = [
+  'xlsx', 'adler-32', 'cfb', 'codepage', 'crc-32', 'ssf', 'wmf', 'word',
+  'word-extractor', 'saxes', 'xmlchars', 'yauzl', 'fd-slicer', 'pend', 'buffer-crc32',
+]
+
+function copyNodeModules(appDir) {
+  const destRoot = path.join(appDir, 'node_modules')
+  fs.mkdirSync(destRoot, { recursive: true })
+  for (const name of HOT_PATCH_NODE_MODULES) {
+    const from = path.join(root, 'node_modules', name)
+    if (!fs.existsSync(from)) {
+      console.warn('skip missing node_modules/' + name)
+      continue
+    }
+    const to = path.join(destRoot, name)
+    console.log('copying node_modules/' + name)
+    fs.rmSync(to, { recursive: true, force: true })
+    copyDir(from, to)
+  }
+}
+
 function ensureUnpackedApp(resourcesDir) {
   const appDir = path.join(resourcesDir, 'app')
   const asarPath = path.join(resourcesDir, 'app.asar')
@@ -139,6 +160,7 @@ fs.rmSync(path.join(appDir, 'dist-electron'), { recursive: true, force: true })
 copyDir(dist, path.join(appDir, 'dist'))
 copyDir(distElectron, path.join(appDir, 'dist-electron'))
 fs.copyFileSync(path.join(root, 'package.json'), path.join(appDir, 'package.json'))
+copyNodeModules(appDir)
 
 const unpackedElectron = path.join(resourcesDir, 'app.asar.unpacked', 'dist-electron')
 if (fs.existsSync(path.dirname(unpackedElectron))) {
