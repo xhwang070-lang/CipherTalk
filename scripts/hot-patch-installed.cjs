@@ -91,8 +91,8 @@ function copyNodeModules(appDir) {
   for (const name of HOT_PATCH_NODE_MODULES) {
     const from = path.join(root, 'node_modules', name)
     if (!fs.existsSync(from)) {
-      console.warn('skip missing node_modules/' + name)
-      continue
+      console.error('missing source node_modules/' + name)
+      process.exit(1)
     }
     const to = path.join(destRoot, name)
     console.log('copying node_modules/' + name)
@@ -161,6 +161,7 @@ copyDir(dist, path.join(appDir, 'dist'))
 copyDir(distElectron, path.join(appDir, 'dist-electron'))
 fs.copyFileSync(path.join(root, 'package.json'), path.join(appDir, 'package.json'))
 copyNodeModules(appDir)
+run(process.execPath, [path.join(root, 'scripts', 'verify-installed-runtime.cjs'), appDir])
 
 const unpackedElectron = path.join(resourcesDir, 'app.asar.unpacked', 'dist-electron')
 if (fs.existsSync(path.dirname(unpackedElectron))) {
