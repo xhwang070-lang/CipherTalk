@@ -29,6 +29,7 @@ import {
   stopLocalIntegrationServices,
   warmupAgentProcess
 } from './main/startup'
+import { scheduleTempCacheCleanup } from './services/tempCacheCleanup'
 
 type AppWithQuitFlag = typeof app & {
   isQuitting?: boolean
@@ -331,6 +332,7 @@ if (gotSingleInstanceLock) {
 
     // 启动时检测更新
     checkForUpdatesOnStartup(ctx)
+    scheduleTempCacheCleanup(ctx.getLogService() || undefined)
 
     // 后台预热 AI Agent 子进程，消除首次提问的冷启动等待
     warmupAgentProcess(ctx)

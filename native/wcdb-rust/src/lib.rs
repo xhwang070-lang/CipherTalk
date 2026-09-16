@@ -290,6 +290,7 @@ fn sqlite_open_ok(path: &std::path::Path) -> bool {
 }
 
 const CACHE_CAP_BYTES: u64 = 8 * 1024 * 1024 * 1024;
+const CACHE_MAX_AGE_SECS: u64 = 7 * 24 * 60 * 60;
 
 fn prune_cache(dir: &std::path::Path) {
     let mut files: Vec<(std::path::PathBuf, u64, std::time::SystemTime)> = std::fs::read_dir(dir)
@@ -306,6 +307,19 @@ fn prune_cache(dir: &std::path::Path) {
             Some((path, meta.len(), meta.modified().ok()?))
         })
         .collect();
+    let now = std::time::SystemTime::now();
+    let mut kept: Vec<(std::path::PathBuf, u64, std::time::SystemTime)> = Vec::new();
+    for (path, len, mtime) in files {
+        let old = now.duration_since(mtime).map(|d| d.as_secs() > CACHE_MAX_AGE_SECS).unwrap_or(false);
+        if old {
+            let _ = std::fs::remove_file(&path);
+            let _ = std::fs::remove_file(path.with_extension("sig"));
+            log_info(&format!("Expired wcdb cache {}", path.display()));
+            continue;
+        }
+        kept.push((path, len, mtime));
+    }
+    files = kept;
     let mut total: u64 = files.iter().map(|(_, len, _)| *len).sum();
     if total <= CACHE_CAP_BYTES {
         return;
