@@ -4,9 +4,10 @@ import * as ExcelJS from 'exceljs'
 import { ConfigService } from '../config'
 import { findAccountDir } from './accountUtils'
 import type { Message } from './types'
+import { extractOfficeBuffer } from './officeExtract'
 
 export const SPREADSHEET_EXTS = new Set(['xlsx', 'xlsm', 'xls', 'csv'])
-const PREVIEWABLE_EXTS = new Set(['xlsx', 'xlsm', 'csv'])
+const PREVIEWABLE_EXTS = new Set(['xlsx', 'xlsm', 'xls', 'csv', 'docx', 'doc', 'docm'])
 const MAX_FILE_BYTES = 40 * 1024 * 1024
 const MAX_SHEETS = 24
 const DEFAULT_MAX_ROWS = 80
@@ -14,7 +15,7 @@ const MAX_ROWS_HARD = 200
 const MAX_COLS = 24
 const MAX_CELL_CHARS = 120
 
-export type ChatFileKind = 'xlsx' | 'xls' | 'csv' | 'unsupported' | 'missing'
+export type ChatFileKind = 'xlsx' | 'xls' | 'csv' | 'docx' | 'doc' | 'unsupported' | 'missing'
 
 export interface ChatFileSheetPreview {
   name: string
@@ -33,6 +34,7 @@ export interface ChatFilePreviewResult {
   sizeBytes?: number
   sheetNames: string[]
   sheet?: ChatFileSheetPreview
+  text?: string
   error?: string
   hint?: string
 }
@@ -57,6 +59,8 @@ function kindOf(ext: string): ChatFileKind {
   if (ext === 'xlsx' || ext === 'xlsm') return 'xlsx'
   if (ext === 'xls') return 'xls'
   if (ext === 'csv') return 'csv'
+  if (ext === 'docx' || ext === 'docm') return 'docx'
+  if (ext === 'doc') return 'doc'
   return 'unsupported'
 }
 
@@ -303,17 +307,38 @@ export async function previewResolvedFile(input: {
     }
   }
 
-  if (kind === 'xls') {
+  if (kind === 'xls' || kind === 'docx' || kind === 'doc') {
+    const extracted = await extractOfficeBuffer(fs.readFileSync(filePath), fileName)
+    if (!extracted.ok) {
+      return {
+        success: false,
+        exists: true,
+        fileName,
+        filePath,
+        kind,
+        sizeBytes: stat.size,
+        sheetNames: extracted.sheetNames || [],
+        error: extracted.error || '读不出来',
+        hint: kind === 'xls' ? '如果还是打不开，把表格另存为 .xlsx 再发。' : '如果还是打不开，把 Word 另存为 .docx 再发。',
+      }
+    }
+    const first = extracted.sheets?.[0]
     return {
-      success: false,
+      success: true,
       exists: true,
       fileName,
       filePath,
       kind,
       sizeBytes: stat.size,
-      sheetNames: [],
-      error: '暂不读取老版 .xls（Excel 97-2003）',
-      hint: '可点“打开位置”用 Excel 查看。第一期只读 .xlsx。',
+      sheetNames: extracted.sheetNames || [],
+      sheet: first ? {
+        name: first.name,
+        rows: first.rows,
+        rowCount: first.rows.length,
+        colCount: first.rows.reduce((max, row) => Math.max(max, row.length), 0),
+        truncated: first.truncated,
+      } : undefined,
+      text: extracted.text,
     }
   }
 
@@ -327,7 +352,7 @@ export async function previewResolvedFile(input: {
       sizeBytes: stat.size,
       sheetNames: [],
       error: `暂不预览 .${ext || '未知'} 文件`,
-      hint: '第一期只读 Excel 表格（.xlsx）。PDF 和其它附件仍可打开所在文件夹。',
+      hint: '可读 Excel（含 .xls）和 Word（.doc/.docx）。PDF 走页面图。',
     }
   }
 

@@ -1,6 +1,6 @@
 {
   "name": "huaji",
-  "version": "2026.916.8",
+  "version": "2026.916.9",
   "description": "Huaji - Huabo local WeChat archive",
   "author": "Huabo",
   "license": "CC-BY-NC-SA-4.0",
@@ -80,6 +80,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "codepage": "^1.15.0",
     "echarts": "^6.1.0",
     "electron-updater": "^6.3.9",
     "exceljs": "^4.4.0",
@@ -102,6 +103,8 @@
     "undici": "^8.4.0",
     "use-stick-to-bottom": "^1.1.4",
     "virtua": "^0.49.1",
+    "word-extractor": "^1.0.4",
+    "xlsx": "^0.18.5",
     "zod": "^4.1.12"
   },
   "devDependencies": {
@@ -313,4 +316,3 @@
     "forceCodeSigning": false
   }
 }
-

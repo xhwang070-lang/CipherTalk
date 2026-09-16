@@ -33,6 +33,7 @@ import type { PersonaTtsVoiceBinding } from '../agent/persona/personaTypes'
 import { isHuajiChatSummaryPath } from '../agent/tools/chatSummaryPath'
 import type { AgentUploadedMediaContext } from '../agent/types'
 import { extractJpegPagesFromPdf, parseDataUrlBuffer } from '../agent/pdfPageImages'
+import { extractOfficeBuffer, isOfficeFileName, officeMediaTypeFromName, officeResultForModel } from '../chat/officeExtract'
 import { resolveWechatPeerName, wechatBotConversationTitle, writeWechatBotRunLog } from '../agent/wechatBotArchive'
 import { getLastPrivatePeriodProgress, type RosterPeriodProgress } from '../agent/tools/readPrivatePeriod'
 
@@ -368,6 +369,7 @@ function guessMediaTypeFromFilename(filename: string): string {
   if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'text/markdown'
   if (lower.endsWith('.json')) return 'application/json'
   if (lower.endsWith('.csv')) return 'text/csv'
+  if (isOfficeFileName(lower)) return officeMediaTypeFromName(lower)
   return 'application/octet-stream'
 }
 
@@ -403,7 +405,12 @@ function isAgentReadableMediaType(mediaType: string): boolean {
   return normalized.startsWith('image/') ||
     normalized.startsWith('text/') ||
     normalized === 'application/pdf' ||
-    normalized === 'application/json'
+    normalized === 'application/json' ||
+    normalized === 'application/msword' ||
+    normalized === 'application/vnd.ms-excel' ||
+    normalized.includes('officedocument.wordprocessingml') ||
+    normalized.includes('officedocument.spreadsheetml') ||
+    normalized.includes('ms-excel.sheet')
 }
 
 function isImageFilePart(part: FileUIPart): boolean {
@@ -441,6 +448,10 @@ function isSpreadsheetName(name: string): boolean {
   return /\.(xlsx|xls|xlsm|csv)$/i.test(name)
 }
 
+function isWordName(name: string): boolean {
+  return /\.(docx?|docm)$/i.test(name)
+}
+
 function isPdfName(name: string, mediaType = ''): boolean {
   return /\.pdf$/i.test(name) || String(mediaType).toLowerCase().includes('pdf')
 }
@@ -451,12 +462,15 @@ function buildAttachmentAsk(incoming: PreparedWechatIncomingMessage): string {
   const files = incoming.fileParts || []
   const imageOnly = files.length > 0
     && files.every(isImageFilePart)
-    && names.every((name) => !isPdfName(name) && !isSpreadsheetName(name))
+    && names.every((name) => !isPdfName(name) && !isSpreadsheetName(name) && !isWordName(name))
   if (imageOnly) {
     return '收到这张图了。你想让我做什么？比如：改字、改日期、读表格、描述画面。直接回一句就行。'
   }
   if (names.some(isSpreadsheetName)) {
     return `收到表格${joined}了。你想让我做什么？比如：读价格、汇总、找某个规格。直接回一句就行。`
+  }
+  if (names.some(isWordName)) {
+    return `收到 Word${joined}了。你想让我做什么？比如：概括合同、提取金额和日期、核对条款。直接回一句就行。`
   }
   if (names.some((name) => isPdfName(name)) || files.some((part) => isPdfName(String(part.filename || ''), String(part.mediaType || '')))) {
     return `收到文件${joined}了。你想让我做什么？比如：概括合同、提取金额和日期、核对条款。直接回一句就行。`
@@ -664,6 +678,38 @@ function replacePdfFilePartsWithPageImages(messages: UIMessage[] = []): UIMessag
     }
     return changed ? { ...message, parts: next } : message
   })
+}
+
+
+async function replaceOfficeFilePartsWithText(messages: UIMessage[] = []): Promise<UIMessage[]> {
+  const next: UIMessage[] = []
+  for (const message of messages) {
+    const parts = Array.isArray(message.parts) ? message.parts : []
+    let changed = false
+    const out: typeof parts = []
+    for (const part of parts) {
+      const file = part as FileUIPart
+      if (!part || part.type !== 'file' || !isOfficeFileName(String(file.filename || ''))) {
+        out.push(part)
+        continue
+      }
+      changed = true
+      const name = String(file.filename || '文件')
+      const parsed = parseDataUrlBuffer(String(file.url || ''))
+      if (!parsed) {
+        out.push({ type: 'text', text: `用户发来「${name}」，但文件内容空了。不要编造。` })
+        continue
+      }
+      const extracted = await extractOfficeBuffer(parsed.buffer, name)
+      out.push({ type: 'text', text: officeResultForModel(name, extracted) })
+    }
+    next.push(changed ? { ...message, parts: out } : message)
+  }
+  return next
+}
+
+async function prepareWechatUiMessages(messages: UIMessage[] = []): Promise<UIMessage[]> {
+  return replaceOfficeFilePartsWithText(replacePdfFilePartsWithPageImages(messages))
 }
 
 function stripImageFilePartsForModel(messages: UIMessage[] = []): UIMessage[] {
@@ -1409,18 +1455,23 @@ class WeixinBotService {
       const buffer = decodeIncomingMediaBuffer(rawBuffer, attachment)
       const detectedMediaType = detectMediaTypeFromBuffer(buffer)
       const headerMediaType = normalizeMediaType(response.headers.get('content-type') || '')
-      const mediaType = normalizeMediaType(detectedMediaType || (headerMediaType !== 'application/octet-stream' ? headerMediaType : attachment.mediaType))
+      const officeName = isOfficeFileName(String(attachment.filename || ''))
+      const mediaType = normalizeMediaType(
+        officeName
+          ? (attachment.mediaType || officeMediaTypeFromName(String(attachment.filename || '')))
+          : (detectedMediaType || (headerMediaType !== 'application/octet-stream' ? headerMediaType : attachment.mediaType)),
+      )
       const expectedMediaType = normalizeMediaType(attachment.mediaType)
-      if ((expectedMediaType.startsWith('image/') || attachment.kind === 'image') && !detectedMediaType?.startsWith('image/')) {
+      if (!officeName && (expectedMediaType.startsWith('image/') || attachment.kind === 'image') && !detectedMediaType?.startsWith('image/')) {
         throw new Error('图片解密失败或格式不支持')
       }
-      if ((expectedMediaType === 'application/pdf' || headerMediaType === 'application/pdf') && detectedMediaType !== 'application/pdf') {
+      if (!officeName && (expectedMediaType === 'application/pdf' || headerMediaType === 'application/pdf') && detectedMediaType !== 'application/pdf') {
         throw new Error('PDF 解密失败或格式不支持')
       }
-      if ((expectedMediaType.startsWith('text/') || expectedMediaType === 'application/json') && !looksMostlyText(buffer)) {
+      if (!officeName && (expectedMediaType.startsWith('text/') || expectedMediaType === 'application/json') && !looksMostlyText(buffer)) {
         throw new Error('文本文件解码失败')
       }
-      if (!isAgentReadableMediaType(mediaType)) {
+      if (!isAgentReadableMediaType(mediaType) && !officeName) {
         throw new Error(`不支持 ${mediaType}`)
       }
 
@@ -2582,7 +2633,7 @@ class WeixinBotService {
       toolProfile: 'chat',
       queryText: lastUserTextFromUiMessages(uiMessages),
     })
-    const preparedUiMessages = replacePdfFilePartsWithPageImages(uiMessages)
+    const preparedUiMessages = await prepareWechatUiMessages(uiMessages)
     const uploadedMediaContext = extractUploadedMediaFromUiMessages(preparedUiMessages)
     const messages = await convertToModelMessages(stripImageFilePartsForModel(preparedUiMessages))
     let reply = ''
@@ -2697,7 +2748,7 @@ class WeixinBotService {
     } catch {
       // 无笔记照常聊
     }
-    const messages = await convertToModelMessages(stripImageFilePartsForModel(replacePdfFilePartsWithPageImages(uiMessages)))
+    const messages = await convertToModelMessages(stripImageFilePartsForModel(await prepareWechatUiMessages(uiMessages)))
     const textBubbles: string[] = []
     const textBlocks: string[] = []
     const textBlockIndexes = new Map<string, number>()

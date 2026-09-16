@@ -1,6 +1,6 @@
 /**
  * inspect_chat_file —— 读取微信聊天文件消息对应的本地 Excel 单元格。
- * 不是看图，也不是让模型猜表格：打开 msg/file 里已下载的 .xlsx，按工作表返回格子原文。
+ * 不是看图，也不是让模型猜表格：打开 msg/file 里已下载的 Excel/Word，返回格子或正文原文。
  */
 import { tool } from 'ai'
 import { z } from 'zod'
@@ -23,7 +23,7 @@ export const inspectChatFile = tool({
     '读取微信聊天记录里已下载到本地的 Excel 表格内容。打开的是单元格原文，不是 AI 识别，不要编造表里没有的数字。' +
     '优先：search_messages 找到文件消息后，把 sessionId 和 localId 原样传入。' +
     '如果只有文件名，也可以只传 fileName。多工作表时先看返回的 sheetNames，再带 sheetName 分次读取。' +
-    '只支持 .xlsx/.xlsm/.csv；老版 .xls 和未在微信里下载的文件会明确报错。PDF 第一期不读。',
+    '支持 .xlsx/.xlsm/.xls/.csv 读格子，也支持 .doc/.docx 读正文。未在微信里下载的文件会明确报错。PDF 请用聊天里发文件给助手。',
   inputSchema: z.object({
     sessionId: z.string().optional().describe('会话 username（search_messages 命中的 sessionId / anchor.sessionId）'),
     localId: z.coerce.number().optional().describe('文件消息 localId（命中消息或 anchor.localId）'),
@@ -66,6 +66,7 @@ export const inspectChatFile = tool({
       const extraHint = preview.sheetNames.length > 1 && !sheetName
         ? `这个工作簿有多个表：${preview.sheetNames.join('、')}。当前只返回了第一张。要看其他表请再调用并传入 sheetName。`
         : undefined
+      const isWord = preview.kind === 'docx' || preview.kind === 'doc'
       return {
         sessionId: sessionId || undefined,
         localId: localId || undefined,
@@ -74,10 +75,13 @@ export const inspectChatFile = tool({
         kind: preview.kind,
         sheetNames: preview.sheetNames,
         sheet: preview.sheet,
+        text: preview.text,
         truncated: preview.sheet?.truncated || false,
         error: preview.error,
         hint: preview.hint || extraHint,
-        note: preview.success ? '下列数字来自 Excel 单元格，不是模型识别。' : undefined,
+        note: preview.success
+          ? (isWord ? '下列文字来自 Word 正文，不是模型识别。' : '下列数字来自 Excel 单元格，不是模型识别。')
+          : undefined,
       }
     } catch (error) {
       return { error: describeToolError(error, 'inspect_chat_file 执行失败') }

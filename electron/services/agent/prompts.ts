@@ -60,7 +60,7 @@ const TOOL_PROMPT = `
 - search_media：检索本地聊天记录里的历史图片/表情包，按会话、时间、方向、类型和前文语境筛选；query 存在且图片向量化已开启时，只搜索已经建立好的历史图片向量，不会现场向量化历史图片。结果里的 mediaId 可交给 inspect_media_image 看图，或交给 send_media_from_history 展示/回复。
 - search_similar_media：用本轮用户上传的图片做以图找图，只从已经建立好的聊天记录/朋友圈历史图片向量里找相似媒体，不会现场向量化历史图片。用户说“这张图以前发过吗 / 找类似这张的 / 历史里有没有这张”时用它；uploadedImageId 默认 upload-1。
 - inspect_media_image：把 search_media / search_moment_media 返回的 mediaId 自动下载、解密并喂给当前 Agent 模型识别图片。用于"这张图是什么/朋友圈第一张图是什么/聊天记录上一张图里有什么"。如果模型不支持图像输入，会返回明确错误；不要假装看过。
-- inspect_chat_file：读取聊天里已下载到本地的 Excel（.xlsx）单元格原文。不是看图，也不是猜表。先 search_messages 找到文件消息，再把 sessionId + localId 传入。未下载、.xls、PDF 会明确报错，不要编造数字。
+- inspect_chat_file：读取聊天里已下载到本地的 Excel（.xlsx）单元格原文。不是看图，也不是猜表。先 search_messages 找到文件消息，再把 sessionId + localId 传入。未下载会明确报错。老版 .xls 和 Word 也可以读。PDF 扫描件请走发文件给助手。不要编造数字。
 - send_media_from_history：把 search_media / search_moment_media 选中的历史图片/表情包作为当前回复图片展示或回复附件。只在用户明确要看/发/抽取历史图片或表情包时用；发出后不要输出路径。
 - send_random_image：从本地聊天记录里随机抽一张历史图片作为当前回复图片。仅当用户明确要求"随机发张图/抽张图/来张老照片"这类玩法时使用，回答时提一下来源（谁/何时）。
 - query_sql：【兜底·只读·最后手段】仅当上面结构化工具都答不了时才用；调用前必须说明哪个结构化工具试过、为什么不够；能用结构化工具回答的一律不准写 SQL。
@@ -99,7 +99,7 @@ const ROUTING_PROMPT = `
 - 人名/群名解析 → list_contacts；列群 / 群成员 / 群内发言排行 → list_groups / group_members / group_member_ranking
 - 朋友圈内容查询 → search_moments；朋友圈数量/趋势/占比/点赞评论排行 → moments_stats
 - 朋友圈/聊天记录图片内容识别 → 先 list_contacts（如涉及某人）→ search_moment_media 或 search_media 拿 mediaId → inspect_media_image 看图后回答；不要在未调用 inspect_media_image 时猜图片内容。
-- 聊天里的 Excel/报价表 → list_contacts 限定群 → search_messages 找到文件消息 → inspect_chat_file({sessionId, localId}) 读单元格。命中带 fileName/isFile 时优先用这条，不要改去 find_files。多工作表先看 sheetNames，再带 sheetName 分次读。数字必须来自工具返回的格子，禁止目测或编造。找不到 localId 时可以只传 fileName。
+- 聊天里的 Excel/报价表/Word 合同 → list_contacts 限定群 → search_messages 找到文件消息 → inspect_chat_file({sessionId, localId}) 读单元格或正文。命中带 fileName/isFile 时优先用这条，不要改去 find_files。多工作表先看 sheetNames，再带 sheetName 分次读。数字必须来自工具返回的格子，禁止目测或编造。找不到 localId 时可以只传 fileName。
 - 文字找历史图片 → list_contacts（如涉及某人）→ search_media({query, sessionId})；只查已有图片向量，命中后需要描述内容再 inspect_media_image。
 - 以图找图/找相似图/这张图以前发过吗 → search_similar_media({uploadedImageId:"upload-1", source:"all"})；只查已有图片向量，如果涉及某人/某朋友圈，先 list_contacts 再填 sessionId 或 usernames。
 - 用户要求"给我看看/发出来/把那张图发出来" → search_moment_media 或 search_media 拿 mediaId → send_media_from_history 展示/回复；这和 inspect_media_image 不同，后者只看图不发送附件。
