@@ -9,8 +9,11 @@
 
 ## [未发布]
 
-### 暂缓
-- 文件格式转换先不做。以后用 anydoc 做读文件层（Office/PDF→本地 Markdown），再用 exceljs/docx 写出；禁止 Firecrawl 云 OCR。
+## [2026.917.6] - 2026-09-17
+
+### 新增
+- 微信里可以把当前这份 Excel / Word / CSV / 图片转成另一种格式，转完发回文件。本机转，不走云 OCR。
+- 说法：先发文件，再回「转成 Excel / Word / PDF / CSV」。图片只能转 PDF；中文表格请转 Word 或 Excel。扫描件 PDF 不能变成表格。
 
 ## [2026.917.5] - 2026-09-17
 

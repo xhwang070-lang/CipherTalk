@@ -41,6 +41,7 @@ import { createCodeWorkspaceTools } from './codeWorkspace'
 import { exportChat } from './exportChat'
 import { createAgentCapabilityTools } from './capabilities'
 import { inspectChatFile } from './inspectChatFile'
+import { convertChatFile } from './convertChatFile'
 import { createAddTodo, createListTodos, createCompleteTodo, createRemoveTodo, createExtractChatTodos } from './todos'
 
 /** 基础读/查工具（不含 delegate_analysis），主 Agent 与子 Agent 共用。 */
@@ -65,6 +66,7 @@ export function buildBaseTools(_scope: AgentScope): ToolSet {
     search_moment_media: searchMomentMedia,
     search_media: searchMedia,
     inspect_chat_file: inspectChatFile,
+    convert_chat_file: convertChatFile,
     send_media_from_history: sendMediaFromHistory,
     send_random_image: sendRandomImage,
     query_sql: querySql,
@@ -93,6 +95,7 @@ export function buildSubAgentTools(_scope: AgentScope): ToolSet {
     moments_stats: momentsStats,
     search_moment_media: searchMomentMedia,
     inspect_chat_file: inspectChatFile,
+    convert_chat_file: convertChatFile,
     query_sql: querySql,
   }
 }

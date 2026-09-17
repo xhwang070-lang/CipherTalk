@@ -61,6 +61,7 @@ const TOOL_PROMPT = `
 - search_similar_media：用本轮用户上传的图片做以图找图，只从已经建立好的聊天记录/朋友圈历史图片向量里找相似媒体，不会现场向量化历史图片。用户说“这张图以前发过吗 / 找类似这张的 / 历史里有没有这张”时用它；uploadedImageId 默认 upload-1。
 - inspect_media_image：把 search_media / search_moment_media 返回的 mediaId 自动下载、解密并喂给当前 Agent 模型识别图片。用于"这张图是什么/朋友圈第一张图是什么/聊天记录上一张图里有什么"。如果模型不支持图像输入，会返回明确错误；不要假装看过。
 - inspect_chat_file：读取聊天里已下载到本地的 Excel（.xlsx）单元格原文。不是看图，也不是猜表。先 search_messages 找到文件消息，再把 sessionId + localId 传入。未下载会明确报错。老版 .xls 和 Word 也可以读。PDF 扫描件请走发文件给助手。不要编造数字。
+- convert_chat_file：把聊天里的 Excel / Word / CSV / 图片在本机转成另一种格式。用户说「转成 Excel / Word / PDF / CSV」时用。图片只能转 PDF；中文表格请转 Word 或 Excel。不要走云 OCR。转好后微信里用 send_wechat_file 发回。
 - send_media_from_history：把 search_media / search_moment_media 选中的历史图片/表情包作为当前回复图片展示或回复附件。只在用户明确要看/发/抽取历史图片或表情包时用；发出后不要输出路径。
 - send_random_image：从本地聊天记录里随机抽一张历史图片作为当前回复图片。仅当用户明确要求"随机发张图/抽张图/来张老照片"这类玩法时使用，回答时提一下来源（谁/何时）。
 - query_sql：【兜底·只读·最后手段】仅当上面结构化工具都答不了时才用；调用前必须说明哪个结构化工具试过、为什么不够；能用结构化工具回答的一律不准写 SQL。
@@ -100,6 +101,7 @@ const ROUTING_PROMPT = `
 - 朋友圈内容查询 → search_moments；朋友圈数量/趋势/占比/点赞评论排行 → moments_stats
 - 朋友圈/聊天记录图片内容识别 → 先 list_contacts（如涉及某人）→ search_moment_media 或 search_media 拿 mediaId → inspect_media_image 看图后回答；不要在未调用 inspect_media_image 时猜图片内容。
 - 聊天里的 Excel/报价表/Word 合同 → list_contacts 限定群 → search_messages 找到文件消息 → inspect_chat_file({sessionId, localId}) 读单元格或正文。命中带 fileName/isFile 时优先用这条，不要改去 find_files。多工作表先看 sheetNames，再带 sheetName 分次读。数字必须来自工具返回的格子，禁止目测或编造。找不到 localId 时可以只传 fileName。合同/进仓单/材质书固定提取名称、合同号、金额、货期、材质、双方，看不清写待核。图纸、扫描件按图读，不要装成 Excel。
+- 把聊天文件转成 Excel / Word / PDF / CSV → convert_chat_file({sessionId, localId, target})，转好后微信里 send_wechat_file。图片只能转 PDF；中文表格请转 Word 或 Excel。扫描件 PDF 不能变成表格。
 - 文字找历史图片 → list_contacts（如涉及某人）→ search_media({query, sessionId})；只查已有图片向量，命中后需要描述内容再 inspect_media_image。
 - 以图找图/找相似图/这张图以前发过吗 → search_similar_media({uploadedImageId:"upload-1", source:"all"})；只查已有图片向量，如果涉及某人/某朋友圈，先 list_contacts 再填 sessionId 或 usernames。
 - 用户要求"给我看看/发出来/把那张图发出来" → search_moment_media 或 search_media 拿 mediaId → send_media_from_history 展示/回复；这和 inspect_media_image 不同，后者只看图不发送附件。
@@ -164,6 +166,7 @@ const WECHAT_OUTBOUND_PROMPT = `
 - 现在是微信官方机器人入口：你只能回复当前触发机器人的这个会话，绝对不能给其它联系人、群或任意 toUserId 主动发消息。
 - 用户本轮如果发了图片或文件，已经随消息传给你。只发附件、没说干什么：先问要做什么，并给出口语例子（图：改字/改日期/读表；合同 PDF：概括要点/提取金额日期；表格：读价格/找规格），不要立刻作图、概括或长篇描述。下一句说了改哪里，再用 generate_image({mediaId:"upload-1", prompt:"修改要求"})。图/文件和指令在同一条里就直接做。表格要读出行列原文，不要说“看不到图”。需要认图时才 inspect_media_image({mediaId:"upload-1"})。
 - 用户要去掉 PDF 密码：打开密码为空、只限制编辑/打印的，本地可以直接去掉并发回无密码文件，不要去聊天记录里找旧文件，也不要说做不到。真正的打开密码没有密码就解不了，不能猜、不能爆破，更不要翻旧聊天充数。
+- 用户要把当前这份文件转成 Excel / Word / PDF / CSV：用 convert_chat_file，本机转完再用 send_wechat_file 发回去。图片只能转 PDF；中文表格不要转 PDF。扫描件 PDF 不能变成表格。上一份已经处理完，下一份是新的。
 - 当前模型如果返回不能看图，就如实说明，并让用户在设置里填看图模型（Gemini/Grok/GPT），或把 Excel 原文件发来用 inspect_chat_file 读格子。不要用 DeepSeek 文本模型硬看图再撒谎。
 - 合同/进仓单/材质书：提取名称、合同号、金额、货期、材质、双方；看不清写待核。图纸、扫描件按图读，不要装成 Excel。
 - 用户说「把我和某某/某群今天的待办记下来」：必须 extract_chat_todos，只看那一场，禁止 search_messages 扫全库。

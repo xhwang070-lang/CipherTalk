@@ -35,6 +35,7 @@ import type { AgentUploadedMediaContext } from '../agent/types'
 import { extractJpegPagesFromPdf, parseDataUrlBuffer } from '../agent/pdfPageImages'
 import { isPdfEncrypted, unlockPdfBuffer, writeUnlockedPdfFile } from '../agent/pdfUnlock'
 import { extractOfficeBuffer, isOfficeFileName, officeMediaTypeFromName, officeResultForModel } from '../chat/officeExtract'
+import { convertFileBuffer, looksLikeConvertCommand, parseConvertTarget } from '../chat/fileConvert'
 import { resolveWechatPeerName, wechatBotConversationTitle, writeWechatBotRunLog } from '../agent/wechatBotArchive'
 import { getLastPrivatePeriodProgress, type RosterPeriodProgress } from '../agent/tools/readPrivatePeriod'
 import { buildRosterCloserInstruction, stripRosterInternals } from '../agent/rosterPageFlush'
@@ -72,6 +73,7 @@ function wechatToolLabel(name?: string): string {
     get_context: '\u804a\u5929\u4e0a\u4e0b\u6587',
     get_timeline: '\u804a\u5929\u8bb0\u5f55',
     inspect_chat_file: '\u804a\u5929\u6587\u4ef6',
+    convert_chat_file: '\u6587\u4ef6\u4e92\u8f6c',
     unlock_pdf: '\u89e3\u5bc6 PDF',
     inspect_media_image: '\u56fe\u7247',
     generate_image: '\u4f5c\u56fe',
@@ -528,13 +530,13 @@ function buildAttachmentAsk(incoming: PreparedWechatIncomingMessage): string {
     if (files.length > 1) {
       return '收到 ' + files.length + ' 张图了。你想让我做什么？比如：都看一下、只看最后一张、读表格、改日期。直接回一句就行。'
     }
-    return '收到这张图了。你想让我做什么？比如：改字、改日期、读表格、描述画面。直接回一句就行。'
+    return '收到这张图了。你想让我做什么？比如：改字、改日期、读表格、转成 PDF。直接回一句就行。'
   }
   if (names.some(isSpreadsheetName)) {
-    return `收到表格${joined}了。你想让我做什么？比如：读价格、汇总、找某个规格。直接回一句就行。`
+    return `收到表格${joined}了。你想让我做什么？比如：读价格、汇总、转成 Word / CSV。直接回一句就行。`
   }
   if (names.some(isWordName)) {
-    return `收到 Word${joined}了。你想让我做什么？比如：概括合同、提取金额和日期、核对条款。直接回一句就行。`
+    return `收到 Word${joined}了。你想让我做什么？比如：概括合同、提取金额和日期、转成 Excel。直接回一句就行。`
   }
   if (names.some((name) => isPdfName(name)) || files.some((part) => isPdfName(String(part.filename || ''), String(part.mediaType || '')))) {
     return `收到文件${joined}了。你想让我做什么？比如：概括合同、提取金额和日期、核对条款。直接回一句就行。`
@@ -813,6 +815,24 @@ function looksLikePdfUnlockCommand(text: string): boolean {
   const value = String(text || '').trim()
   if (!value) return false
   return /解密|解除密码|去掉密码|去掉加密|解锁|remove password|unprotect/i.test(value)
+}
+
+function lastHistoryConvertSource(messages: UIMessage[] = []): { buffer: Buffer; filename: string; mediaType: string } | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const files = userFileParts(messages[i])
+    for (let j = files.length - 1; j >= 0; j -= 1) {
+      const file = files[j]
+      const filename = String(file.filename || 'file')
+      const mediaType = String(file.mediaType || '')
+      const parsed = parseDataUrlBuffer(file.url)
+      if (!parsed?.buffer?.length) continue
+      const isImage = mediaType.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(filename)
+      const isOffice = isSpreadsheetName(filename) || isWordName(filename) || /\.(csv)$/i.test(filename)
+      if (!isImage && !isOffice) continue
+      return { buffer: parsed.buffer, filename, mediaType: parsed.mediaType || mediaType }
+    }
+  }
+  return null
 }
 
 function lastHistoryPdf(messages: UIMessage[] = []): { buffer: Buffer; filename: string } | null {
@@ -1289,7 +1309,7 @@ const WECHAT_HELP_TEXT = [
   '',
   '1. 发文件（合同 PDF、Word、Excel、图）',
   '先等我问「要做什么」，你回一句就行。',
-  '比如：概括合同 / 提取金额和日期 / 读价格 / 改字',
+  '比如：概括合同 / 读价格 / 改字 / 转成 Excel 或 Word',
   '',
   '2. 翻聊天',
   '「总结我和某某近一周」',
@@ -1835,6 +1855,7 @@ class WeixinBotService {
           || isBareSummarizeCommand(incoming.plainText)
           || looksLikeImageEditCommand(incoming.plainText)
           || looksLikePdfUnlockCommand(incoming.plainText)
+          || looksLikeConvertCommand(incoming.plainText)
         if (previousFiles.length > 0 && followUpOnAsk) {
           parts.push(...previousFiles)
           if (lastCompletedAssistantIndex(prior) >= 0) {
@@ -1927,6 +1948,82 @@ class WeixinBotService {
           this.logger?.warn('WechatBot', '已发送无密码 PDF', { from, filePath })
           return
         }
+      }
+      if (incoming.plainText.trim() && looksLikeConvertCommand(incoming.plainText)) {
+        const target = parseConvertTarget(incoming.plainText)
+        const source = lastHistoryConvertSource(history)
+        lastTool = 'convert_chat_file'
+        if (!usedTools.includes('convert_chat_file')) usedTools.push('convert_chat_file')
+        const live = this.session
+        if (!target) {
+          const fail = '不知道要转成什么。可以说转成 Excel、Word、PDF 或 CSV。'
+          if (live) await sendText(live, from, fail, contextToken)
+          writeWechatBotRunLog({
+            from,
+            peerName,
+            question: incoming.logText,
+            tools: usedTools,
+            ok: false,
+            result: fail,
+            durationMs: Date.now() - startedAt,
+          })
+          return
+        }
+        if (!source) {
+          const fail = '先发 Excel、Word 或图片，再说转成什么。'
+          if (live) await sendText(live, from, fail, contextToken)
+          writeWechatBotRunLog({
+            from,
+            peerName,
+            question: incoming.logText,
+            tools: usedTools,
+            ok: false,
+            result: fail,
+            durationMs: Date.now() - startedAt,
+          })
+          this.logger?.warn('WechatBot', '互转没有源文件', { from, target })
+          return
+        }
+        const converted = await convertFileBuffer({
+          buffer: source.buffer,
+          filename: source.filename,
+          mediaType: source.mediaType,
+          target,
+        })
+        if (!converted.ok || !converted.filePath) {
+          const fail = converted.error || '转不了这份文件'
+          if (live) await sendText(live, from, fail, contextToken)
+          writeWechatBotRunLog({
+            from,
+            peerName,
+            question: incoming.logText,
+            tools: usedTools,
+            ok: false,
+            result: fail,
+            durationMs: Date.now() - startedAt,
+          })
+          this.logger?.warn('WechatBot', '文件互转失败', { from, target, error: converted.error })
+          return
+        }
+        const done = `转好了，${converted.fileName || '文件'}。`
+        if (live) await sendText(live, from, done, contextToken)
+        await this.sendReplyMedia(from, [{ kind: 'file', source: 'tool', filePath: converted.filePath }], contextToken)
+        agentConversationStore.append(conv.id, [{
+          id: `wx-a-convert-${Date.now()}`,
+          role: 'assistant',
+          parts: [{ type: 'text', text: done }],
+        }])
+        writeWechatBotRunLog({
+          from,
+          peerName,
+          question: incoming.logText,
+          tools: usedTools,
+          ok: true,
+          result: done,
+          durationMs: Date.now() - startedAt,
+        })
+        this.logger?.warn('WechatBot', '已发送转换文件', { from, filePath: converted.filePath, target })
+        return
       }
       const editSource = lastHistoryImage(history)
       if (incoming.plainText.trim() && incoming.fileParts.length === 0 && looksLikeImageEditCommand(incoming.plainText) && editSource) {

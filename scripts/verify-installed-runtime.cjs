@@ -7,7 +7,7 @@ const path = require('path')
 
 const root = path.join(__dirname, '..')
 const filesDir = 'C:\\Users\\Administrator\\Documents\\xwechat_files\\wxid_zo70e3jy8qd412_7f92\\msg\\file'
-const MUST_RESOLVE = ['xlsx', 'word-extractor', 'exceljs', 'jszip', 'qrcode', 'codepage']
+const MUST_RESOLVE = ['xlsx', 'word-extractor', 'exceljs', 'jszip', 'qrcode', 'codepage', 'docx', 'pdf-lib']
 
 function firstFile(dir, ext) {
   if (!fs.existsSync(dir)) return null
@@ -100,6 +100,19 @@ async function main() {
 
   latexSelfCheck()
   console.log('latex ok')
+
+  const { Document, Packer, Paragraph, TextRun } = require(require.resolve('docx', { paths: [appDir] }))
+  const { PDFDocument } = require(require.resolve('pdf-lib', { paths: [appDir] }))
+  const doc = new Document({ sections: [{ children: [new Paragraph({ children: [new TextRun('huaji')] })] }] })
+  const docBuf = await Packer.toBuffer(doc)
+  if (!docBuf || docBuf.length < 100) throw new Error('docx pack empty')
+  console.log('docx write ok', docBuf.length)
+  const pdf = await PDFDocument.create()
+  pdf.addPage([200, 200])
+  const pdfBuf = await pdf.save()
+  if (!pdfBuf || pdfBuf.length < 100) throw new Error('pdf-lib save empty')
+  console.log('pdf-lib write ok', pdfBuf.length)
+
   console.log('verify-installed-runtime ok')
 }
 

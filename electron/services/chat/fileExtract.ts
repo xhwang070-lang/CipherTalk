@@ -397,21 +397,23 @@ export async function previewResolvedFile(input: {
   }
 }
 
-export async function previewChatFile(input: PreviewChatFileInput & { message?: Message }): Promise<ChatFilePreviewResult> {
+export async function locateOrDownloadChatFile(input: PreviewChatFileInput & { message?: Message }): Promise<{
+  filePath?: string
+  fileName: string
+  error?: string
+  hint?: string
+}> {
   const fileName = String(input.fileName || input.message?.fileName || '').trim()
-  const fileExt = input.fileExt || input.message?.fileExt
   const createTime = Number(input.createTime || input.message?.createTime || 0) || undefined
-  const kind = kindOf(extOf(fileName, fileExt))
   if (!fileName) {
-    return missingResult('', 'unsupported', '这条消息没有文件名', '请选一条文件消息。')
+    return { fileName: '', error: '这条消息没有文件名', hint: '请选一条文件消息。' }
   }
-
   const config = new ConfigService()
   try {
     const dbPath = String(config.get('dbPath') || '').trim()
     const wxid = String(config.get('myWxid') || '').trim()
     if (!dbPath || !wxid) {
-      return missingResult(fileName, kind, '还没有配置微信数据目录或账号')
+      return { fileName, error: '还没有配置微信数据目录或账号' }
     }
     let filePath = resolveChatFilePath({ dbPath, wxid, fileName, createTime })
     if (!filePath) {
@@ -421,22 +423,32 @@ export async function previewChatFile(input: PreviewChatFileInput & { message?: 
       filePath = await downloadWechatCdnAttach(info, cacheDir)
     }
     if (!filePath) {
-      return missingResult(
+      return {
         fileName,
-        kind,
-        '本地没有这个文件，也没有可下载的地址',
-        '会先尝试自己下载。若还是没有，请先在微信里点开一次这个文件。',
-      )
+        error: '本地没有这个文件，也没有可下载的地址',
+        hint: '会先尝试自己下载。若还是没有，请先在微信里点开一次这个文件。',
+      }
     }
-    return previewResolvedFile({
-      filePath,
-      fileName,
-      sheetName: input.sheetName,
-      maxRows: input.maxRows,
-    })
+    return { filePath, fileName }
   } finally {
     config.close()
   }
+}
+
+export async function previewChatFile(input: PreviewChatFileInput & { message?: Message }): Promise<ChatFilePreviewResult> {
+  const fileName = String(input.fileName || input.message?.fileName || '').trim()
+  const fileExt = input.fileExt || input.message?.fileExt
+  const kind = kindOf(extOf(fileName, fileExt))
+  const located = await locateOrDownloadChatFile(input)
+  if (!located.filePath) {
+    return missingResult(fileName, kind, located.error, located.hint)
+  }
+  return previewResolvedFile({
+    filePath: located.filePath,
+    fileName: located.fileName || fileName,
+    sheetName: input.sheetName,
+    maxRows: input.maxRows,
+  })
 }
 
 export function isSpreadsheetFileName(fileName?: string, fileExt?: string): boolean {

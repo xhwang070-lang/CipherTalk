@@ -83,6 +83,9 @@ function copyDir(from, to) {
 const HOT_PATCH_NODE_MODULES = [
   'xlsx', 'adler-32', 'cfb', 'codepage', 'crc-32', 'ssf', 'wmf', 'word',
   'word-extractor', 'saxes', 'xmlchars', 'yauzl', 'fd-slicer', 'pend', 'buffer-crc32',
+  'docx', 'hash.js', 'xml', 'xml-js', 'sax',
+  'pdf-lib', '@pdf-lib/standard-fonts', '@pdf-lib/upng',
+  'pako', 'tslib', 'minimalistic-assert',
 ]
 
 function copyNodeModules(appDir) {
