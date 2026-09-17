@@ -31,6 +31,10 @@ export interface ImageGenResult {
   filePath?: string
   mimeType?: string
   error?: string
+  width?: number
+  height?: number
+  sourceWidth?: number
+  sourceHeight?: number
 }
 
 const DEFAULT_IMAGE_GEN_TIMEOUT_MS = 3_600_000
@@ -267,7 +271,7 @@ async function generateViaAiSdk(prompt: string, cfg: ImageGenConfig, size?: stri
           },
         }
       : {}),
-    maxRetries: 1,
+    maxRetries: 0,
     abortSignal: signal,
   })
 
@@ -283,7 +287,20 @@ async function generateViaAiSdk(prompt: string, cfg: ImageGenConfig, size?: stri
       mimeType = fitted.mimeType
     }
   }
-  return { success: true, filePath: saveImageBuffer(bytes, mimeType), mimeType }
+  const out = readImageSize(bytes)
+  const src = sourceImage ? readImageSize(sourceImage.data) : null
+  if (sourceImage) {
+    console.warn(`[image-gen] edit result ${out ? `${out.width}x${out.height}` : '?'} source=${src ? `${src.width}x${src.height}` : '?'}`)
+  }
+  return {
+    success: true,
+    filePath: saveImageBuffer(bytes, mimeType),
+    mimeType,
+    width: out?.width,
+    height: out?.height,
+    sourceWidth: src?.width,
+    sourceHeight: src?.height,
+  }
 }
 
 /**
@@ -353,6 +370,28 @@ async function generateViaCompatible(prompt: string, cfg: ImageGenConfig, size?:
   return { success: false, error: '作图接口返回成功，但未找到图片数据（b64_json/url 均为空）' }
 }
 
+function isTransientImageGenError(message: string): boolean {
+  return /503|service unavailable|overloaded|unavailable|429|rate.?limit|temporarily|ECONNRESET|ETIMEDOUT|fetch failed/i.test(message)
+}
+
+export function describeImageGenError(message: string): string {
+  const raw = String(message || '').trim()
+  if (/503|service unavailable|overloaded/i.test(raw)) {
+    return '\u4f5c\u56fe\u670d\u52a1\u6682\u65f6\u5fd9\uff08503\uff09\uff0c\u8fc7\u4e00\u4e24\u5206\u949f\u518d\u8bd5\u4e00\u6b21\u3002'
+  }
+  if (/429|rate.?limit/i.test(raw)) {
+    return '\u4f5c\u56fe\u63a5\u53e3\u9650\u6d41\u4e86\uff0c\u7a0d\u540e\u518d\u8bd5\u3002'
+  }
+  if (/Failed after \d+ attempts/i.test(raw) && isTransientImageGenError(raw)) {
+    return '\u4f5c\u56fe\u670d\u52a1\u6682\u65f6\u5fd9\uff0c\u8fc7\u4e00\u4e24\u5206\u949f\u518d\u8bd5\u4e00\u6b21\u3002'
+  }
+  return raw || '\u4f5c\u56fe\u5931\u8d25'
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 /** 生成图片并落盘。cfg 缺省读持久化配置（测试时传 overrides）。 */
 export async function generateImageToFile(
   prompt: string,
@@ -371,16 +410,39 @@ export async function generateImageToFile(
 
   try {
     const sourceImage = options.sourceImage
-    if (sourceImage && (cfg.protocol === 'openai-compatible' || cfg.protocol === 'custom')) {
-      if (looksLikeGeminiImageModel(cfg.model)) {
-        return await generateViaAiSdk(input, { ...cfg, protocol: 'google' }, options.size, controller.signal, sourceImage)
+    const runOnce = async (): Promise<ImageGenResult> => {
+      if (sourceImage && (cfg.protocol === 'openai-compatible' || cfg.protocol === 'custom')) {
+        if (looksLikeGeminiImageModel(cfg.model)) {
+          return await generateViaAiSdk(input, { ...cfg, protocol: 'google' }, options.size, controller.signal, sourceImage)
+        }
+        return { success: false, error: '当前作图协议不支持改图。请把协议改成 Google Gemini，模型用 gemini-3.1-flash-image，地址填 /v1beta（例如 http://127.0.0.1:8045/v1beta）。' }
       }
-      return { success: false, error: '当前作图协议不支持改图。请把协议改成 Google Gemini，模型用 gemini-3.1-flash-image，地址填 /v1beta（例如 http://127.0.0.1:8045/v1beta）。' }
+      if (cfg.protocol === 'openai-compatible' || cfg.protocol === 'custom') {
+        return await generateViaCompatible(input, cfg, options.size, controller.signal)
+      }
+      return await generateViaAiSdk(input, cfg, options.size, controller.signal, sourceImage)
     }
-    if (cfg.protocol === 'openai-compatible' || cfg.protocol === 'custom') {
-      return await generateViaCompatible(input, cfg, options.size, controller.signal)
+    const delays = [0, 2000, 5000, 10000]
+    let last: ImageGenResult | undefined
+    for (let i = 0; i < delays.length; i += 1) {
+      if (i > 0) {
+        console.warn(`[image-gen] retry ${i} after ${last?.error || 'error'}`)
+        await sleep(delays[i])
+      }
+      if (controller.signal.aborted) break
+      try {
+        last = await runOnce()
+        if (last.success) return last
+        if (!isTransientImageGenError(last.error || '')) {
+          return { ...last, error: describeImageGenError(last.error || '作图失败') }
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        last = { success: false, error: message }
+        if (!isTransientImageGenError(message) || i === delays.length - 1) throw error
+      }
     }
-    return await generateViaAiSdk(input, cfg, options.size, controller.signal, sourceImage)
+    return { success: false, error: describeImageGenError(last?.error || '作图失败') }
   } catch (e) {
     if (controller.signal.aborted && !options.signal?.aborted) {
       return { success: false, error: `作图请求超时（>${Math.round(timeoutMs / 1000)}秒），请稍后重试` }
@@ -396,7 +458,7 @@ export async function generateImageToFile(
     if (/not found/i.test(message) && (cfg.protocol === 'google' || looksLikeGeminiImageModel(cfg.model))) {
       return { success: false, error: '作图接口 404。Google 协议请把地址改成 /v1beta（例如 http://127.0.0.1:8045/v1beta），不要填 OpenAI 兼容的 /v1。' }
     }
-    return { success: false, error: message }
+    return { success: false, error: describeImageGenError(message) }
   } finally {
     clearTimeout(timeout)
   }

@@ -1941,7 +1941,7 @@ class WeixinBotService {
           if (!generated.success || !generated.filePath) {
             const fail = generated.error || '作图失败'
             const live = this.session
-            if (live) await sendText(live, from, `没改成。原因：${fail}`, contextToken)
+            if (live) await sendText(live, from, `沢改成。${fail}`, contextToken)
             writeWechatBotRunLog({
               from,
               peerName,
@@ -1953,7 +1953,12 @@ class WeixinBotService {
             })
             return
           }
-          const done = '改好了，尺寸按原图比例保留。'
+          const same = Boolean(generated.width && generated.sourceWidth && generated.width === generated.sourceWidth && generated.height === generated.sourceHeight)
+          const done = same
+            ? `改好了，${generated.width}×${generated.height}，跟原图一样。`
+            : generated.width
+              ? `改好了。结果 ${generated.width}×${generated.height}${generated.sourceWidth ? `，原图 ${generated.sourceWidth}×${generated.sourceHeight}` : ''}。`
+              : '改好了。'
           const live = this.session
           if (live) await sendText(live, from, done, contextToken)
           await this.sendReplyMedia(from, [{ kind: 'image', source: 'tool', filePath: generated.filePath }], contextToken)
