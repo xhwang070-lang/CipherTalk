@@ -185,21 +185,7 @@ export function warmupAgentProcess(ctx: MainProcessContext): void {
  */
 export function checkForUpdatesOnStartup(ctx: MainProcessContext): void {
   if (process.env.VITE_DEV_SERVER_URL) return
-  setTimeout(() => {
-    void appUpdateService.checkForUpdates().then((result) => {
-      ctx.getLogService()?.info('AppUpdate', '启动时检查更新完成', {
-        hasUpdate: result.hasUpdate,
-        currentVersion: result.currentVersion,
-        version: result.version,
-      })
-      const mainWindow = ctx.getMainWindow()
-      if (result.hasUpdate && mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('app:updateAvailable', result)
-      }
-    }).catch((error) => {
-      ctx.getLogService()?.warn('AppUpdate', '启动时检查更新失败', { error: String(error) })
-    })
-  }, 8000)
+  ctx.getLogService()?.info('AppUpdate', '开机不拉 Gitee latest.yml。私有仓匿名 403，检查更新请到设置里手动点。')
   return
 
   // if (process.env.VITE_DEV_SERVER_URL) {

@@ -98,7 +98,7 @@ function AboutTab({
     return (
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Typography.Paragraph size="sm" color="muted">
-          点检查更新，会向华记私有仓库要 latest.yml。有新版本可以在本机下载安装，不会连上游官方更新。
+          开机不再去 Gitee 拉更新。点检查更新会先看私有仓 latest.yml；仓库私有、附件没公开时会明说，不会假装已经最新。
         </Typography.Paragraph>
         <Button
           type="button"

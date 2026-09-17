@@ -138,6 +138,26 @@ async function resolveForceUpdateManifest(): Promise<ManifestLookupResult> {
   return { manifest: null, source: 'none' }
 }
 
+async function probePrivateLatestYml(baseUrl: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const url = `${baseUrl.replace(/\/+$/, '')}/latest.yml?t=${Date.now()}`
+  try {
+    const response = await fetch(url, {
+      cache: 'no-store',
+      headers: { Accept: 'text/yaml, */*' },
+    })
+    if (response.ok) return { ok: true }
+    if (response.status === 401 || response.status === 403) {
+      return { ok: false, error: '华记私有仓库匿名访问不到 latest.yml。不是没有新版本，是更新文件没公开。' }
+    }
+    if (response.status === 404) {
+      return { ok: false, error: '还没有 tag=latest 的 Release，或没上传 latest.yml。' }
+    }
+    return { ok: false, error: `检查更新失败（HTTP ${response.status}）` }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
 function configureUpdaterFeed(source: UpdateFeedSource = 'generic'): void {
   if (source === 'github') {
     autoUpdater.setFeedURL({
@@ -273,6 +293,21 @@ class AppUpdateService {
     const currentVersion = app.getVersion()
     this.resetDiagnostics()
     this.updateDiagnostics({ phase: 'checking', lastEvent: '正在检查更新' })
+    const probed = await probePrivateLatestYml(GENERIC_UPDATE_URL)
+    if (!probed.ok) {
+      this.updateDiagnostics({ phase: 'failed', lastEvent: '私有更新源不可用', lastError: probed.error })
+      const info = this.buildInfo({
+        hasUpdate: false,
+        forceUpdate: false,
+        currentVersion,
+        version: currentVersion,
+        releaseNotes: '',
+        updateSource: 'none',
+        policySource: 'custom',
+      })
+      this.lastInfo = info
+      return info
+    }
     try {
       const lookup = await this.checkUpdaterSource('generic', currentVersion)
       const latestVersion = lookup?.latestVersion || currentVersion
@@ -294,7 +329,10 @@ class AppUpdateService {
       this.lastInfo = info
       return info
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const raw = error instanceof Error ? error.message : String(error)
+      const message = /403|401/.test(raw)
+        ? '华记私有仓库匿名访问不到 latest.yml。不是没有新版本，是更新文件没公开。'
+        : raw
       this.updateDiagnostics({ phase: 'failed', lastEvent: '检查更新失败', lastError: message })
       const info = this.buildInfo({
         hasUpdate: false,
