@@ -192,6 +192,42 @@ function aspectRatioOf(source?: ImageGenSourceImage): `${number}:${number}` | un
   return nearestAspectRatio(size.width, size.height)
 }
 
+function geminiImageSize(width: number, height: number): '1K' | '2K' | '4K' {
+  const long = Math.max(width, height)
+  if (long >= 2560) return '4K'
+  if (long >= 1024) return '2K'
+  return '1K'
+}
+
+async function fitEditedImageToSource(
+  generated: Uint8Array,
+  source: ImageGenSourceImage,
+): Promise<{ data: Buffer; mimeType: string } | null> {
+  const src = readImageSize(source.data)
+  if (!src) return null
+  const out = readImageSize(generated)
+  if (out && out.width === src.width && out.height === src.height) {
+    console.warn(`[image-gen] edit output already ${out.width}x${out.height}`)
+    return null
+  }
+  try {
+    const sharp = (await import('sharp')).default
+    const jpeg = /jpeg|jpg/i.test(source.mediaType)
+    const pipeline = sharp(Buffer.from(generated)).resize(src.width, src.height, {
+      fit: 'cover',
+      position: 'centre',
+    })
+    const data = jpeg
+      ? await pipeline.jpeg({ quality: 92 }).toBuffer()
+      : await pipeline.png().toBuffer()
+    console.warn(`[image-gen] edit fitted ${out ? `${out.width}x${out.height}` : '?'} -> ${src.width}x${src.height}`)
+    return { data, mimeType: jpeg ? 'image/jpeg' : 'image/png' }
+  } catch (error) {
+    console.warn('[image-gen] edit fit failed, keep generated size', error)
+    return null
+  }
+}
+
 /** openai / google: AI SDK generateImage. Pass sourceImage to edit an existing picture. */
 async function generateViaAiSdk(prompt: string, cfg: ImageGenConfig, size?: string, signal?: AbortSignal, sourceImage?: ImageGenSourceImage): Promise<ImageGenResult> {
   const baseURL = cfg.protocol === 'google'
@@ -202,29 +238,52 @@ async function generateViaAiSdk(prompt: string, cfg: ImageGenConfig, size?: stri
     ? createGoogle({ apiKey: cfg.apiKey, baseURL, name: 'image-gen', fetch }).imageModel(cfg.model)
     : createOpenAI({ apiKey: cfg.apiKey, baseURL, name: 'image-gen', fetch }).imageModel(cfg.model)
 
+  const dim = sourceImage ? readImageSize(sourceImage.data) : null
   const editRatio = aspectRatioOf(sourceImage)
   if (sourceImage) {
-    const dim = readImageSize(sourceImage.data)
     console.warn(`[image-gen] edit source=${dim?.width || '?'}x${dim?.height || '?'} aspectRatio=${editRatio || 'none'}`)
   }
+  const editText = sourceImage
+    ? `${prompt}\n\n保持原图构图和画布，不要改变长宽比，不要加边或留白。`
+    : prompt
   const { image } = await generateImage({
     model,
     prompt: sourceImage
-      ? { text: prompt, images: [sourceImage.data] }
+      ? { text: editText, images: [sourceImage.data] }
       : prompt,
     n: 1,
     ...(sourceImage
       ? (editRatio ? { aspectRatio: editRatio } : {})
       : { size: normalizeSize(size || cfg.size) }),
+    ...(sourceImage && editRatio && dim
+      ? {
+          providerOptions: {
+            google: {
+              imageConfig: {
+                aspectRatio: editRatio,
+                imageSize: geminiImageSize(dim.width, dim.height),
+              },
+            },
+          },
+        }
+      : {}),
     maxRetries: 1,
     abortSignal: signal,
   })
 
-  const mimeType = image.mediaType || 'image/png'
   if (!image.uint8Array || image.uint8Array.byteLength === 0) {
     return { success: false, error: '作图接口返回成功，但 AI SDK 未返回有效图片数据（图片字节为空）' }
   }
-  return { success: true, filePath: saveImageBuffer(image.uint8Array, mimeType), mimeType }
+  let bytes: Uint8Array = image.uint8Array
+  let mimeType = image.mediaType || 'image/png'
+  if (sourceImage) {
+    const fitted = await fitEditedImageToSource(bytes, sourceImage)
+    if (fitted) {
+      bytes = fitted.data
+      mimeType = fitted.mimeType
+    }
+  }
+  return { success: true, filePath: saveImageBuffer(bytes, mimeType), mimeType }
 }
 
 /**

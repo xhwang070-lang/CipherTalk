@@ -100,7 +100,7 @@ export function createGenerateImage(uploadedMediaContext?: AgentUploadedMediaCon
         edited: Boolean(resolved.sourceImage),
         source: resolved.sourceLabel,
         note: resolved.sourceImage
-          ? '已按原图修改并自动展示给用户，无需在回答中粘贴路径或链接'
+          ? '已按原图修改，并压回原图像素尺寸后自动展示，无需在回答中粘贴路径或链接'
           : '图片已生成并自动展示给用户，无需在回答中粘贴路径或链接',
       }
     },
