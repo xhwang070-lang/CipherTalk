@@ -370,22 +370,27 @@ async function generateViaCompatible(prompt: string, cfg: ImageGenConfig, size?:
   return { success: false, error: '作图接口返回成功，但未找到图片数据（b64_json/url 均为空）' }
 }
 
+function isRateLimitImageGenError(message: string): boolean {
+  return /429|rate.?limit|too many requests|resource.?exhausted|quota/i.test(message)
+}
+
 function isTransientImageGenError(message: string): boolean {
-  return /503|service unavailable|overloaded|unavailable|429|rate.?limit|temporarily|ECONNRESET|ETIMEDOUT|fetch failed/i.test(message)
+  if (isRateLimitImageGenError(message)) return false
+  return /503|service unavailable|overloaded|temporarily unavailable|ECONNRESET|ETIMEDOUT/i.test(message)
 }
 
 export function describeImageGenError(message: string): string {
   const raw = String(message || '').trim()
-  if (/503|service unavailable|overloaded/i.test(raw)) {
-    return '\u4f5c\u56fe\u670d\u52a1\u6682\u65f6\u5fd9\uff08503\uff09\uff0c\u8fc7\u4e00\u4e24\u5206\u949f\u518d\u8bd5\u4e00\u6b21\u3002'
+  if (isRateLimitImageGenError(raw)) {
+    return "作图接口这会儿请求太多（限流），先等一两分钟再发同一句。华记没挂。"
   }
-  if (/429|rate.?limit/i.test(raw)) {
-    return '\u4f5c\u56fe\u63a5\u53e3\u9650\u6d41\u4e86\uff0c\u7a0d\u540e\u518d\u8bd5\u3002'
+  if (/503|service unavailable|overloaded/i.test(raw)) {
+    return "作图服务暂时忙（503），过一两分钟再试一次。"
   }
   if (/Failed after \d+ attempts/i.test(raw) && isTransientImageGenError(raw)) {
-    return '\u4f5c\u56fe\u670d\u52a1\u6682\u65f6\u5fd9\uff0c\u8fc7\u4e00\u4e24\u5206\u949f\u518d\u8bd5\u4e00\u6b21\u3002'
+    return "作图服务暂时忙，过一两分钟再试一次。"
   }
-  return raw || '\u4f5c\u56fe\u5931\u8d25'
+  return raw || "作图失败"
 }
 
 function sleep(ms: number): Promise<void> {
