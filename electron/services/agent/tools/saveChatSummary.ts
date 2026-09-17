@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { memoryDatabase } from '../../memory/memoryDatabase'
 import { describeToolError } from './shared'
 import { HUAJI_CHAT_SUMMARIES_DIR } from './chatSummaryPath'
+import { stripRosterInternals } from '../rosterPageFlush'
 
 function safePart(value: string): string {
   return String(value || '')
@@ -97,7 +98,7 @@ export function appendChatSummaryPage(input: {
   endDate?: string
   pageLabel?: string
 }): { success: true; path: string; fileName: string; appended: boolean; bytes: number } | { error: string } {
-  const content = String(input.content || '').replace(/---wx-next---/g, '\n').trim()
+  const content = stripRosterInternals(input.content)
   if (content.length < 20) return { error: '本页总结太短，未写入' }
   const title = String(input.title || activeSummary?.title || '近一周聊天总结').trim() || '近一周聊天总结'
   try {

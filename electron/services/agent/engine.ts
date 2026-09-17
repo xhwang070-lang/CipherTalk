@@ -29,6 +29,7 @@ import {
   isSubstantialRosterWrite,
 } from './rosterPageFlush'
 import { appendChatSummaryPage, resetChatSummarySession } from './tools/saveChatSummary'
+import { getLastPrivatePeriodProgress } from './tools/readPrivatePeriod'
 import type { AgentMcpToolDescriptor, AgentProgressReporter, AgentPromptOptimizeContextMessage, AgentPromptOptimizeInput, AgentProviderConfig, AgentRunInput, AgentSkillContextItem, AgentToolProfile, AgentTraceMetadata, AgentTraceTool } from './types'
 import type { CodeWorkspaceRef } from './codeWorkspaceTypes'
 
@@ -419,7 +420,8 @@ export async function runAgent(
   onProgress?: AgentProgressReporter,
 ): Promise<void> {
   await withAgentProgress(onProgress, async () => {
-    resetChatSummarySession()
+    const rosterOpen = getLastPrivatePeriodProgress()
+    if (!rosterOpen || rosterOpen.complete) resetChatSummarySession()
     let pendingRosterPage: ReturnType<typeof shouldForceRosterPageWrite> = null
     // 子进程侧耗时打点：stdout 会被主进程转发到控制台，配合主进程 [agent:perf] 看完整时间线
     const perfStart = Date.now()

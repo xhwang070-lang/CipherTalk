@@ -4,6 +4,7 @@ import {
   shouldStopWechatAfterRosterWrite,
   isSubstantialRosterWrite,
   buildRosterPageWriteInstruction,
+  stripRosterInternals,
 } from './rosterPageFlush.ts'
 
 function assert(cond: unknown, msg: string) {
@@ -50,3 +51,9 @@ assert(!isSubstantialRosterWrite('我接着写'), 'preamble is not a page')
 assert(buildRosterPageWriteInstruction(packed!).includes('张三'), 'instruction names')
 
 console.log('rosterPageFlush ok')
+
+const dumped = '### 3. 打字单\n样图审核完。\n---\n当前进度：第 3/73 群已全部翻完，游标 `{"cursorUsername":"53257063169@chatroom"}`'
+assert(!stripRosterInternals(dumped).includes('cursorUsername'), 'strip cursor')
+assert(!stripRosterInternals(dumped).includes('当前进度'), 'strip progress')
+assert(stripRosterInternals(dumped).includes('打字单'), 'keep body')
+console.log('stripRosterInternals ok')

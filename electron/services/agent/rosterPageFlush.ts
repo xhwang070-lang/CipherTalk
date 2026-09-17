@@ -120,6 +120,23 @@ export function shouldStopWechatAfterRosterWrite(outputMode: string | undefined,
   return latestRosterPageFromSteps(steps) != null
 }
 
+
+export function stripRosterInternals(text: unknown): string {
+  return String(text || '')
+    .split(/\n/)
+    .filter((line) => {
+      const s = line.trim()
+      if (!s) return true
+      if (/当前进度|cursorUsername|nextCursor|游标|peopleRemaining/.test(s)) return false
+      if (/^`?\{?"cursorUsername"/.test(s)) return false
+      return true
+    })
+    .join('\n')
+    .replace(/---wx-next---/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 export function buildRosterPageWriteInstruction(page: RosterPageSnapshot): string {
   const unit = page.kind === 'group' ? '群' : '人'
   const names = page.names.length ? page.names.join('、') : page.currentName
@@ -138,12 +155,13 @@ export function buildRosterPageWriteInstruction(page: RosterPageSnapshot): strin
 
 export function buildRosterCloserInstruction(summaryPath?: string): string {
   const pathLine = summaryPath
-    ? `完整总结已经追加在本地 ${summaryPath} ，告诉用户去华记记忆库看全文，不要把 md 发到微信。`
-    : '完整总结已在本地 memory-bank/huaji-chat-summaries，不要把 md 发到微信。'
+    ? ('完整按群/按人正文已在本地 ' + summaryPath + ' ，告诉用户去华记记忆库看全文，不要把 md 发到微信。')
+    : '完整正文已在本地 memory-bank/huaji-chat-summaries，不要把 md 发到微信。'
   return [
-    '前面每一页正文已经发给用户了。现在只做收尾：',
-    '1. 列出今日待办（今天该处理的事）。没有就写「今天没有从这些聊天里抽出待办」。',
-    `2. ${pathLine}`,
-    '禁止再说「N 人已全部梳理完毕」来代替前面那些人。禁止只写最后一个人。禁止再调用 read_private_period / read_group_period。',
+    '微信里只发收尾。按日期写待办，不要按群/按人复述。',
+    '1. 今天（日期）要处理的事，条列：谁 / 什么货或单号 / 干什么。天是约定完成的那天，不是聊天发生的那天。',
+    '2. 明天、后天及本周剩下几天：有事才写。',
+    '3. ' + pathLine,
+    '禁止输出 cursorUsername / nextCursor / 「当前进度」。禁止再调 read_private_period / read_group_period。看不清写待核。',
   ].join('\n')
 }

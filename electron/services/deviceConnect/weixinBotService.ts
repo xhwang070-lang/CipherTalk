@@ -37,7 +37,7 @@ import { isPdfEncrypted, unlockPdfBuffer, writeUnlockedPdfFile } from '../agent/
 import { extractOfficeBuffer, isOfficeFileName, officeMediaTypeFromName, officeResultForModel } from '../chat/officeExtract'
 import { resolveWechatPeerName, wechatBotConversationTitle, writeWechatBotRunLog } from '../agent/wechatBotArchive'
 import { getLastPrivatePeriodProgress, type RosterPeriodProgress } from '../agent/tools/readPrivatePeriod'
-import { buildRosterCloserInstruction } from '../agent/rosterPageFlush'
+import { buildRosterCloserInstruction, stripRosterInternals } from '../agent/rosterPageFlush'
 import { getActiveChatSummaryPath } from '../agent/tools/saveChatSummary'
 
 const TOKEN_FILE = 'wechat-bot-token.json'
@@ -2045,28 +2045,54 @@ class WeixinBotService {
 
 
       let rosterPagesPublished = 0
-      const publishRosterPage = async (pageReply: WechatBotReply) => {
-        const bubbles = getReplyTextBubbles(pageReply)
-        if (!pageReply.text.trim() && pageReply.media.length === 0 && pageReply.personaActions.length === 0) return
+      let wechatRosterSends = 0
+      const WECHAT_ROSTER_HEARTBEAT_EVERY = 15
+      const publishRosterPage = async (pageReply: WechatBotReply, dest: 'archive' | 'wechat' | 'both' = 'archive') => {
+        const cleanedText = stripRosterInternals(pageReply.text)
+        const cleaned: WechatBotReply = { ...pageReply, text: cleanedText }
+        if (!cleaned.text.trim() && cleaned.media.length === 0 && cleaned.personaActions.length === 0) return
         const assistantMsg: UIMessage = {
           id: `wx-a-${Date.now()}-${rosterPagesPublished}`,
           role: 'assistant',
-          parts: [{ type: 'text', text: getSavedAssistantText(pageReply) }],
+          parts: [{ type: 'text', text: getSavedAssistantText(cleaned) }],
         }
         agentConversationStore.append(conv.id, [assistantMsg])
-        if (pageReply.text) {
-          await this.sendTextBubbles(from, bubbles.length ? bubbles : [pageReply.text], contextToken)
-        }
-        await this.sendReplyMedia(from, pageReply.media, contextToken)
-        await this.executePersonaActions(from, pageReply.personaActions, contextToken)
         rosterPagesPublished += 1
+        if (dest === 'archive') return
+        const session = this.session
+        if (!session) {
+          this.logger?.warn('WechatBot', '逐页归档但微信会话已断开', { dest, pages: rosterPagesPublished })
+          return
+        }
+        try {
+          if (cleaned.text) {
+            await this.sendTextBubbles(from, getReplyTextBubbles(cleaned).length ? getReplyTextBubbles(cleaned) : [cleaned.text], contextToken)
+          }
+          await this.sendReplyMedia(from, cleaned.media, contextToken)
+          await this.executePersonaActions(from, cleaned.personaActions, contextToken)
+          wechatRosterSends += 1
+        } catch (error) {
+          this.logger?.error('WechatBot', '微信逐页发送失败，后续只写本地', { pages: rosterPagesPublished, error: String(error) })
+          console.error('[WechatBot] 微信逐页发送失败，后续只写本地', error)
+        }
       }
 
       if ((wantsAllPrivateSummary(commandText) || wantsAllGroupSummary(commandText)) && (usedTools.includes('read_private_period') || usedTools.includes('read_group_period'))) {
         if (rawReply.text.trim() || rawReply.media.length) {
-          await publishRosterPage(rawReply)
+          await publishRosterPage(rawReply, 'archive')
+        }
+        const opened = currentRosterProgress()
+        if (opened && this.session) {
+          const unit = opened.kind === 'group' ? '群' : '人'
+          try {
+            await sendText(this.session, from, '共 ' + String(opened.peopleTotal) + ' 个' + unit + '，正在整理。微信里最后只发按天待办，全文只存本地。', contextToken)
+            wechatRosterSends += 1
+          } catch (error) {
+            this.logger?.error('WechatBot', '微信开头提示发送失败', { error: String(error) })
+          }
         }
         let hops = 0
+        let wechatHeartbeatFailed = false
         while (hops < 80) {
           const progress = currentRosterProgress()
           if (!progress || progress.complete || !progress.nextCursor) break
@@ -2076,33 +2102,45 @@ class WeixinBotService {
           console.warn('[WechatBot] 会话总结未翻完，自动继续', progress)
           const followHistory = [
             ...history,
-            { id: `wx-a-priv-${Date.now()}-${hops}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: rawReply.text || '' }] },
-            { id: `wx-u-priv-${Date.now()}-${hops}`, role: 'user' as const, parts: [{ type: 'text' as const, text: `继续 ${tool}，nextCursor 原样传入：${JSON.stringify(progress.nextCursor)}。把这次返回的${unit}都写上；packedPeople 里条数少、只有几句的也要写（报价、约定、待办、文件）。写过的不要重复。不要问名字。complete 为 false 时不要说已经全部整理好了。` }] },
+            { id: `wx-a-priv-${Date.now()}-${hops}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: stripRosterInternals(rawReply.text) || '' }] },
+            { id: `wx-u-priv-${Date.now()}-${hops}`, role: 'user' as const, parts: [{ type: 'text' as const, text: `继续 ${tool}，nextCursor 原样传入：${JSON.stringify(progress.nextCursor)}。把这次返回的${unit}都写上；packedPeople 里条数少、只有几句的也要写（报价、约定、待办、文件）。写过的不要重复。不要问名字。不要输出 cursor/游标/当前进度。complete 为 false 时不要说已经全部整理好了。` }] },
           ]
           const more = await this.runAgent(followHistory, { conversationId: conv.id, allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name); this.setActivity('working', name) } })
           if (more.text.trim() || more.media.length) {
             rawReply = more
-            await publishRosterPage(more)
+            await publishRosterPage(more, 'archive')
+          }
+          if (!wechatHeartbeatFailed && progress.peopleIndex > 0 && progress.peopleIndex % WECHAT_ROSTER_HEARTBEAT_EVERY === 0) {
+            const live = this.session
+            if (live) {
+              try {
+                await sendText(live, from, `还在整理，已 ${progress.peopleIndex}/${progress.peopleTotal} 个${unit}，全文只存本地。`, contextToken)
+                wechatRosterSends += 1
+              } catch (error) {
+                wechatHeartbeatFailed = true
+                this.logger?.error('WechatBot', '微信进度发送失败，不再往微信刷页', { error: String(error) })
+              }
+            }
           }
         }
         const leftover = currentRosterProgress()
         if (leftover && !leftover.complete) {
           const unit = leftover.kind === 'group' ? '群' : '人'
           await publishRosterPage({
-            text: `已写到 ${leftover.currentName}（${leftover.peopleIndex}/${leftover.peopleTotal}），还剩 ${leftover.remaining} 个${unit}。回复「续」接着写，不用点名。`,
+            text: `已写到 ${leftover.currentName}（${leftover.peopleIndex}/${leftover.peopleTotal}），还剩 ${leftover.remaining} 个${unit}。回复「续」接着写，不用点名。全文在本地。`,
             media: [],
             personaActions: [],
-          })
+          }, 'both')
           rawReply = { text: '', media: [], personaActions: [] }
         } else if (rosterPagesPublished > 0) {
           const closerHistory = [
             ...history,
-            { id: `wx-a-priv-done-${Date.now()}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: '前面各页已经发给用户。' }] },
+            { id: `wx-a-priv-done-${Date.now()}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: '按群正文已经落本地。' }] },
             { id: `wx-u-priv-close-${Date.now()}`, role: 'user' as const, parts: [{ type: 'text' as const, text: buildRosterCloserInstruction(getActiveChatSummaryPath()) }] },
           ]
           const closer = await this.runAgent(closerHistory, { conversationId: conv.id, allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name); this.setActivity('working', name) } })
           if (closer.text.trim() || closer.media.length) {
-            await publishRosterPage(closer)
+            await publishRosterPage(closer, 'both')
           }
           rawReply = { text: '', media: [], personaActions: [] }
         }
@@ -2125,7 +2163,7 @@ class WeixinBotService {
           result: '已逐页回复',
           durationMs: Date.now() - startedAt,
         })
-        this.logger?.warn('WechatBot', '已逐页回复微信消息', { from, pages: rosterPagesPublished })
+        this.logger?.warn('WechatBot', '已逐页回复微信消息', { from, pages: rosterPagesPublished, wechatSends: wechatRosterSends })
         console.log('[WechatBot] 已逐页调用 sendmessage', rosterPagesPublished)
       } else if (reply.text || reply.media.length > 0 || reply.personaActions.length > 0) {
         await typing?.stop()
@@ -2789,8 +2827,17 @@ class WeixinBotService {
       const pauseMs = personaBubbleSendPauseMs(i)
       if (pauseMs > 0) await this.sleep(pauseMs)
       const session = this.session
-      if (!session) return
-      await sendText(session, toUserId, normalized[i], contextToken)
+      if (!session) {
+        this.logger?.warn('WechatBot', '发送微信文本时会话已断开', { i, total: normalized.length })
+        return
+      }
+      try {
+        await sendText(session, toUserId, normalized[i], contextToken)
+        this.logger?.warn('WechatBot', '已发送微信文本', { i, total: normalized.length, chars: normalized[i].length })
+      } catch (error) {
+        this.logger?.error('WechatBot', '发送微信文本失败', { i, total: normalized.length, chars: normalized[i].length, error: String(error) })
+        throw error
+      }
     }
   }
 
