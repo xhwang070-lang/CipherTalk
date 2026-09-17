@@ -9,5 +9,6 @@
     "allowSyntheticDefaultImports": true,
     "strict": true
   },
-  "include": ["vite.config.ts", "electron/**/*.ts", "src/types/account.d.ts", "src/types/word-extractor.d.ts"]
+  "include": ["vite.config.ts", "electron/**/*.ts", "src/types/account.d.ts", "src/types/word-extractor.d.ts"],
+  "exclude": ["electron/**/*.test.ts"]
 }

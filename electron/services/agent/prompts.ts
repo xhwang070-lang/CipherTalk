@@ -46,9 +46,9 @@ const TOOL_PROMPT = `
 - get_context：用命中里的 anchor 展开该消息前后的原文，用来核对事实、拿到可引用的出处。
 - get_timeline：读某个会话某一天的连续原文。查昨天/某号必须传 onDate。近一周/近一个月不要用它。
 - read_period：按天读完某一个会话的近一周/近一个月。必须已有 sessionId。
-- read_private_period：近一周/近一个月「所有私聊/私信」总结用这个。不要让用户点名。低条数的人会打成 packedPeople，每个人都要写，不能只写活跃会话。
-- read_group_period：近一周/近一个月「所有群聊」总结用这个。不要让用户点群名。一次返回一个群的若干天，有 nextCursor 必须再调，直到 complete=true。
-- save_chat_summary：把已经按天写全的一周或一月总结存成本地 markdown，留给以后进 Obsidian 记忆库。超过一周必须存。不要把这份文件发到微信。
+- read_private_period：近一周/近一个月「所有私聊/私信」总结用这个。不要让用户点名。低条数的人会打成 packedPeople，每个人都要写，不能只写活跃会话。每读完一页必须先写出「序号. 名字」可见段落，禁止连着翻完再只写最后一个人。
+- read_group_period：近一周/近一个月「所有群聊」总结用这个。不要让用户点群名。一次返回一个群的若干天，有 nextCursor 必须再调，直到 complete=true。每页先写再翻，禁止最后只留一个群。
+- save_chat_summary：把已经按天写全的一周或一月总结存成本地 markdown，留给以后进 Obsidian 记忆库。超过一周必须存。全私聊/群聊翻页时引擎会自动按页追加，全部写完后用 mode=append 补今日待办即可。不要把这份文件发到微信。
 - transcribe_voice_message：转写 get_context / get_timeline 返回的语音消息。只转写会影响当前结论的相关语音，参数使用消息里的 sessionId、localId、createTime；默认用缓存，只有用户明确要求重新识别时才传 force=true。
 - chat_stats：只回数和排名，不能当总结。总结近一周私聊时，ranking 只用来列出要读的人，然后必须 read_period。
 - list_groups：列出群聊（含成员数，按活跃排序）。
@@ -93,7 +93,7 @@ const ROUTING_PROMPT = `
 - "某主题 / 相关内容" → semantic_search
 - 要核对事实、拿可引用的原文出处 → 先 search_messages / semantic_search 拿 anchor，再 get_context
 - "某人某天聊了啥" → list_contacts 拿 username（同名选 lastTime 最近的），再 get_timeline({sessionId, onDate})；当天消息多就带 nextCursor 翻完再写
-- "近一周私聊 / 近一周私信 / 把私聊总结一下" → read_private_period，不要问人名。packedPeople 里条数少的人也必须每人一段；complete=false 时禁止说已经全部整理好了。
+- "近一周私聊 / 近一周私信 / 把私聊总结一下" → read_private_period，不要问人名。packedPeople 里条数少的人也必须每人一段；每页先写「1. 某某」再翻下一页。complete=false 时禁止说已经全部整理好了。禁止只在最后出现一个人。
 - "近一周群聊 / 把群聊总结一下" → read_group_period，不要问群名。按返回的会话逐个写，有 nextCursor 就继续。点了具体人名/群名才用 list_contacts + read_period。
 - get_context / get_timeline 返回 [语音消息]，且该语音会影响结论 → 用返回的 sessionId、localId、createTime 调 transcribe_voice_message
 - 人名/群名解析 → list_contacts；列群 / 群成员 / 群内发言排行 → list_groups / group_members / group_member_ranking

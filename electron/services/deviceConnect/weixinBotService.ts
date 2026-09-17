@@ -37,6 +37,8 @@ import { isPdfEncrypted, unlockPdfBuffer, writeUnlockedPdfFile } from '../agent/
 import { extractOfficeBuffer, isOfficeFileName, officeMediaTypeFromName, officeResultForModel } from '../chat/officeExtract'
 import { resolveWechatPeerName, wechatBotConversationTitle, writeWechatBotRunLog } from '../agent/wechatBotArchive'
 import { getLastPrivatePeriodProgress, type RosterPeriodProgress } from '../agent/tools/readPrivatePeriod'
+import { buildRosterCloserInstruction } from '../agent/rosterPageFlush'
+import { getActiveChatSummaryPath } from '../agent/tools/saveChatSummary'
 
 const TOKEN_FILE = 'wechat-bot-token.json'
 const MODE_FILE = 'wechat-bot-modes.json'
@@ -2042,9 +2044,30 @@ class WeixinBotService {
       }
 
 
+      let rosterPagesPublished = 0
+      const publishRosterPage = async (pageReply: WechatBotReply) => {
+        const bubbles = getReplyTextBubbles(pageReply)
+        if (!pageReply.text.trim() && pageReply.media.length === 0 && pageReply.personaActions.length === 0) return
+        const assistantMsg: UIMessage = {
+          id: `wx-a-${Date.now()}-${rosterPagesPublished}`,
+          role: 'assistant',
+          parts: [{ type: 'text', text: getSavedAssistantText(pageReply) }],
+        }
+        agentConversationStore.append(conv.id, [assistantMsg])
+        if (pageReply.text) {
+          await this.sendTextBubbles(from, bubbles.length ? bubbles : [pageReply.text], contextToken)
+        }
+        await this.sendReplyMedia(from, pageReply.media, contextToken)
+        await this.executePersonaActions(from, pageReply.personaActions, contextToken)
+        rosterPagesPublished += 1
+      }
+
       if ((wantsAllPrivateSummary(commandText) || wantsAllGroupSummary(commandText)) && (usedTools.includes('read_private_period') || usedTools.includes('read_group_period'))) {
+        if (rawReply.text.trim() || rawReply.media.length) {
+          await publishRosterPage(rawReply)
+        }
         let hops = 0
-        while (hops < 30) {
+        while (hops < 80) {
           const progress = currentRosterProgress()
           if (!progress || progress.complete || !progress.nextCursor) break
           hops += 1
@@ -2057,20 +2080,31 @@ class WeixinBotService {
             { id: `wx-u-priv-${Date.now()}-${hops}`, role: 'user' as const, parts: [{ type: 'text' as const, text: `继续 ${tool}，nextCursor 原样传入：${JSON.stringify(progress.nextCursor)}。把这次返回的${unit}都写上；packedPeople 里条数少、只有几句的也要写（报价、约定、待办、文件）。写过的不要重复。不要问名字。complete 为 false 时不要说已经全部整理好了。` }] },
           ]
           const more = await this.runAgent(followHistory, { conversationId: conv.id, allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name); this.setActivity('working', name) } })
-          if (more.text.trim()) {
-            rawReply = {
-              ...more,
-              text: [rawReply.text, more.text].filter((item) => String(item || '').trim()).join('\n---wx-next---\n'),
-            }
+          if (more.text.trim() || more.media.length) {
+            rawReply = more
+            await publishRosterPage(more)
           }
         }
         const leftover = currentRosterProgress()
         if (leftover && !leftover.complete) {
           const unit = leftover.kind === 'group' ? '群' : '人'
-          rawReply = {
-            ...rawReply,
-            text: `${rawReply.text || ''}\n---wx-next---\n已写到 ${leftover.currentName}（${leftover.peopleIndex}/${leftover.peopleTotal}），还剩 ${leftover.remaining} 个${unit}。回复「续」接着写，不用点名。`,
+          await publishRosterPage({
+            text: `已写到 ${leftover.currentName}（${leftover.peopleIndex}/${leftover.peopleTotal}），还剩 ${leftover.remaining} 个${unit}。回复「续」接着写，不用点名。`,
+            media: [],
+            personaActions: [],
+          })
+          rawReply = { text: '', media: [], personaActions: [] }
+        } else if (rosterPagesPublished > 0) {
+          const closerHistory = [
+            ...history,
+            { id: `wx-a-priv-done-${Date.now()}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: '前面各页已经发给用户。' }] },
+            { id: `wx-u-priv-close-${Date.now()}`, role: 'user' as const, parts: [{ type: 'text' as const, text: buildRosterCloserInstruction(getActiveChatSummaryPath()) }] },
+          ]
+          const closer = await this.runAgent(closerHistory, { conversationId: conv.id, allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name); this.setActivity('working', name) } })
+          if (closer.text.trim() || closer.media.length) {
+            await publishRosterPage(closer)
           }
+          rawReply = { text: '', media: [], personaActions: [] }
         }
       }
 
@@ -2079,7 +2113,21 @@ class WeixinBotService {
       const reply = splitVoiceMarkedReply(rawReply, forceVoice)
       console.log(`[WechatBot] Agent 回复长度=${reply.text.length} 媒体=${reply.media.length} voiceMedia=${reply.media.filter((item) => item.kind === 'voice').length} 内容="${reply.text.slice(0, 120)}"`)
 
-      if (reply.text || reply.media.length > 0 || reply.personaActions.length > 0) {
+      if (rosterPagesPublished > 0) {
+        await typing?.stop()
+        typing = null
+        writeWechatBotRunLog({
+          from,
+          peerName,
+          question: commandText,
+          tools: usedTools,
+          ok: true,
+          result: '已逐页回复',
+          durationMs: Date.now() - startedAt,
+        })
+        this.logger?.warn('WechatBot', '已逐页回复微信消息', { from, pages: rosterPagesPublished })
+        console.log('[WechatBot] 已逐页调用 sendmessage', rosterPagesPublished)
+      } else if (reply.text || reply.media.length > 0 || reply.personaActions.length > 0) {
         await typing?.stop()
         typing = null
         const session = this.session

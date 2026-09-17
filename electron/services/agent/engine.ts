@@ -22,6 +22,13 @@ import { buildAgentToolApproval } from './toolApproval'
 import { currentModelVisionSupport } from './tools/mediaHistory'
 import { detectImageMime } from '../media/mediaResolver'
 import { formatAgentError } from './errorFormat'
+import {
+  buildRosterPageWriteInstruction,
+  shouldForceRosterPageWrite,
+  shouldStopWechatAfterRosterWrite,
+  isSubstantialRosterWrite,
+} from './rosterPageFlush'
+import { appendChatSummaryPage, resetChatSummarySession } from './tools/saveChatSummary'
 import type { AgentMcpToolDescriptor, AgentProgressReporter, AgentPromptOptimizeContextMessage, AgentPromptOptimizeInput, AgentProviderConfig, AgentRunInput, AgentSkillContextItem, AgentToolProfile, AgentTraceMetadata, AgentTraceTool } from './types'
 import type { CodeWorkspaceRef } from './codeWorkspaceTypes'
 
@@ -412,6 +419,8 @@ export async function runAgent(
   onProgress?: AgentProgressReporter,
 ): Promise<void> {
   await withAgentProgress(onProgress, async () => {
+    resetChatSummarySession()
+    let pendingRosterPage: ReturnType<typeof shouldForceRosterPageWrite> = null
     // 子进程侧耗时打点：stdout 会被主进程转发到控制台，配合主进程 [agent:perf] 看完整时间线
     const perfStart = Date.now()
     let perfLast = perfStart
@@ -484,7 +493,10 @@ export async function runAgent(
       ...agentTemperatureOption(input.providerConfig, DEFAULT_AGENT_TEMPERATURE),
       reasoning: buildReasoningOption(input.providerConfig),
       // 不设步数上限，由模型自行决定何时收尾；兜底靠总超时 + prepareStep 里的死循环强制收尾。
-      stopWhen: [],
+      // 微信入口：每一页私聊/群聊必须先写成可见总结再停，交给 bot 发出去，否则 53 人会只剩最后一人。
+      stopWhen: [
+        ({ steps }) => shouldStopWechatAfterRosterWrite(input.outputMode, steps),
+      ],
       providerOptions: buildProviderOptions(input, prepared.promptCacheKey),
       toolApproval: buildAgentToolApproval(input, input.mcpTools?.map((item) => item.name) ?? []),
       // @ts-expect-error AI SDK beta 的 ToolLoopAgentSettings 类型漏了此字段；settings 会原样透传给
@@ -495,6 +507,29 @@ export async function runAgent(
       onStepEnd: (step) => {
         const stepUsage = normalizeUsageForCacheStats(step.usage)
         if (usageReportsCacheRead(stepUsage)) providerReportedCacheRead = true
+        if (pendingRosterPage && isSubstantialRosterWrite(step.text)) {
+          const unit = pendingRosterPage.kind === 'group' ? '群' : '人'
+          const label = pendingRosterPage.names.length
+            ? pendingRosterPage.names.join('、')
+            : pendingRosterPage.currentName
+          const saved = appendChatSummaryPage({
+            title: pendingRosterPage.kind === 'group' ? '近一周群聊总结' : '近一周私聊总结',
+            content: String(step.text || ''),
+            pageLabel: label ? (String(pendingRosterPage.peopleIndex) + '. ' + label) : undefined,
+          })
+          if (!('error' in saved)) {
+            console.warn('[agent] roster page saved', { path: saved.path, appended: saved.appended, label })
+          }
+          reportAgentProgress({
+            stage: pendingRosterPage.complete ? 'tool_finished' : 'searching',
+            title: pendingRosterPage.complete
+              ? (String(pendingRosterPage.peopleTotal) + ' 个' + unit + '已读完，本页已写出')
+              : ('还在查' + unit + '，已写到 ' + String(pendingRosterPage.peopleIndex) + '/' + String(pendingRosterPage.peopleTotal) + '，还剩 ' + String(pendingRosterPage.remaining) + ' 个'),
+            detail: label,
+            category: 'search',
+          })
+          pendingRosterPage = null
+        }
         trace.steps.push({
           stepNumber: step.stepNumber,
           callId: step.callId,
@@ -524,6 +559,13 @@ export async function runAgent(
       prepareStep: async ({ messages, steps }) => {
         const runtimeContext = buildToolRuntimeContext(steps)
         const forceFinalAnswer = hasRepeatedToolCallLoop(steps)
+        const rosterPage = forceFinalAnswer ? null : shouldForceRosterPageWrite(steps)
+        if (rosterPage) pendingRosterPage = rosterPage
+        const extraInstruction = forceFinalAnswer
+          ? (input.planMode
+            ? (FINAL_ANSWER_INSTRUCTION + '\n当前处于计划模式：最终输出应是一份完整可执行的计划，不要实际执行计划。')
+            : FINAL_ANSWER_INSTRUCTION)
+          : (rosterPage ? buildRosterPageWriteInstruction(rosterPage) : '')
         return {
           messages: await aiCompactStep({
             messages,
@@ -534,16 +576,14 @@ export async function runAgent(
           }),
           runtimeContext: runtimeContext as any,
           toolsContext: { query_sql: runtimeContext } as any,
-          ...(forceFinalAnswer ? {
+          ...(extraInstruction ? {
             activeTools: [] as [],
             toolChoice: 'none' as const,
             instructions: [
               ...prepared.instructions,
               {
                 role: 'system' as const,
-                content: input.planMode
-                  ? `${FINAL_ANSWER_INSTRUCTION}\n当前处于计划模式：最终输出应是一份完整可执行的计划，不要实际执行计划。`
-                  : FINAL_ANSWER_INSTRUCTION,
+                content: extraInstruction,
               },
             ],
           } : {}),

@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { normalizeTimeRange } from '../../statsSqlHelpers'
 import { listSessionRanking } from './chatStats'
 import { describeToolError } from './shared'
+import { reportAgentProgress } from '../progress'
 import { buildPeriodPage, resolvePeriodRange, type PeriodCursor } from './periodMessages'
 
 export type RosterKind = 'private' | 'group'
@@ -106,6 +107,15 @@ function setProgress(kind: RosterKind, people: Person[], peopleIndex: number, cu
     remaining,
     nextCursor,
   }
+  const unit = unitLabel(kind)
+  reportAgentProgress({
+    stage: nextCursor ? 'searching' : 'tool_finished',
+    title: nextCursor
+      ? ('还在查' + unit + '，第 ' + String(peopleIndex) + '/' + String(people.length) + '，还剩 ' + String(remaining) + ' 个')
+      : (String(people.length) + ' 个' + unit + '已全部读完，正在写本页'),
+    detail: currentName,
+    category: 'search',
+  })
   return remaining
 }
 
