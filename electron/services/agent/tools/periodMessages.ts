@@ -75,7 +75,7 @@ function localDayStart(ms: number): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0).getTime()
 }
 
-/** 近一周 / 近一个月 / 本月 / 某天。查总结范围用这个，不要让模型自己换 epoch。 */
+/** 今天 / 昨天 / 近一周 / 近一个月 / 本月 / 某天。查总结范围用这个，不要让模型自己换 epoch。 */
 export function parsePeriod(input?: string | null, now = new Date()): PeriodRange | null {
   const raw = String(input || '').trim()
   if (!raw) return null
@@ -89,13 +89,30 @@ export function parsePeriod(input?: string | null, now = new Date()): PeriodRang
     label,
   })
 
+  if (['today', '今天', '今日'].includes(text)) {
+    return { startTimeMs: todayStart, endTimeMs: todayEnd, label: 'today' }
+  }
+  if (['yesterday', '昨天', '昨日'].includes(text)) {
+    const y = localDayStart(todayStart - 24 * 60 * 60 * 1000)
+    return { startTimeMs: y, endTimeMs: localDayEnd(y), label: 'yesterday' }
+  }
+  if (text === '前天') {
+    const d = localDayStart(todayStart - 2 * 24 * 60 * 60 * 1000)
+    return { startTimeMs: d, endTimeMs: localDayEnd(d), label: 'day-before' }
+  }
+  if (['last_3_days', '近3天', '近三天', '最近三天', '这三天'].includes(text)) {
+    return lastDays(3, 'last_3_days')
+  }
   if (['last_7_days', '近一周', '最近一周', '这一周', '这周', '过去一周'].includes(text)) {
     return lastDays(7, 'last_7_days')
   }
-  if (['last_30_days', '近一个月', '最近一个月', '近一月', '最近一月', '一个月', '过去一个月'].includes(text)) {
+  if (['last_30_days', '近一个月', '最近一个月', '近一月', '最近一月', '过去一个月'].includes(text)) {
     return lastDays(30, 'last_30_days')
   }
-  if (text === 'this_month' || text === '本月' || text === '这个月') {
+  if (['last_90_days', '近3个月', '近三个月', '最近三个月'].includes(text)) {
+    return lastDays(90, 'last_90_days')
+  }
+  if (text === 'this_month' || text === '本月' || text === '这个月' || text === '一个月') {
     return {
       startTimeMs: new Date(now.getFullYear(), now.getMonth(), 1).getTime(),
       endTimeMs: todayEnd,
@@ -344,5 +361,5 @@ export function resolvePeriodRange(opts: {
   if (start && end) {
     return { startTimeMs: start, endTimeMs: end, label: 'custom' }
   }
-  throw new Error('请传 period（近一周/近一个月/本月/昨天）或 onDate，不要自己换毫秒时间戳')
+  throw new Error('请传 period（今天/昨天/近一周/近一个月/本月）或 onDate，不要自己换毫秒时间戳')
 }

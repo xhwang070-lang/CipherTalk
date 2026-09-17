@@ -227,7 +227,7 @@ export async function listPrivateRanking(range: TimeRangeSec, limit: number) {
   return listSessionRanking(range, limit, 'private')
 }
 
-export async function listSessionRanking(range: TimeRangeSec, limit: number, kind: 'private' | 'group' = 'private') {
+export async function listSessionRanking(range: TimeRangeSec, limit: number, kind: 'private' | 'group' = 'private', opts?: { includeFolded?: boolean }) {
   let usernames: string[] = []
   try {
     const sessions = await dbAdapter.all<{ username: string }>('session', '', 'SELECT username FROM SessionTable')
@@ -235,7 +235,7 @@ export async function listSessionRanking(range: TimeRangeSec, limit: number, kin
     usernames = sessions
       .map((s) => s.username)
       .filter(kind === 'group' ? isGroupSession : isPrivateSession)
-      .filter((u) => !shouldSkipFoldedChat(u, collapsed))
+      .filter((u) => !shouldSkipFoldedChat(u, collapsed, { allowNamed: Boolean(opts?.includeFolded) }))
   } catch (e) {
     return { error: `读取会话列表失败: ${e instanceof Error ? e.message : String(e)}` }
   }

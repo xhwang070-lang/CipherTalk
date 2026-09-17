@@ -16,7 +16,7 @@ export const readPeriod = tool({
     '超过一周的完整总结写完后用 save_chat_summary 存成本地文件。',
   inputSchema: z.object({
     sessionId: z.string().describe('会话 username，来自 list_contacts，同名选 lastTime 最近的'),
-    period: z.string().optional().describe('近一周 / 近一个月 / 本月 / 上个月 / last_7_days / last_30_days / yesterday / today'),
+    period: z.string().optional().describe('今天 / 昨天 / 近一周 / 近一个月 / 本月 / 上个月 / last_7_days / last_30_days。必须跟用户原话一致'),
     onDate: z.string().optional().describe('单日：yesterday/today/2026-09-13；和 period 二选一'),
     startTimeMs: z.number().optional().describe('自定义起点毫秒；能用 period/onDate 就不要填'),
     endTimeMs: z.number().optional().describe('自定义终点毫秒'),
@@ -24,7 +24,7 @@ export const readPeriod = tool({
     afterSortSeq: z.number().optional().describe('nextCursor.afterSortSeq，原样传入'),
     afterCreateTime: z.number().optional().describe('nextCursor.afterCreateTime，原样传入'),
     afterLocalId: z.number().optional().describe('nextCursor.afterLocalId，原样传入'),
-    maxDays: z.number().int().min(1).max(7).default(7).describe('这一页最多返回几天。近一周默认 7，不要只取 1 天。'),
+    maxDays: z.number().int().min(1).max(7).default(7).describe('这一页最多返回几天。用户说今天时 1 天即可；近一周不要只取 1 天。'),
   }),
   execute: async ({
     sessionId,

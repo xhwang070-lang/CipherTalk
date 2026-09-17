@@ -19,6 +19,10 @@ export type RosterPeriodProgress = {
   peopleIndex: number
   currentName: string
   remaining: number
+  period?: string
+  startTimeMs?: number
+  endTimeMs?: number
+  includeFolded?: boolean
   nextCursor: {
     cursorUsername: string
     cursorDay?: string
@@ -69,12 +73,12 @@ function rosterOf(people: Person[]) {
   }))
 }
 
-async function loadPeople(kind: RosterKind, startTimeMs: number, endTimeMs: number): Promise<Person[]> {
-  const key = `${kind}|${startTimeMs}|${endTimeMs}`
+async function loadPeople(kind: RosterKind, startTimeMs: number, endTimeMs: number, includeFolded = false): Promise<Person[]> {
+  const key = `${kind}|${startTimeMs}|${endTimeMs}|${includeFolded ? 'fold' : 'open'}`
   const cached = peopleCache.get(key)
   if (cached && Date.now() - cached.at < PEOPLE_TTL_MS) return cached.people
   const range = normalizeTimeRange(startTimeMs, endTimeMs)
-  const ranked = await listSessionRanking(range, 300, kind)
+  const ranked = await listSessionRanking(range, 300, kind, { includeFolded })
   if ('error' in ranked && ranked.error) throw new Error(String(ranked.error))
   const people = orderPeople(
     kind,
@@ -96,7 +100,14 @@ function remainingFromCursor(people: Person[], nextCursor: RosterPeriodProgress[
   return found >= 0 ? people.length - found : 0
 }
 
-function setProgress(kind: RosterKind, people: Person[], peopleIndex: number, currentName: string, nextCursor: RosterPeriodProgress['nextCursor']) {
+function setProgress(
+  kind: RosterKind,
+  people: Person[],
+  peopleIndex: number,
+  currentName: string,
+  nextCursor: RosterPeriodProgress['nextCursor'],
+  meta?: { period?: string; startTimeMs?: number; endTimeMs?: number; includeFolded?: boolean },
+) {
   const remaining = remainingFromCursor(people, nextCursor)
   lastProgress = {
     kind,
@@ -105,6 +116,10 @@ function setProgress(kind: RosterKind, people: Person[], peopleIndex: number, cu
     peopleIndex,
     currentName,
     remaining,
+    period: meta?.period || lastProgress?.period,
+    startTimeMs: meta?.startTimeMs ?? lastProgress?.startTimeMs,
+    endTimeMs: meta?.endTimeMs ?? lastProgress?.endTimeMs,
+    includeFolded: meta?.includeFolded ?? lastProgress?.includeFolded,
     nextCursor,
   }
   const unit = unitLabel(kind)
@@ -124,17 +139,24 @@ async function executeRoster(kind: RosterKind, input: {
   onDate?: string
   startTimeMs?: number
   endTimeMs?: number
+  includeFolded?: boolean
   cursorUsername?: string
   cursorDay?: string
   afterSortSeq?: number
   afterCreateTime?: number
   afterLocalId?: number
 }) {
-  const range = resolvePeriodRange({ period: input.period || '近一周', onDate: input.onDate, startTimeMs: input.startTimeMs, endTimeMs: input.endTimeMs })
-  const people = await loadPeople(kind, range.startTimeMs, range.endTimeMs)
+  const includeFolded = Boolean(input.includeFolded ?? (input.cursorUsername ? lastProgress?.includeFolded : false))
+  const reuseRange = Boolean(input.cursorUsername && lastProgress && lastProgress.kind === kind && lastProgress.startTimeMs && !input.period && !input.onDate && !input.startTimeMs)
+  const range = reuseRange
+    ? { startTimeMs: lastProgress!.startTimeMs!, endTimeMs: lastProgress!.endTimeMs!, label: lastProgress?.period || 'custom' }
+    : resolvePeriodRange({ period: input.period || input.onDate, onDate: input.onDate, startTimeMs: input.startTimeMs, endTimeMs: input.endTimeMs })
+  const periodLabel = input.period || input.onDate || lastProgress?.period || range.label
+  const people = await loadPeople(kind, range.startTimeMs, range.endTimeMs, includeFolded)
   const unit = unitLabel(kind)
+  const meta = { period: periodLabel, startTimeMs: range.startTimeMs, endTimeMs: range.endTimeMs, includeFolded }
   if (people.length === 0) {
-    lastProgress = { kind, complete: true, peopleTotal: 0, peopleIndex: 0, currentName: '', remaining: 0, nextCursor: null }
+    lastProgress = { kind, complete: true, peopleTotal: 0, peopleIndex: 0, currentName: '', remaining: 0, nextCursor: null, ...meta }
     return { complete: true, kind, peopleTotal: 0, days: [], hint: `这个时间窗口里没有${unit}消息。` }
   }
 
@@ -175,7 +197,7 @@ async function executeRoster(kind: RosterKind, input: {
         endTimeMs: range.endTimeMs,
         label: range.label,
         maxDays: 8,
-        query: `${current.displayName} ${input.period || '近一周'}`,
+        query: `${current.displayName} ${periodLabel}`,
       })
       const msgCount = page.days.reduce((sum, day) => sum + (day.messages?.length || 0), 0)
       packedPeople.push({
@@ -207,7 +229,7 @@ async function executeRoster(kind: RosterKind, input: {
     }
 
     const lastPerson = people[lastIndex]
-    const remaining = setProgress(kind, people, lastIndex + 1, lastPerson.displayName, nextCursor)
+    const remaining = setProgress(kind, people, lastIndex + 1, lastPerson.displayName, nextCursor, meta)
     const packedNames = packedPeople.map((item) => item.person.displayName).join('、')
     console.warn('[read_private_period] packed light chats', {
       peopleTotal: people.length,
@@ -244,7 +266,7 @@ async function executeRoster(kind: RosterKind, input: {
     label: range.label,
     cursor: dayCursor,
     maxDays: 7,
-    query: `${person.displayName} ${input.period || '近一周'}`,
+    query: `${person.displayName} ${periodLabel}`,
   })
 
   let nextCursor: RosterPeriodProgress['nextCursor'] = null
@@ -260,7 +282,7 @@ async function executeRoster(kind: RosterKind, input: {
     nextCursor = { cursorUsername: people[index + 1].username }
   }
 
-  const remaining = setProgress(kind, people, index + 1, person.displayName, nextCursor)
+  const remaining = setProgress(kind, people, index + 1, person.displayName, nextCursor, meta)
   console.warn(`[${toolName(kind)}] page`, {
     peopleTotal: people.length,
     index: index + 1,
@@ -291,10 +313,11 @@ async function executeRoster(kind: RosterKind, input: {
 }
 
 const rosterInput = z.object({
-  period: z.string().optional().describe('近一周 / 近一个月 / 本月 / last_7_days / last_30_days'),
+  period: z.string().optional().describe('今天 / 昨天 / 近一周 / 近一个月 / 本月 / 近3天 / 近3个月。必须跟用户原话一致，不要默认近一周'),
   onDate: z.string().optional(),
   startTimeMs: z.number().optional(),
   endTimeMs: z.number().optional(),
+  includeFolded: z.boolean().optional().describe('用户明确说包括折叠的聊天时为 true；默认排除'),
   cursorUsername: z.string().optional().describe('nextCursor.cursorUsername，原样传入'),
   cursorDay: z.string().optional().describe('nextCursor.cursorDay，原样传入'),
   afterSortSeq: z.number().optional(),
@@ -304,7 +327,7 @@ const rosterInput = z.object({
 
 export const readPrivatePeriod = tool({
   description:
-    '读完近一周/近一个月里所有有消息的私聊原文。用户说「近一周私聊/私信总结」时必须用这个，不要让用户点名，也不要只用 chat_stats。折叠的聊天默认排除。' +
+    '读完用户指定时间窗里所有有消息的私聊原文。period 必须跟用户原话一致：今天就是今天，近一周才是 7 天。不要让用户点名，也不要只用 chat_stats。折叠的聊天默认排除，用户说包括折叠时传 includeFolded:true。' +
     '低条数的人会打成 packedPeople 一次返回多人，每个人都要写，不能只写活跃的几个。' +
     '有 nextCursor 就必须原样再调，直到 complete=true。全部写完后 save_chat_summary。',
   inputSchema: rosterInput,
@@ -319,7 +342,7 @@ export const readPrivatePeriod = tool({
 
 export const readGroupPeriod = tool({
   description:
-    '读完近一周/近一个月里所有有消息的群聊原文。用户说「近一周群聊总结」时必须用这个，不要让用户点群名，也不要只用 chat_stats。微信「折叠的聊天」里的群默认排除。' +
+    '读完用户指定时间窗里所有有消息的群聊原文。period 必须跟用户原话一致：今天就是今天。不要让用户点群名，也不要只用 chat_stats。折叠的聊天默认排除，用户说包括折叠时传 includeFolded:true。' +
     '一次只返回当前这个群的若干天。有 nextCursor 就必须原样再调，直到 complete=true。全部写完后 save_chat_summary。',
   inputSchema: rosterInput,
   execute: async (input) => {

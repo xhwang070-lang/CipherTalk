@@ -38,6 +38,14 @@ import { extractOfficeBuffer, isOfficeFileName, officeMediaTypeFromName, officeR
 import { convertFileBuffer, looksLikeConvertCommand, parseConvertTarget } from '../chat/fileConvert'
 import { resolveWechatPeerName, wechatBotConversationTitle, writeWechatBotRunLog } from '../agent/wechatBotArchive'
 import { getLastPrivatePeriodProgress, type RosterPeriodProgress } from '../agent/tools/readPrivatePeriod'
+import {
+  buildSummarySteer,
+  forceSummaryReadText,
+  inferChatSummaryIntent,
+  isContinueCommand,
+  summaryRetryHint,
+  type ChatSummaryIntent,
+} from '../agent/summaryIntent'
 import { buildRosterCloserInstruction, stripRosterInternals } from '../agent/rosterPageFlush'
 import { getActiveChatSummaryPath } from '../agent/tools/saveChatSummary'
 
@@ -127,51 +135,59 @@ function wechatBotFailText(error: unknown, lastTool?: string): string {
 }
 
 function wantsWeekOrMonthSummary(text: string): boolean {
-  const compact = String(text || '').replace(/\s+/g, '')
-  if (!compact) return false
-  if (/(多少条|谁最活跃|排行|排名|统计一下|一共多少)/.test(compact)) return false
-  const asksSummary = /(总结|梳理|复盘|回顾|聊了什么|在聊什么)/.test(compact)
-  const asksPeriod = /(近一周|最近一周|这一周|近七天|近7天|七天|近一个月|最近一个月|本月|一个月)/.test(compact)
-  const asksRosterWeek = /(近一周|最近一周|近七天|近一个月).{0,8}(私聊|私信|群聊)|(私聊|私信|群聊).{0,8}(近一周|最近一周|近七天|近一个月)/.test(compact)
-  return asksRosterWeek || (asksSummary && asksPeriod)
+  if (isContinueCommand(text)) {
+    const progress = currentRosterProgress()
+    return Boolean(progress && !progress.complete)
+  }
+  return Boolean(inferChatSummaryIntent(text))
 }
 
 function wantsAllGroupSummary(text: string): boolean {
-  const compact = String(text || '').replace(/\s+/g, '')
-  if (/^(续|接着写|继续)$/.test(compact)) {
+  if (isContinueCommand(text)) {
     const progress = currentRosterProgress()
     return Boolean(progress && !progress.complete && progress.kind === 'group')
   }
-  if (!wantsWeekOrMonthSummary(text)) return false
-  return compact.includes('群聊')
+  return inferChatSummaryIntent(text)?.scope === 'group'
 }
 
 function wantsAllPrivateSummary(text: string): boolean {
-  const compact = String(text || '').replace(/\s+/g, '')
-  if (/^(续|接着写|继续)$/.test(compact)) {
+  if (isContinueCommand(text)) {
     const progress = currentRosterProgress()
     return Boolean(progress && !progress.complete && progress.kind !== 'group')
   }
-  if (!wantsWeekOrMonthSummary(text)) return false
-  if (!/(私聊|私信)/.test(compact)) return false
-  return !/(跟我|和我|我和|我跟).{0,20}(近一周|近一个月|近七天)/.test(compact)
+  const intent = inferChatSummaryIntent(text)
+  return intent?.scope === 'private' || intent?.scope === 'all'
+}
+
+function wantsAllChatsSummary(text: string): boolean {
+  return inferChatSummaryIntent(text)?.scope === 'all'
 }
 
 function usedPeriodRead(usedTools: string[], commandText = ''): boolean {
+  if (isContinueCommand(commandText)) {
+    return usedTools.includes('read_private_period') || usedTools.includes('read_group_period') || usedTools.includes('read_period')
+  }
+  const intent = inferChatSummaryIntent(commandText)
+  if (intent?.scope === 'group') return usedTools.includes('read_group_period')
+  if (intent?.scope === 'all') return usedTools.includes('read_private_period') || usedTools.includes('read_group_period')
+  if (intent?.scope === 'named') return usedTools.includes('read_period')
+  if (intent?.scope === 'private') return usedTools.includes('read_private_period')
   if (wantsAllGroupSummary(commandText)) return usedTools.includes('read_group_period')
   if (wantsAllPrivateSummary(commandText)) return usedTools.includes('read_private_period')
   return usedTools.includes('read_period') || usedTools.includes('read_private_period') || usedTools.includes('read_group_period')
 }
 
 function forcePeriodReadText(commandText: string): string {
-  const media = '语音用 transcribe_voice_message，图片用 inspect_media_image。近一周就是 7 天，禁止缩成一天。人名、金额必须对原文，对不上写待核。'
+  const intent = inferChatSummaryIntent(commandText)
+  if (intent) return forceSummaryReadText(intent)
+  const media = '语音用 transcribe_voice_message，图片用 inspect_media_image。人名、金额必须对原文，对不上写待核。'
   if (wantsAllGroupSummary(commandText)) {
-    return "上一轮没有读群聊原文，作废。所有群聊总结必须立刻调用 read_group_period({period:'近一周'或'近一个月'})，不要问用户要群名，不要只用统计。有 nextCursor 就继续调，直到 complete=true。" + media
+    return "上一轮没有读群聊原文，作废。立刻调用 read_group_period，period 跟用户原话一致，不要问群名，不要改成近一周。" + media
   }
   if (wantsAllPrivateSummary(commandText)) {
-    return "上一轮没有读聊天原文，作废。所有私聊总结必须立刻调用 read_private_period({period:'近一周'或'近一个月'})，不要问用户要人名，不要只用统计。有 nextCursor 就继续调，直到 complete=true。" + media
+    return "上一轮没有读聊天原文，作废。立刻调用 read_private_period，period 跟用户原话一致，不要问人名，不要改成近一周。" + media
   }
-  return "上一轮没有读聊天原文，作废。必须先 list_contacts 拿到那一个人/群的 sessionId，立刻调用 read_period({sessionId, period:'近一周'或'近一个月'}) 按天翻完。不要问用户要不要读。不要只用统计。" + media
+  return "上一轮没有读聊天原文，作废。必须先 list_contacts 拿到那一个人/群的 sessionId，立刻调用 read_period，period 跟用户原话一致。不要改成近一周。" + media
 }
 
 function wantsNamedTodoExtract(text: string): boolean {
@@ -1816,6 +1832,10 @@ class WeixinBotService {
       const parts: UIMessage['parts'] = []
       if (incoming.plainText.trim()) {
         parts.push({ type: 'text', text })
+        const summaryIntent = inferChatSummaryIntent(commandText)
+        if (summaryIntent) {
+          parts.push({ type: 'text', text: buildSummarySteer(summaryIntent) })
+        }
       } else if (hasIncomingAttachment) {
         const names = incoming.attachmentNames.filter(Boolean)
         parts.push({ type: 'text', text: names.length ? `发来了：${names.join('、')}` : '发来了附件' })
@@ -2118,7 +2138,9 @@ class WeixinBotService {
         } else if (!usedPeriodRead(usedTools, commandText)) {
           rawReply = {
             ...rawReply,
-            text: wantsAllGroupSummary(commandText) ? '这次还没读到群聊原文。请再发一遍：把近一周的群聊总结一下。不用点群名。' : '这次还没读到聊天原文。请再发一遍：把近一周的私聊总结一下。不用点名。',
+            text: inferChatSummaryIntent(commandText)
+              ? summaryRetryHint(inferChatSummaryIntent(commandText)!)
+              : (wantsAllGroupSummary(commandText) ? '这次还没读到群聊原文。请按你刚才说的时间再发一遍。不用点群名。' : '这次还没读到聊天原文。请按你刚才说的时间再发一遍。不用点名。'),
             textBubbles: undefined,
             media: [],
           }
@@ -2179,7 +2201,7 @@ class WeixinBotService {
         }
       }
 
-      if ((wantsAllPrivateSummary(commandText) || wantsAllGroupSummary(commandText)) && (usedTools.includes('read_private_period') || usedTools.includes('read_group_period'))) {
+      if ((wantsAllPrivateSummary(commandText) || wantsAllGroupSummary(commandText) || wantsAllChatsSummary(commandText) || isContinueCommand(commandText)) && (usedTools.includes('read_private_period') || usedTools.includes('read_group_period'))) {
         if (rawReply.text.trim() || rawReply.media.length) {
           await publishRosterPage(rawReply, 'archive')
         }
@@ -2195,9 +2217,13 @@ class WeixinBotService {
         }
         let hops = 0
         let wechatHeartbeatFailed = false
+        const summaryIntent = inferChatSummaryIntent(commandText)
         while (hops < 80) {
           const progress = currentRosterProgress()
-          if (!progress || progress.complete || !progress.nextCursor) break
+          const missingAllTool = summaryIntent?.scope === 'all'
+            ? (!usedTools.includes('read_private_period') ? 'read_private_period' : (!usedTools.includes('read_group_period') ? 'read_group_period' : ''))
+            : ''
+          if (progress && !progress.complete && progress.nextCursor) {
           hops += 1
           const tool = progress.kind === 'group' ? 'read_group_period' : 'read_private_period'
           const unit = progress.kind === 'group' ? '群' : '人'
@@ -2223,6 +2249,21 @@ class WeixinBotService {
                 this.logger?.error('WechatBot', '微信进度发送失败，不再往微信刷页', { error: String(error) })
               }
             }
+          }
+          continue
+          }
+          if (!missingAllTool) break
+          hops += 1
+          const period = summaryIntent?.period || progress?.period || '今天'
+          const followHistory = [
+            ...history,
+            { id: `wx-a-priv-${Date.now()}-${hops}`, role: 'assistant' as const, parts: [{ type: 'text' as const, text: stripRosterInternals(rawReply.text) || '' }] },
+            { id: `wx-u-priv-${Date.now()}-${hops}`, role: 'user' as const, parts: [{ type: 'text' as const, text: `这一侧已经读完。立刻调用 ${missingAllTool}({period:'${period}'${summaryIntent?.includeFolded ? ', includeFolded:true' : ''}})。禁止改成近一周。不要问名字。` }] },
+          ]
+          const more = await this.runAgent(followHistory, { conversationId: conv.id, allowDesktopScreenshotReply, onTool: (name) => { lastTool = name; if (name && !usedTools.includes(name)) usedTools.push(name); this.setActivity('working', name) } })
+          if (more.text.trim() || more.media.length) {
+            rawReply = more
+            await publishRosterPage(more, 'archive')
           }
         }
         const leftover = currentRosterProgress()
