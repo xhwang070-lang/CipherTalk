@@ -155,9 +155,10 @@ class ReplyTileService {
     if (this.attached) return
     this.attached = true
     chatService.on('dbChange', (payload: { table?: string }) => {
+      if (!this.running) return
       const table = String(payload?.table || '')
       if (table !== 'Session' && table !== 'Message') return
-      this.ctx?.getLogService()?.warn('ReplyTile', '收到数据库变更，准备检查磁贴回复建议', { table, running: this.running })
+      this.ctx?.getLogService()?.debug('ReplyTile', '收到数据库变更，准备检查磁贴回复建议', { table })
       this.scheduleCheck()
     })
   }
@@ -166,7 +167,7 @@ class ReplyTileService {
   setRunning(on: boolean): void {
     if (on === this.running) return
     this.running = on
-    this.ctx?.getLogService()?.warn('ReplyTile', '磁贴后台服务状态变更', { running: on })
+    this.ctx?.getLogService()?.debug('ReplyTile', '磁贴后台服务状态变更', { running: on })
     if (on) {
       void this.refresh()
     } else {
@@ -191,7 +192,7 @@ class ReplyTileService {
       this.cacheSessions(sessions)
       const next = this.computeParticipating()
       const current = chatService.getCurrentSessionId()
-      this.ctx?.getLogService()?.warn('ReplyTile', '刷新磁贴参与会话', {
+      this.ctx?.getLogService()?.debug('ReplyTile', '刷新磁贴参与会话', {
         success: res.success,
         sessionCount: sessions.length,
         participantCount: next.size,
@@ -262,7 +263,7 @@ class ReplyTileService {
   private scheduleCheck(): void {
     if (!this.running) return
     if (this.debounceTimer) clearTimeout(this.debounceTimer)
-    this.ctx?.getLogService()?.warn('ReplyTile', '安排磁贴回复建议检查', { debounceMs: DEBOUNCE_MS })
+    this.ctx?.getLogService()?.debug('ReplyTile', '安排磁贴回复建议检查', { debounceMs: DEBOUNCE_MS })
     this.debounceTimer = setTimeout(() => {
       this.debounceTimer = null
       void this.check()
@@ -285,7 +286,7 @@ class ReplyTileService {
 
       const map = this.readSettingsMap()
       const current = chatService.getCurrentSessionId()
-      this.ctx?.getLogService()?.warn('ReplyTile', '开始磁贴回复建议检查', {
+      this.ctx?.getLogService()?.debug('ReplyTile', '开始磁贴回复建议检查', {
         sessionCount: res.sessions.length,
         participantCount: participating.size,
         current,
@@ -302,15 +303,15 @@ class ReplyTileService {
         this.snapshot.set(id, cur)
 
         if (!isPrivateSession(session)) {
-          this.ctx?.getLogService()?.warn('ReplyTile', '跳过非私聊会话', { sessionId: id })
+          this.ctx?.getLogService()?.debug('ReplyTile', '跳过非私聊会话', { sessionId: id })
           continue
         }
         if (id === current) {
-          this.ctx?.getLogService()?.warn('ReplyTile', '跳过当前聊天窗口会话，由渲染端生成', { sessionId: id })
+          this.ctx?.getLogService()?.debug('ReplyTile', '跳过当前聊天窗口会话，由渲染端生成', { sessionId: id })
           continue
         }
         if (prev && cur.lastTs <= prev.lastTs) {
-          this.ctx?.getLogService()?.warn('ReplyTile', '跳过无新消息会话', { sessionId: id, prevLastTs: prev.lastTs, curLastTs: cur.lastTs })
+          this.ctx?.getLogService()?.debug('ReplyTile', '跳过无新消息会话', { sessionId: id, prevLastTs: prev.lastTs, curLastTs: cur.lastTs })
           continue
         }
         // 不能依赖 unread 判断：微信当前打开该会话时，对方新消息也可能 unread=0。
@@ -318,7 +319,7 @@ class ReplyTileService {
         const sessionName = this.nameOf(id) || session.displayName || id
         const target = await this.latestIncomingMessageTarget(id)
         if (!target) {
-          this.ctx?.getLogService()?.warn('ReplyTile', '最后一条不是对方消息，跳过生成', { sessionId: id, prevLastTs: prev?.lastTs, curLastTs: cur.lastTs })
+          this.ctx?.getLogService()?.debug('ReplyTile', '最后一条不是对方消息，跳过生成', { sessionId: id, prevLastTs: prev?.lastTs, curLastTs: cur.lastTs })
           this.clearSessionGeneration(id)
           this.emit({ sessionId: id, sessionName, avatarUrl: this.avatarOf(id), state: 'pending' })
           continue
@@ -326,11 +327,11 @@ class ReplyTileService {
         // 如果启动时 DB 还没 ready，第一次 dbChange 可能是首个成功快照。
         // 这时只要最后一条是刚收到的对方消息，就允许生成，避免把第一条新消息静默吃掉。
         if (!prev && !isFreshTarget(target)) {
-          this.ctx?.getLogService()?.warn('ReplyTile', '首次快照但最后消息不新鲜，静默播种', { sessionId: id, targetKey: target.targetKey, createTime: target.createTime })
+          this.ctx?.getLogService()?.debug('ReplyTile', '首次快照但最后消息不新鲜，静默播种', { sessionId: id, targetKey: target.targetKey, createTime: target.createTime })
           continue
         }
 
-        this.ctx?.getLogService()?.warn('ReplyTile', '命中磁贴回复建议生成条件', {
+        this.ctx?.getLogService()?.debug('ReplyTile', '命中磁贴回复建议生成条件', {
           sessionId: id,
           targetKey: target.targetKey,
           prevLastTs: prev?.lastTs ?? null,
@@ -368,7 +369,7 @@ class ReplyTileService {
       const msgRes = await chatService.getMessages(sessionId, 0, 3)
       const messages = msgRes.success && Array.isArray(msgRes.messages) ? msgRes.messages : []
       const last = messages[messages.length - 1]
-      this.ctx?.getLogService()?.warn('ReplyTile', '读取最新消息用于磁贴判断', {
+      this.ctx?.getLogService()?.debug('ReplyTile', '读取最新消息用于磁贴判断', {
         sessionId,
         success: msgRes.success,
         messageCount: messages.length,
@@ -398,14 +399,14 @@ class ReplyTileService {
   private scheduleGenerate(sessionId: string, sessionName: string, settings: PerSession, target: ReplyTarget): void {
     const prevKey = this.latestTargetKey.get(sessionId)
     if (prevKey === target.targetKey) {
-      this.ctx?.getLogService()?.warn('ReplyTile', '同一目标消息已排队或已生成，跳过重复调度', { sessionId, targetKey: target.targetKey })
+      this.ctx?.getLogService()?.debug('ReplyTile', '同一目标消息已排队或已生成，跳过重复调度', { sessionId, targetKey: target.targetKey })
       return
     }
     this.latestTargetKey.set(sessionId, target.targetKey)
 
     if (this.generating.has(sessionId)) {
       this.pendingContinue.set(sessionId, { sessionName, settings, targetKey: target.targetKey, quote: target.quote })
-      this.ctx?.getLogService()?.warn('ReplyTile', '已有生成在进行，记录为待继续生成', { sessionId, targetKey: target.targetKey })
+      this.ctx?.getLogService()?.debug('ReplyTile', '已有生成在进行，记录为待继续生成', { sessionId, targetKey: target.targetKey })
       this.emitState(sessionId, sessionName, 'loading')
       return
     }
@@ -414,7 +415,7 @@ class ReplyTileService {
     if (oldTimer) clearTimeout(oldTimer)
     const seq = this.generationSeq.get(sessionId) || 0
     this.pendingContinue.delete(sessionId)
-    this.ctx?.getLogService()?.warn('ReplyTile', '已排队磁贴回复建议生成，等待静默窗口', {
+    this.ctx?.getLogService()?.debug('ReplyTile', '已排队磁贴回复建议生成，等待静默窗口', {
       sessionId,
       targetKey: target.targetKey,
       quietMs: REPLY_QUIET_MS,
@@ -424,11 +425,11 @@ class ReplyTileService {
     const timer = setTimeout(() => {
       this.generateTimers.delete(sessionId)
       if (this.latestTargetKey.get(sessionId) !== target.targetKey) {
-        this.ctx?.getLogService()?.warn('ReplyTile', '静默窗口结束但目标消息已变化，取消本次 AI 调用', { sessionId, targetKey: target.targetKey, latestTargetKey: this.latestTargetKey.get(sessionId) })
+        this.ctx?.getLogService()?.debug('ReplyTile', '静默窗口结束但目标消息已变化，取消本次 AI 调用', { sessionId, targetKey: target.targetKey, latestTargetKey: this.latestTargetKey.get(sessionId) })
         this.emitState(sessionId, sessionName, this.batches.get(sessionId)?.length ? 'ready' : 'pending')
         return
       }
-      this.ctx?.getLogService()?.warn('ReplyTile', '静默窗口结束，准备进入 AI 调用', { sessionId, targetKey: target.targetKey, seq })
+      this.ctx?.getLogService()?.debug('ReplyTile', '静默窗口结束，准备进入 AI 调用', { sessionId, targetKey: target.targetKey, seq })
       void this.generate(sessionId, sessionName, settings, target.targetKey, target.quote, seq)
     }, REPLY_QUIET_MS)
     this.generateTimers.set(sessionId, timer)
@@ -476,12 +477,12 @@ class ReplyTileService {
     options?: { count?: number; replace?: ReplaceSuggestionTarget },
   ): Promise<void> {
     if (!options?.replace && this.latestTargetKey.get(sessionId) !== targetKey) {
-      this.ctx?.getLogService()?.warn('ReplyTile', '跳过过期回复建议生成', { sessionId, targetKey, latestTargetKey: this.latestTargetKey.get(sessionId) })
+      this.ctx?.getLogService()?.debug('ReplyTile', '跳过过期回复建议生成', { sessionId, targetKey, latestTargetKey: this.latestTargetKey.get(sessionId) })
       this.emitState(sessionId, sessionName, this.batches.get(sessionId)?.length ? 'ready' : 'pending')
       return
     }
     if ((this.generationSeq.get(sessionId) || 0) !== seq) {
-      this.ctx?.getLogService()?.warn('ReplyTile', '跳过已失效回复建议生成', { sessionId, targetKey, seq, currentSeq: this.generationSeq.get(sessionId) })
+      this.ctx?.getLogService()?.debug('ReplyTile', '跳过已失效回复建议生成', { sessionId, targetKey, seq, currentSeq: this.generationSeq.get(sessionId) })
       this.emitState(sessionId, sessionName, this.batches.get(sessionId)?.length ? 'ready' : 'pending')
       return
     }
@@ -503,7 +504,7 @@ class ReplyTileService {
       const messages = createTime === null ? rawMessages : rawMessages.filter((m) => m.createTime <= createTime)
       const context = buildContext(sessionId, messages, deep)
       if ((this.generationSeq.get(sessionId) || 0) !== seq) {
-        this.ctx?.getLogService()?.warn('ReplyTile', '上下文构建后生成已失效', { sessionId, targetKey, seq, currentSeq: this.generationSeq.get(sessionId) })
+        this.ctx?.getLogService()?.debug('ReplyTile', '上下文构建后生成已失效', { sessionId, targetKey, seq, currentSeq: this.generationSeq.get(sessionId) })
         this.emitState(sessionId, sessionName, this.batches.get(sessionId)?.length ? 'ready' : 'pending')
         return
       }
@@ -549,7 +550,7 @@ class ReplyTileService {
             })
           })()
         : null
-      this.ctx?.getLogService()?.warn('ReplyTile', '开始调用 AI 生成回复建议', {
+      this.ctx?.getLogService()?.debug('ReplyTile', '开始调用 AI 生成回复建议', {
         sessionId,
         targetKey,
         contextCount: context.length,
@@ -575,7 +576,7 @@ class ReplyTileService {
         toolProfile: profile?.toolProfile,
         codeWorkspace: profile?.codeWorkspace,
       }), REPLY_GENERATE_TIMEOUT_MS, '回复建议生成')
-      this.ctx?.getLogService()?.warn('ReplyTile', 'AI 回复建议生成返回', {
+      this.ctx?.getLogService()?.debug('ReplyTile', 'AI 回复建议生成返回', {
         sessionId,
         targetKey,
         success: Boolean(result.suggestions?.length),
@@ -583,7 +584,7 @@ class ReplyTileService {
       })
 
       if ((this.generationSeq.get(sessionId) || 0) !== seq) {
-        this.ctx?.getLogService()?.warn('ReplyTile', 'AI 返回后生成已失效', { sessionId, targetKey, seq, currentSeq: this.generationSeq.get(sessionId) })
+        this.ctx?.getLogService()?.debug('ReplyTile', 'AI 返回后生成已失效', { sessionId, targetKey, seq, currentSeq: this.generationSeq.get(sessionId) })
         this.emitState(sessionId, sessionName, this.batches.get(sessionId)?.length ? 'ready' : 'pending')
         return
       }
